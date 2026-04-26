@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//Users/shinnpei/.nvm/versions/node/v25.7.0/lib/node_modules/@jackwener/opencli/dist/src/**)"
+    ]
+  }
+}

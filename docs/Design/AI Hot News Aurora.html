@@ -1,0 +1,1001 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Hot News — Aurora</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<style>
+  *,*::before,*::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #fdfbff;
+    --ink: #1a1f3a;
+    --ink-2: #4b5263;
+    --ink-3: #8b91a8;
+    --ink-4: #c8ccd8;
+    --line: rgba(124, 92, 255, 0.08);
+    --line-2: rgba(124, 92, 255, 0.16);
+    --c1: #7c5cff;
+    --c2: #db2777;
+    --c3: #f59e0b;
+    --c4: #06b6d4;
+    --grad: linear-gradient(135deg, #7c5cff 0%, #db2777 60%, #f59e0b 100%);
+    --grad-soft: linear-gradient(135deg, #c4b5fd, #fda4af, #fcd34d);
+  }
+  html, body { background: var(--bg); color: var(--ink); font-family: 'Inter Tight', sans-serif; font-size: 14px; height: 100%; overflow: hidden; -webkit-font-smoothing: antialiased; }
+  body {
+    background-image:
+      radial-gradient(ellipse 80% 60% at 0% 0%, #ddd6fe 0%, transparent 50%),
+      radial-gradient(ellipse 60% 50% at 100% 0%, #fecdd3 0%, transparent 45%),
+      radial-gradient(ellipse 70% 50% at 100% 100%, #bfdbfe 0%, transparent 50%),
+      radial-gradient(ellipse 60% 40% at 0% 100%, #fef3c7 0%, transparent 45%);
+    background-attachment: fixed;
+  }
+  #root { height: 100%; display: flex; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-thumb { background: rgba(124,92,255,0.2); border-radius: 3px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  button, input, select { font-family: inherit; color: inherit; outline: none; border: none; background: none; }
+  button { cursor: pointer; }
+  a { color: inherit; text-decoration: none; }
+
+  .glass {
+    background: rgba(255,255,255,0.55);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255,255,255,0.7);
+    border-radius: 18px;
+    box-shadow: 0 1px 2px rgba(124,92,255,0.04), 0 8px 24px rgba(124,92,255,0.06);
+  }
+  .glass-soft { background: rgba(255,255,255,0.4); backdrop-filter: blur(16px); border: 1px solid rgba(255,255,255,0.6); border-radius: 14px; }
+  .glass-hover { transition: transform .3s cubic-bezier(0.2,0.8,0.2,1), box-shadow .3s, border-color .3s; }
+  .glass-hover:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(124,92,255,0.08), 0 16px 40px rgba(124,92,255,0.12); border-color: rgba(124,92,255,0.3); }
+
+  .grad-text { background: var(--grad); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+  .mono { font-family: 'JetBrains Mono', monospace; font-feature-settings: 'tnum'; }
+  .display { font-family: 'Inter Tight', sans-serif; letter-spacing: -0.025em; }
+
+  /* aurora floating blobs */
+  .aurora-blob { position: fixed; border-radius: 50%; filter: blur(80px); opacity: 0.5; pointer-events: none; z-index: 0; }
+  .ab-1 { width: 480px; height: 480px; background: #c4b5fd; top: -100px; left: 200px; animation: drift1 25s ease-in-out infinite; }
+  .ab-2 { width: 380px; height: 380px; background: #fda4af; top: 30%; right: -100px; animation: drift2 30s ease-in-out infinite; }
+  .ab-3 { width: 420px; height: 420px; background: #93c5fd; bottom: -100px; left: 30%; animation: drift3 35s ease-in-out infinite; }
+  @keyframes drift1 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(120px, 80px); } }
+  @keyframes drift2 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(-100px, 100px); } }
+  @keyframes drift3 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(80px, -80px); } }
+
+  @keyframes fadeUp { from { opacity:0; transform: translateY(16px); } to { opacity:1; transform: translateY(0); } }
+  .fade-up { animation: fadeUp .6s cubic-bezier(0.2,0.6,0.2,1) backwards; }
+  @keyframes fillBar { from { width: 0; } }
+  .fill-bar { animation: fillBar 1.2s cubic-bezier(0.2,0.8,0.2,1) backwards; }
+  @keyframes pulse-ring {
+    0% { transform: scale(1); opacity: 0.6; } 100% { transform: scale(2.2); opacity: 0; }
+  }
+  .pulse-ring { position: relative; }
+  .pulse-ring::after { content:''; position: absolute; inset: 0; border-radius: 50%; background: currentColor; opacity: 0.3; animation: pulse-ring 2s ease-out infinite; }
+  @keyframes blink { 50% { opacity: 0.3; } }
+  .blink { animation: blink 2s ease-in-out infinite; }
+</style>
+</head>
+<body>
+<div class="aurora-blob ab-1"></div>
+<div class="aurora-blob ab-2"></div>
+<div class="aurora-blob ab-3"></div>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
+
+// ─── Mock Data ───────────────────────────────────────────────
+const NEWS = [
+  { id:1, title:"Claude 4 发布：Anthropic 推出最强编程模型", summary:"在代码生成、数学推理、长上下文处理方面全面领先 GPT-4o。开发者社区围绕 200K 上下文窗口与新 Tool Use API 展开热烈讨论，与 Cursor 的整合成为焦点。", platform:["X","HN","RD"], author:"Anthropic", time:"23 分钟前", heat:96, likes:8420, comments:1203, reposts:3100, tags:["Claude","Coding","模型发布"], type:"模型发布", trend:"surge" },
+  { id:2, title:"OpenAI o3 API 价格大幅下降 80%", summary:"OpenAI 宣布 o3 模型 API 调用价格下调 80%，引发大量开发者涌入测试。社区反馈推理质量稳定，多家初创公司宣布切换主力模型。", platform:["X","RSS"], author:"OpenAI", time:"1 小时前", heat:91, likes:6300, comments:892, reposts:2800, tags:["OpenAI","o3","降价"], type:"产品更新", trend:"surge" },
+  { id:3, title:"Cursor 0.50：内置 AI Security Review 功能", summary:"新版本可在本地实时扫描代码漏洞，支持多文件并行编辑和自定义规则集，获得开发者社区高度评价。", platform:["HN","RD","X"], author:"Cursor Team", time:"2 小时前", heat:88, likes:5100, comments:743, reposts:1900, tags:["Cursor","IDE","安全"], type:"工具产品", trend:"hot" },
+  { id:4, title:"llama.cpp 支持在 MacBook M4 上运行 70B 模型", summary:"最新 commit 实现 Apple Silicon M4 深度优化，70B 参数模型可在 MacBook Pro 流畅运行，推理速度提升 3 倍。", platform:["HN","RD"], author:"ggerganov", time:"3 小时前", heat:84, likes:4200, comments:621, reposts:1400, tags:["Local LLM","开源"], type:"开源项目", trend:"surge" },
+  { id:5, title:"Gemini 2.5 Pro 多模态评测：视频理解超越 GPT-4V", summary:"第三方评测显示 Gemini 2.5 Pro 视频理解、图表分析能力优于竞品，但代码生成仍落后 Claude 4。", platform:["RSS","X"], author:"Scale AI", time:"4 小时前", heat:79, likes:3100, comments:456, reposts:1100, tags:["Gemini","多模态"], type:"评测", trend:"hot" },
+  { id:6, title:"LangGraph 1.0 发布：生产级 Agent 工作流编排", summary:"提供企业级 Agent 工作流编排、持久化状态管理和人工介入节点，已有超过 200 家企业部署。", platform:["HN","X"], author:"LangChain", time:"5 小时前", heat:76, likes:2800, comments:389, reposts:980, tags:["Agent","工作流"], type:"开源项目", trend:"hot" },
+  { id:7, title:"Mistral AI 完成 6 亿欧元 C 轮融资", summary:"由 General Catalyst 领投，估值达 60 亿欧元。公司将重点发展企业级 AI 解决方案。", platform:["RSS","X"], author:"Mistral", time:"6 小时前", heat:73, likes:2400, comments:312, reposts:870, tags:["Mistral","融资"], type:"融资动态", trend:"hot" },
+  { id:8, title:"Perplexity DAU 突破 1000 万", summary:"同时推出 Spaces 协作搜索功能，正式进入企业级市场与 Google 展开竞争。", platform:["X","RSS"], author:"Perplexity", time:"8 小时前", heat:71, likes:2100, comments:289, reposts:760, tags:["Perplexity","搜索"], type:"产品更新", trend:"normal" },
+];
+
+const KEYWORDS = [
+  { id:1, keyword:"Claude Code", platforms:["X","HN","RD"], freq:"30 分钟", on:true, today:127, week:843, last:"5 分钟前", trend:"up", score:94 },
+  { id:2, keyword:"OpenAI", platforms:["X","RSS","HN"], freq:"15 分钟", on:true, today:384, week:2130, last:"2 分钟前", trend:"up", score:98 },
+  { id:3, keyword:"AI Agent", platforms:["HN","RD"], freq:"1 小时", on:true, today:89, week:541, last:"28 分钟前", trend:"flat", score:76 },
+  { id:4, keyword:"Cursor", platforms:["X","HN"], freq:"30 分钟", on:true, today:156, week:892, last:"15 分钟前", trend:"up", score:88 },
+  { id:5, keyword:"Local LLM", platforms:["RD","HN"], freq:"1 小时", on:false, today:0, week:234, last:"3 小时前", trend:"down", score:52 },
+  { id:6, keyword:"Midjourney", platforms:["X","RD"], freq:"1 小时", on:true, today:43, week:298, last:"45 分钟前", trend:"flat", score:61 },
+];
+
+const PLAT = {
+  X: { label:"Twitter", color:"#7c5cff", bg:"rgba(124,92,255,0.1)" },
+  HN: { label:"HackerNews", color:"#f59e0b", bg:"rgba(245,158,11,0.1)" },
+  RD: { label:"Reddit", color:"#db2777", bg:"rgba(219,39,119,0.1)" },
+  RSS: { label:"RSS", color:"#06b6d4", bg:"rgba(6,182,212,0.1)" },
+};
+
+// ─── Hooks ───────────────────────────────────────────────────
+function useCountUp(target, duration=1400) {
+  const [val, setVal] = useState(0);
+  useEffect(() => {
+    let raf, start;
+    const step = ts => {
+      if (!start) start = ts;
+      const p = Math.min((ts - start) / duration, 1);
+      const eased = 1 - Math.pow(1 - p, 3);
+      setVal(Math.floor(eased * target));
+      if (p < 1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [target, duration]);
+  return val;
+}
+
+// ─── Atoms ───────────────────────────────────────────────────
+function Pill({ p }) {
+  const i = PLAT[p];
+  return <span style={{ fontSize:11, padding:"3px 9px", borderRadius:99, color:i.color, background:i.bg, fontWeight:500, border:`1px solid ${i.color}22` }}>{i.label}</span>;
+}
+
+function HeatBadge({ score }) {
+  const color = score>=90?"#db2777":score>=70?"#f59e0b":score>=50?"#06b6d4":"#8b91a8";
+  const bg = score>=90?"rgba(219,39,119,0.1)":score>=70?"rgba(245,158,11,0.1)":score>=50?"rgba(6,182,212,0.1)":"rgba(139,145,168,0.1)";
+  const label = score>=90?"🔥 爆发":score>=70?"⚡ 热门":score>=50?"💫 关注":"普通";
+  return (
+    <span style={{ display:"inline-flex", alignItems:"center", gap:6, padding:"4px 10px", borderRadius:99, background:bg, color, fontSize:12, fontWeight:600, border:`1px solid ${color}22` }}>
+      <span style={{ fontFamily:"'Inter Tight',sans-serif", letterSpacing:"-0.02em" }}>{label} · {score}</span>
+    </span>
+  );
+}
+
+function Tag({ children, color="var(--c1)" }) {
+  return <span style={{ fontSize:11, padding:"2px 9px", borderRadius:99, background:`${color}10`, color, border:`1px solid ${color}20`, fontWeight:500 }}>{children}</span>;
+}
+
+function MiniSpark({ data, color="#7c5cff", w=80, h=28 }) {
+  const max=Math.max(...data), min=Math.min(...data);
+  const pts = data.map((v,i)=>`${i*(w/(data.length-1))},${h-((v-min)/(max-min||1))*h*0.85-h*0.075}`).join(" ");
+  const last = pts.split(" ").pop().split(",");
+  return (
+    <svg width={w} height={h}>
+      <polyline points={pts} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+      <circle cx={last[0]} cy={last[1]} r="2.5" fill={color} />
+    </svg>
+  );
+}
+
+// ─── Sidebar ─────────────────────────────────────────────────
+function Sidebar({ page, setPage, notif }) {
+  const nav = [
+    { id:"home", icon:"✦", label:"今日热点", en:"Dashboard" },
+    { id:"feed", icon:"◔", label:"热点流", en:"Hot Feed" },
+    { id:"radar", icon:"◈", label:"关键词监控", en:"Keyword Radar" },
+    { id:"trends", icon:"◬", label:"趋势分析", en:"Trends" },
+    { id:"vault", icon:"◎", label:"内容库", en:"Vault" },
+  ];
+  return (
+    <div style={{ width:240, padding:"22px 16px", display:"flex", flexDirection:"column", gap:6, height:"100%", flexShrink:0, position:"relative", zIndex:2 }}>
+      <div className="glass" style={{ padding:"16px 14px", display:"flex", alignItems:"center", gap:12, marginBottom:8 }}>
+        <div style={{ width:36, height:36, borderRadius:12, background:"var(--grad)", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:800, color:"#fff", fontSize:14, boxShadow:"0 4px 12px rgba(124,92,255,0.4)" }}>AI</div>
+        <div>
+          <div className="display" style={{ fontWeight:700, fontSize:14, lineHeight:1.1 }}>Hot News</div>
+          <div style={{ fontSize:11, color:"var(--ink-3)", marginTop:2 }}>AI 信息聚合</div>
+        </div>
+      </div>
+
+      <div className="glass" style={{ padding:6, flex:1, display:"flex", flexDirection:"column", gap:2 }}>
+        <div className="mono" style={{ fontSize:9, color:"var(--ink-3)", letterSpacing:"0.15em", padding:"10px 12px 6px", textTransform:"uppercase" }}>Navigation</div>
+        {nav.map(n => {
+          const active = page === n.id;
+          return (
+            <button key={n.id} onClick={() => setPage(n.id)} style={{
+              padding:"11px 12px", display:"flex", alignItems:"center", gap:11, borderRadius:10, textAlign:"left",
+              background: active ? "var(--grad)" : "transparent",
+              color: active ? "#fff" : "var(--ink)",
+              boxShadow: active ? "0 4px 12px rgba(124,92,255,0.3)" : "none",
+              transition: "all .2s",
+            }}
+              onMouseEnter={e => !active && (e.currentTarget.style.background="rgba(255,255,255,0.6)")}
+              onMouseLeave={e => !active && (e.currentTarget.style.background="transparent")}
+            >
+              <span style={{ fontSize:15, opacity: active?1:0.7 }}>{n.icon}</span>
+              <div style={{ flex:1 }}>
+                <div style={{ fontWeight:600, fontSize:13 }}>{n.label}</div>
+                <div style={{ fontSize:10, opacity:0.7, marginTop:1 }} className="mono">{n.en}</div>
+              </div>
+              {n.id==="radar" && notif > 0 && (
+                <span style={{ fontSize:10, fontWeight:700, padding:"2px 7px", borderRadius:99, background: active?"rgba(255,255,255,0.25)":"#db2777", color:"#fff" }}>{notif}</span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="glass" style={{ padding:"12px 14px" }}>
+        <div className="mono" style={{ fontSize:9, color:"var(--ink-3)", letterSpacing:"0.15em", marginBottom:10, textTransform:"uppercase" }}>系统状态</div>
+        {[
+          ["数据抓取", "正常"], ["AI 摘要", "运行中"], ["推送服务", "就绪"]
+        ].map(([k,v]) => (
+          <div key={k} style={{ display:"flex", justifyContent:"space-between", padding:"4px 0", fontSize:11 }}>
+            <span style={{ color:"var(--ink-2)" }}>{k}</span>
+            <span style={{ display:"flex", alignItems:"center", gap:5, color:"#10b981", fontWeight:500 }}>
+              <span className="blink" style={{ width:6, height:6, borderRadius:"50%", background:"#10b981", boxShadow:"0 0 6px #10b981" }}></span>{v}
+            </span>
+          </div>
+        ))}
+        <div style={{ borderTop:"1px solid var(--line-2)", marginTop:10, paddingTop:10, display:"flex", alignItems:"center", gap:10 }}>
+          <div style={{ width:28, height:28, borderRadius:"50%", background:"var(--grad)", display:"flex", alignItems:"center", justifyContent:"center", color:"#fff", fontWeight:600, fontSize:11 }}>张</div>
+          <div style={{ flex:1, fontSize:12 }}>
+            <div style={{ fontWeight:600 }}>张研究员</div>
+            <div style={{ fontSize:10, color:"var(--ink-3)" }}>Pro 用户</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Page Header ─────────────────────────────────────────────
+function PageHeader({ kicker, title, gradTitle, sub, action }) {
+  return (
+    <div style={{ padding:"28px 36px 20px", display:"flex", alignItems:"flex-end", justifyContent:"space-between", gap:24 }}>
+      <div className="fade-up">
+        <div className="mono" style={{ fontSize:11, color:"var(--c1)", letterSpacing:"0.18em", marginBottom:10, fontWeight:500, textTransform:"uppercase" }}>✦ {kicker}</div>
+        <h1 className="display" style={{ fontSize:36, fontWeight:700, letterSpacing:"-0.03em", lineHeight:1.1 }}>
+          {title}{gradTitle && <> <span className="grad-text">{gradTitle}</span></>}
+        </h1>
+        {sub && <div style={{ fontSize:14, color:"var(--ink-2)", marginTop:8 }}>{sub}</div>}
+      </div>
+      {action}
+    </div>
+  );
+}
+
+// ─── DASHBOARD ────────────────────────────────────────────────
+function HomePage({ setPage, openItem }) {
+  const total = useCountUp(2847);
+  const surge = useCountUp(7);
+  const hits = useCountUp(1203);
+
+  return (
+    <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden", position:"relative", zIndex:1 }}>
+      <PageHeader
+        kicker="Today · 04.26.2026"
+        title="今天的"
+        gradTitle="AI 信号潮汐"
+        sub="过去 24 小时已聚合 2,847 条内容 · 7 个爆发事件 · 1,203 个关键词命中"
+        action={
+          <button className="glass-hover" style={{ padding:"11px 20px", borderRadius:99, background:"var(--grad)", color:"#fff", fontWeight:600, fontSize:13, boxShadow:"0 4px 16px rgba(124,92,255,0.35)", display:"flex", alignItems:"center", gap:8 }}>
+            ✨ 生成今日日报
+          </button>
+        }
+      />
+
+      <div style={{ flex:1, overflow:"auto", padding:"4px 36px 36px" }}>
+        {/* Stats */}
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:14, marginBottom:24 }}>
+          {[
+            { l:"今日聚合", v:total.toLocaleString(), d:"较昨日 ↑ 23%", c:"var(--c1)", icon:"📥" },
+            { l:"爆发事件", v:surge, d:"过去 24 小时", c:"var(--c2)", icon:"🔥" },
+            { l:"关键词命中", v:hits.toLocaleString(), d:"6 个监控中", c:"var(--c3)", icon:"🎯" },
+            { l:"信源覆盖", v:"4", d:"全部在线", c:"var(--c4)", icon:"🌐" },
+          ].map((s, i) => (
+            <div key={s.l} className="glass glass-hover fade-up" style={{ padding:"18px 20px", animationDelay:`${i*0.08}s` }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
+                <span style={{ fontSize:12, color:"var(--ink-2)", fontWeight:500 }}>{s.l}</span>
+                <span style={{ fontSize:18 }}>{s.icon}</span>
+              </div>
+              <div className="display" style={{ fontSize:36, fontWeight:700, color:s.c, lineHeight:1, letterSpacing:"-0.03em" }}>{s.v}</div>
+              <div style={{ fontSize:11, color:"var(--ink-3)", marginTop:8 }}>{s.d}</div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ display:"grid", gridTemplateColumns:"1.7fr 1fr", gap:20 }}>
+          {/* Hot list */}
+          <div>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
+              <h2 className="display" style={{ fontSize:20, fontWeight:700 }}>🌊 热度榜单</h2>
+              <button onClick={() => setPage("feed")} style={{ fontSize:13, color:"var(--c1)", fontWeight:500 }}>查看全部 →</button>
+            </div>
+            <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+              {NEWS.slice(0,6).map((n, i) => (
+                <div key={n.id} onClick={() => openItem(n)} className="glass glass-hover fade-up" style={{ padding:"16px 18px", display:"flex", gap:14, alignItems:"center", cursor:"pointer", animationDelay:`${i*0.05}s` }}>
+                  <div className="display grad-text" style={{ width:36, fontSize:28, fontWeight:800, lineHeight:1, fontVariantNumeric:"tabular-nums" }}>{String(i+1).padStart(2,'0')}</div>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontSize:14, fontWeight:600, marginBottom:6, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{n.title}</div>
+                    <div style={{ display:"flex", gap:6, alignItems:"center" }}>
+                      {n.platform.map(p => <Pill key={p} p={p} />)}
+                      <span style={{ fontSize:11, color:"var(--ink-3)" }}>· {n.time}</span>
+                    </div>
+                  </div>
+                  <HeatBadge score={n.heat} />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Right side */}
+          <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+            {/* Trending */}
+            <div className="glass fade-up" style={{ padding:"18px 20px", animationDelay:"0.2s" }}>
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
+                <h3 className="display" style={{ fontWeight:700, fontSize:15 }}>📈 增速最快</h3>
+                <span className="mono" style={{ fontSize:10, color:"var(--ink-3)" }}>过去 24 小时</span>
+              </div>
+              {[
+                { kw:"Vibe Coding", g:320, c:"#db2777" },
+                { kw:"Claude 4", g:280, c:"#7c5cff" },
+                { kw:"AI Agent", g:145, c:"#06b6d4" },
+                { kw:"Local LLM", g:98, c:"#f59e0b" },
+                { kw:"Cursor", g:87, c:"#7c5cff" },
+              ].map((k, i) => (
+                <div key={k.kw} className="fade-up" style={{ padding:"8px 0", display:"flex", alignItems:"center", gap:12, animationDelay:`${0.3+i*0.05}s` }}>
+                  <span style={{ fontSize:11, color:"var(--ink-3)", width:18 }}>#{i+1}</span>
+                  <span style={{ flex:1, fontSize:13, fontWeight:500 }}>{k.kw}</span>
+                  <div style={{ flex:1.2, height:5, background:"rgba(124,92,255,0.08)", borderRadius:99, overflow:"hidden" }}>
+                    <div className="fill-bar" style={{ width:`${Math.min(k.g/3.5, 100)}%`, height:"100%", background:k.c, borderRadius:99, animationDelay:`${0.5+i*0.08}s` }}></div>
+                  </div>
+                  <span className="mono" style={{ fontSize:12, fontWeight:700, color:k.c, width:54, textAlign:"right" }}>+{k.g}%</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Platform */}
+            <div className="glass fade-up" style={{ padding:"18px 20px", animationDelay:"0.3s" }}>
+              <h3 className="display" style={{ fontWeight:700, fontSize:15, marginBottom:14 }}>🌐 信源分布</h3>
+              {Object.entries({ X:42, HN:28, RD:21, RSS:9 }).map(([k, p], i) => (
+                <div key={k} style={{ marginBottom:12 }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", marginBottom:5, alignItems:"center" }}>
+                    <Pill p={k} />
+                    <span className="mono" style={{ fontSize:11, color:"var(--ink-2)", fontWeight:600 }}>{p}%</span>
+                  </div>
+                  <div style={{ height:6, background:"rgba(124,92,255,0.06)", borderRadius:99, overflow:"hidden" }}>
+                    <div className="fill-bar" style={{ width:`${p}%`, height:"100%", borderRadius:99, background:`linear-gradient(90deg, ${PLAT[k].color}, ${PLAT[k].color}aa)`, animationDelay:`${0.4+i*0.08}s` }}></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* My alerts */}
+            <div className="glass fade-up" style={{ padding:"18px 20px", animationDelay:"0.4s" }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
+                <h3 className="display" style={{ fontWeight:700, fontSize:15 }}>🔔 我的提醒</h3>
+                <span style={{ fontSize:10, fontWeight:700, padding:"2px 8px", borderRadius:99, background:"rgba(219,39,119,0.1)", color:"#db2777" }}>3 条新</span>
+              </div>
+              {KEYWORDS.filter(k=>k.on).slice(0,3).map(k => (
+                <div key={k.id} style={{ padding:"8px 0", display:"flex", alignItems:"center", gap:10, borderBottom:"1px solid var(--line)" }}>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontSize:13, fontWeight:600 }}>{k.keyword}</div>
+                    <div style={{ fontSize:11, color:"var(--ink-3)", marginTop:1 }}>命中 {k.today} · {k.last}</div>
+                  </div>
+                  <MiniSpark data={[20,28,35,32,48,55,k.today/3+10].map(v=>v+Math.random()*5)} color={k.trend==="up"?"#10b981":"#8b91a8"} w={60} />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Heat curve */}
+        <div className="glass fade-up" style={{ padding:"20px 24px", marginTop:20, animationDelay:"0.5s" }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:18 }}>
+            <h3 className="display" style={{ fontWeight:700, fontSize:16 }}>🌊 今日热度波形</h3>
+            <span className="mono" style={{ fontSize:11, color:"var(--ink-3)" }}>每小时聚合 · 24 小时</span>
+          </div>
+          <HeatCurve />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function HeatCurve() {
+  const data = [12,18,24,31,28,45,67,89,94,78,56,43,38,51,76,92,87,74,62,55,48,39,44,58];
+  const w=1000, h=120;
+  const max=100;
+  const pts = data.map((v,i)=>`${i*(w/(data.length-1))},${h-(v/max)*h*0.85-h*0.075}`);
+  return (
+    <div>
+      <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" style={{ display:"block" }}>
+        <defs>
+          <linearGradient id="hc-line" x1="0" x2="1" y1="0" y2="0">
+            <stop offset="0%" stopColor="#7c5cff"/><stop offset="50%" stopColor="#db2777"/><stop offset="100%" stopColor="#f59e0b"/>
+          </linearGradient>
+          <linearGradient id="hc-fill" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stopColor="#7c5cff" stopOpacity="0.3"/><stop offset="100%" stopColor="#7c5cff" stopOpacity="0"/>
+          </linearGradient>
+        </defs>
+        <path d={`M${pts[0]} ${pts.slice(1).join(" ")} L${w},${h} L0,${h} Z`} fill="url(#hc-fill)" />
+        <polyline points={pts.join(" ")} fill="none" stroke="url(#hc-line)" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
+        {pts.map((p,i)=>{ if (i%4!==0) return null; const [x,y]=p.split(","); return <circle key={i} cx={x} cy={y} r="3" fill="#fff" stroke="#7c5cff" strokeWidth="1.5" />; })}
+      </svg>
+      <div style={{ display:"flex", justifyContent:"space-between", marginTop:8 }} className="mono">
+        {["00:00","04:00","08:00","12:00","16:00","20:00","现在"].map((t,i) => (
+          <span key={t} style={{ fontSize:10, color: i===6?"var(--c2)":"var(--ink-3)", fontWeight:i===6?600:400 }}>{t}</span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── FEED ────────────────────────────────────────────────────
+function FeedPage({ openItem }) {
+  const [time, setTime] = useState("24h");
+  const [plat, setPlat] = useState("全部");
+  const [type, setType] = useState("全部");
+
+  let list = NEWS;
+  if (plat !== "全部") list = list.filter(n => n.platform.includes(plat));
+  if (type !== "全部") list = list.filter(n => n.type === type);
+
+  return (
+    <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden", position:"relative", zIndex:1 }}>
+      <PageHeader kicker="Hot Feed" title="热点流" sub={`${list.length} 条精选热点 · 实时聚合 4 个平台`} />
+      <div style={{ padding:"0 36px 16px", display:"flex", flexWrap:"wrap", gap:18 }}>
+        <Filter label="时间" options={["1h","6h","24h","7天"]} value={time} onChange={setTime} />
+        <Filter label="平台" options={["全部","X","HN","RD","RSS"]} value={plat} onChange={setPlat} />
+        <Filter label="类型" options={["全部","模型发布","工具产品","开源项目","融资动态","评测"]} value={type} onChange={setType} />
+      </div>
+
+      <div style={{ flex:1, overflow:"auto", padding:"8px 36px 36px", display:"grid", gridTemplateColumns:"repeat(2, 1fr)", gap:14, alignContent:"start" }}>
+        {list.map((n, i) => (
+          <div key={n.id} onClick={() => openItem(n)} className="glass glass-hover fade-up" style={{ padding:"20px 22px", cursor:"pointer", animationDelay:`${i*0.05}s` }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
+              <HeatBadge score={n.heat} />
+              <div style={{ display:"flex", gap:5 }}>{n.platform.map(p => <Pill key={p} p={p} />)}</div>
+            </div>
+            <div style={{ fontSize:16, fontWeight:600, marginBottom:10, lineHeight:1.4 }}>{n.title}</div>
+            <div style={{ fontSize:13, color:"var(--ink-2)", lineHeight:1.65, marginBottom:14 }}>{n.summary}</div>
+            <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:14 }}>
+              {n.tags.map((t, idx) => <Tag key={t} color={["#7c5cff","#db2777","#f59e0b","#06b6d4"][idx%4]}>{t}</Tag>)}
+            </div>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", paddingTop:12, borderTop:"1px solid var(--line)" }}>
+              <div style={{ display:"flex", gap:14, fontSize:11, color:"var(--ink-3)" }}>
+                <span>♡ {n.likes.toLocaleString()}</span>
+                <span>↻ {n.reposts.toLocaleString()}</span>
+                <span>◌ {n.comments.toLocaleString()}</span>
+              </div>
+              <span style={{ fontSize:11, color:"var(--ink-3)" }}>{n.author} · {n.time}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Filter({ label, options, value, onChange }) {
+  return (
+    <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+      <span style={{ fontSize:12, color:"var(--ink-3)", fontWeight:500 }}>{label}</span>
+      <div className="glass-soft" style={{ display:"flex", padding:3, gap:2, borderRadius:99 }}>
+        {options.map(o => {
+          const a = value === o;
+          return (
+            <button key={o} onClick={() => onChange(o)} style={{
+              padding:"5px 14px", fontSize:12, fontWeight: a?600:500, borderRadius:99,
+              color: a ? "#fff" : "var(--ink-2)",
+              background: a ? "var(--grad)" : "transparent",
+              boxShadow: a ? "0 2px 8px rgba(124,92,255,0.3)" : "none",
+              transition:"all .2s",
+            }}>{o}</button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── DETAIL ──────────────────────────────────────────────────
+function DetailPage({ item, setPage }) {
+  if (!item) return null;
+  const [saved, setSaved] = useState(false);
+  const data = [20,35,42,38,67,89,94,87,76,65,58,54];
+  const w=300, h=100;
+  const pts = data.map((v,i)=>`${i*(w/(data.length-1))},${h-(v/100)*h*0.85}`);
+
+  return (
+    <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden", position:"relative", zIndex:1 }}>
+      <div style={{ padding:"22px 36px 18px", display:"flex", alignItems:"center", gap:12 }}>
+        <button onClick={() => setPage("feed")} className="glass-soft" style={{ padding:"7px 14px", borderRadius:99, fontSize:12, color:"var(--ink-2)", fontWeight:500 }}>← 返回</button>
+        <span className="mono" style={{ fontSize:11, color:"var(--ink-3)" }}>SIGNAL #{String(item.id).padStart(4,'0')}</span>
+        <div style={{ flex:1 }}></div>
+        <button onClick={() => setSaved(s=>!s)} className="glass-soft" style={{ padding:"7px 14px", borderRadius:99, fontSize:12, fontWeight:500, color:saved?"#db2777":"var(--ink-2)", background:saved?"rgba(219,39,119,0.1)":"" }}>
+          {saved?"⭐ 已收藏":"☆ 收藏"}
+        </button>
+        <button style={{ padding:"7px 16px", borderRadius:99, fontSize:12, fontWeight:600, color:"#fff", background:"var(--grad)", boxShadow:"0 3px 10px rgba(124,92,255,0.3)" }}>查看原文 →</button>
+      </div>
+
+      <div style={{ flex:1, overflow:"auto", padding:"8px 36px 36px", display:"grid", gridTemplateColumns:"1fr 320px", gap:24 }}>
+        <div>
+          <div className="fade-up" style={{ marginBottom:24 }}>
+            <div style={{ display:"flex", gap:8, marginBottom:18, alignItems:"center" }}>
+              <HeatBadge score={item.heat} />
+              {item.platform.map(p => <Pill key={p} p={p} />)}
+              <span style={{ fontSize:12, color:"var(--ink-3)" }}>· {item.type}</span>
+            </div>
+            <h1 className="display" style={{ fontSize:36, fontWeight:700, letterSpacing:"-0.03em", lineHeight:1.15, marginBottom:16 }}>{item.title}</h1>
+            <div style={{ fontSize:13, color:"var(--ink-3)", display:"flex", gap:14 }}>
+              <span>👤 {item.author}</span><span>·</span><span>🕐 {item.time}</span>
+            </div>
+          </div>
+
+          {/* AI Summary */}
+          <div className="glass fade-up" style={{ padding:"24px 26px", marginBottom:20, animationDelay:"0.1s", position:"relative", overflow:"hidden" }}>
+            <div style={{ position:"absolute", top:-30, right:-30, width:140, height:140, borderRadius:"50%", background:"var(--grad-soft)", opacity:0.4, filter:"blur(40px)" }}></div>
+            <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:14, position:"relative" }}>
+              <div style={{ width:28, height:28, borderRadius:8, background:"var(--grad)", display:"flex", alignItems:"center", justifyContent:"center", color:"#fff", fontSize:13 }}>✨</div>
+              <span className="display" style={{ fontWeight:700, fontSize:15 }}>AI 摘要分析</span>
+              <span className="mono" style={{ marginLeft:"auto", fontSize:10, color:"var(--ink-3)", padding:"3px 8px", borderRadius:99, border:"1px solid var(--line-2)" }}>Claude 3.5</span>
+            </div>
+            <p style={{ fontSize:15, lineHeight:1.85, color:"var(--ink)", marginBottom:18, position:"relative" }}>{item.summary}</p>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:10 }}>
+              {[
+                { l:"影响级别", v: item.heat>=90?"⚡ 关键":"🌟 重要", c:"#db2777" },
+                { l:"社区情绪", v: "😊 正面", c:"#10b981" },
+                { l:"跨平台", v: `${item.platform.length}/4 同步`, c:"#7c5cff" },
+                { l:"时效性", v: "🆕 最新", c:"#f59e0b" },
+              ].map(s => (
+                <div key={s.l} className="glass-soft" style={{ padding:"12px 14px", borderRadius:12 }}>
+                  <div style={{ fontSize:10, color:"var(--ink-3)", marginBottom:5, fontWeight:500, letterSpacing:"0.05em" }}>{s.l}</div>
+                  <div style={{ fontSize:13, fontWeight:600, color:s.c }}>{s.v}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Tags */}
+          <div className="fade-up" style={{ marginBottom:24, animationDelay:"0.2s" }}>
+            <h3 className="display" style={{ fontWeight:700, fontSize:15, marginBottom:12 }}>🏷️ 关联标签</h3>
+            <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+              {item.tags.concat(["AI 行业","Production"]).map((t, i) => <Tag key={t} color={["#7c5cff","#db2777","#f59e0b","#06b6d4","#10b981"][i%5]}>{t}</Tag>)}
+            </div>
+          </div>
+
+          {/* Related */}
+          <div className="fade-up" style={{ animationDelay:"0.3s" }}>
+            <h3 className="display" style={{ fontWeight:700, fontSize:15, marginBottom:12 }}>🔗 相关热点</h3>
+            <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+              {NEWS.filter(n => n.id !== item.id).slice(0,3).map(n => (
+                <div key={n.id} className="glass glass-hover" style={{ padding:"14px 18px", display:"flex", alignItems:"center", gap:12, cursor:"pointer" }}>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontSize:13, fontWeight:600, marginBottom:5 }}>{n.title}</div>
+                    <div style={{ display:"flex", gap:6 }}>
+                      {n.platform.map(p => <Pill key={p} p={p} />)}
+                      <span style={{ fontSize:11, color:"var(--ink-3)" }}>· {n.time}</span>
+                    </div>
+                  </div>
+                  <HeatBadge score={n.heat} />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Right rail */}
+        <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+          <div className="glass fade-up" style={{ padding:"18px", animationDelay:"0.15s" }}>
+            <h3 className="display" style={{ fontWeight:700, fontSize:14, marginBottom:14 }}>📈 热度趋势</h3>
+            <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none">
+              <defs>
+                <linearGradient id="d-fill" x1="0" x2="0" y1="0" y2="1">
+                  <stop offset="0%" stopColor="#db2777" stopOpacity="0.3"/><stop offset="100%" stopColor="#db2777" stopOpacity="0"/>
+                </linearGradient>
+              </defs>
+              <path d={`M${pts[0]} ${pts.slice(1).join(" ")} L${w},${h} L0,${h} Z`} fill="url(#d-fill)" />
+              <polyline points={pts.join(" ")} fill="none" stroke="#db2777" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+              {pts.map((p,i)=>{ const [x,y]=p.split(","); return <circle key={i} cx={x} cy={y} r="2.5" fill="#fff" stroke="#db2777" strokeWidth="1.5" />; })}
+            </svg>
+            <div className="mono" style={{ fontSize:10, color:"var(--ink-3)", textAlign:"center", marginTop:6 }}>过去 12 小时</div>
+          </div>
+
+          <div className="glass fade-up" style={{ padding:"18px", animationDelay:"0.25s" }}>
+            <h3 className="display" style={{ fontWeight:700, fontSize:14, marginBottom:14 }}>💫 互动数据</h3>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+              {[ ["♡ 点赞", item.likes, "#db2777"], ["◌ 评论", item.comments, "#7c5cff"], ["↻ 转发", item.reposts, "#06b6d4"], ["🔥 热度", item.heat, "#f59e0b"] ].map(([l,v,c]) => (
+                <div key={l} className="glass-soft" style={{ padding:"12px", borderRadius:12 }}>
+                  <div style={{ fontSize:10, color:"var(--ink-3)", marginBottom:4 }}>{l}</div>
+                  <div className="display" style={{ fontSize:22, fontWeight:700, color:c, lineHeight:1.1 }}>{v.toLocaleString()}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="glass fade-up" style={{ padding:"18px", animationDelay:"0.35s" }}>
+            <h3 className="display" style={{ fontWeight:700, fontSize:14, marginBottom:14 }}>🌐 来源分布</h3>
+            {item.platform.map((p, i) => {
+              const pct = [65,45,30,20][i] || 15;
+              return (
+                <div key={p} style={{ marginBottom:11 }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:5 }}>
+                    <Pill p={p} />
+                    <span className="mono" style={{ fontSize:11, color:"var(--ink-2)", fontWeight:600 }}>{pct}%</span>
+                  </div>
+                  <div style={{ height:5, borderRadius:99, background:"rgba(124,92,255,0.06)", overflow:"hidden" }}>
+                    <div className="fill-bar" style={{ width:`${pct}%`, height:"100%", background:PLAT[p].color, borderRadius:99, animationDelay:`${0.4+i*0.1}s` }}></div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <button style={{ padding:"14px", borderRadius:14, background:"var(--grad)", color:"#fff", fontWeight:600, fontSize:13, boxShadow:"0 6px 20px rgba(124,92,255,0.35)" }}>✨ 生成分享文案</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── RADAR ───────────────────────────────────────────────────
+function RadarPage() {
+  const [list, setList] = useState(KEYWORDS);
+  const [sel, setSel] = useState(null);
+  const [showAdd, setShowAdd] = useState(false);
+  const [newKw, setNewKw] = useState("");
+
+  function toggle(id) { setList(l => l.map(k => k.id===id ? {...k, on:!k.on} : k)); }
+  function add() {
+    if (!newKw.trim()) return;
+    setList(l => [...l, { id:Date.now(), keyword:newKw, platforms:["X","HN"], freq:"30 分钟", on:true, today:0, week:0, last:"刚刚", trend:"flat", score:0 }]);
+    setNewKw(""); setShowAdd(false);
+  }
+
+  return (
+    <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden", position:"relative", zIndex:1 }}>
+      <PageHeader
+        kicker="Keyword Radar"
+        title="关键词"
+        gradTitle="监控雷达"
+        sub={`${list.filter(k=>k.on).length} 个监控中 · ${list.length} 个总计 · 24 小时内命中 ${list.reduce((s,k)=>s+k.today,0)} 次`}
+        action={<button onClick={() => setShowAdd(true)} style={{ padding:"11px 20px", borderRadius:99, background:"var(--grad)", color:"#fff", fontSize:13, fontWeight:600, boxShadow:"0 4px 16px rgba(124,92,255,0.35)" }}>+ 新增关键词</button>}
+      />
+
+      <div style={{ flex:1, overflow:"auto", padding:"8px 36px 36px", display:"grid", gridTemplateColumns:"1.6fr 1fr", gap:22, alignItems:"start" }}>
+        <div>
+          <div className="glass fade-up" style={{ padding:24, marginBottom:14, position:"relative", overflow:"hidden" }}>
+            <div style={{ position:"absolute", top:14, left:20, fontSize:11, fontWeight:600, color:"var(--c1)" }}>✦ 监控雷达图</div>
+            <div className="mono" style={{ position:"absolute", top:14, right:20, fontSize:10, color:"var(--ink-3)" }}>SCANNING...</div>
+            <Radar keywords={list} sel={sel} setSel={setSel} />
+          </div>
+
+          <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+            {list.map((k, i) => {
+              const isSel = sel?.id === k.id;
+              return (
+                <div key={k.id} onClick={() => setSel(k)}
+                  className={`glass ${isSel?"":"glass-hover"} fade-up`}
+                  style={{ padding:"14px 18px", display:"flex", gap:14, alignItems:"center", cursor:"pointer", border:isSel?"1px solid var(--c1)":"", boxShadow:isSel?"0 4px 16px rgba(124,92,255,0.2)":"", opacity:k.on?1:0.55, animationDelay:`${i*0.05}s` }}>
+                  <div className="pulse-ring" style={{ width:10, height:10, borderRadius:"50%", background: k.on?"#10b981":"#c8ccd8", color: k.on?"#10b981":"transparent", boxShadow: k.on?"0 0 6px #10b981":"none" }}></div>
+                  <div style={{ flex:1 }}>
+                    <div style={{ display:"flex", gap:10, alignItems:"baseline", marginBottom:4 }}>
+                      <span className="display" style={{ fontSize:15, fontWeight:600 }}>{k.keyword}</span>
+                      <span style={{ fontSize:11, color: k.trend==="up"?"#10b981":k.trend==="down"?"#db2777":"var(--ink-3)", fontWeight:500 }}>
+                        {k.trend==="up"?"↑ 上升中":k.trend==="down"?"↓ 下降":"→ 平稳"}
+                      </span>
+                    </div>
+                    <div style={{ display:"flex", gap:6, alignItems:"center", flexWrap:"wrap" }}>
+                      {k.platforms.map(p => <Pill key={p} p={p} />)}
+                      <span style={{ fontSize:11, color:"var(--ink-3)" }}>· 每 {k.freq}</span>
+                    </div>
+                  </div>
+                  <div style={{ textAlign:"right" }}>
+                    <div className="display grad-text" style={{ fontSize:22, fontWeight:700, lineHeight:1 }}>{k.today}</div>
+                    <div style={{ fontSize:10, color:"var(--ink-3)", marginTop:3 }}>今日命中</div>
+                  </div>
+                  <MiniSpark data={[20,28,38,32,48,55,k.today/3+12].map(v=>v+Math.random()*5)} color={k.on?"#7c5cff":"#c8ccd8"} w={70} h={32} />
+                  <button onClick={(e)=>{e.stopPropagation();toggle(k.id);}} style={{
+                    padding:"5px 12px", fontSize:11, fontWeight:600, borderRadius:99,
+                    color: k.on?"#fff":"var(--ink-2)",
+                    background: k.on?"var(--grad)":"rgba(124,92,255,0.06)",
+                  }}>{k.on?"开启":"暂停"}</button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div style={{ position:"sticky", top:0 }}>
+          {sel ? (
+            <div className="fade-up" key={sel.id} style={{ display:"flex", flexDirection:"column", gap:14 }}>
+              <div className="glass" style={{ padding:"22px", position:"relative", overflow:"hidden" }}>
+                <div style={{ position:"absolute", top:-30, right:-30, width:120, height:120, borderRadius:"50%", background:"var(--grad-soft)", opacity:0.3, filter:"blur(30px)" }}></div>
+                <div className="mono" style={{ fontSize:11, color:"var(--c1)", marginBottom:6, fontWeight:500 }}>关键词分析</div>
+                <h2 className="display grad-text" style={{ fontSize:26, fontWeight:700, marginBottom:18 }}>{sel.keyword}</h2>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+                  {[["今日命中", sel.today, "#7c5cff"], ["本周命中", sel.week, "#db2777"], ["热度分", sel.score, "#f59e0b"], ["监控频率", sel.freq, "#06b6d4"]].map(([l,v,c])=>(
+                    <div key={l} className="glass-soft" style={{ padding:"12px 14px", borderRadius:12 }}>
+                      <div style={{ fontSize:10, color:"var(--ink-3)", marginBottom:4 }}>{l}</div>
+                      <div className="display" style={{ fontSize:20, fontWeight:700, color:c, lineHeight:1.1 }}>{typeof v === "number" ? v.toLocaleString() : v}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="glass" style={{ padding:18 }}>
+                <h3 className="display" style={{ fontWeight:700, fontSize:14, marginBottom:12 }}>🎯 最近命中</h3>
+                {NEWS.slice(0, 3).map(n => (
+                  <div key={n.id} style={{ padding:"9px 0", borderBottom:"1px solid var(--line)" }}>
+                    <div style={{ fontSize:12, fontWeight:600, marginBottom:4, lineHeight:1.4 }}>{n.title}</div>
+                    <div style={{ display:"flex", gap:6, alignItems:"center" }}>
+                      {n.platform.map(p=><Pill key={p} p={p}/>)}
+                      <span style={{ fontSize:10, color:"var(--ink-3)" }}>· {n.time}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="glass" style={{ padding:18 }}>
+                <h3 className="display" style={{ fontWeight:700, fontSize:14, marginBottom:12 }}>🔔 推送渠道</h3>
+                {[["📱 站内通知","已开启","#10b981"],["📧 邮件推送","已开启","#10b981"],["💬 飞书","未配置","var(--ink-3)"],["✈️ Telegram","未配置","var(--ink-3)"]].map(([n, st, c]) => (
+                  <div key={n} style={{ display:"flex", justifyContent:"space-between", padding:"7px 0", borderBottom:"1px solid var(--line)", fontSize:12 }}>
+                    <span style={{ color:"var(--ink-2)" }}>{n}</span>
+                    <span style={{ color:c, fontWeight:500 }}>{st}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="glass" style={{ padding:"50px 30px", textAlign:"center", border:"2px dashed var(--line-2)", background:"rgba(255,255,255,0.3)" }}>
+              <div style={{ fontSize:42, marginBottom:14 }}>✦</div>
+              <div style={{ fontSize:13, color:"var(--ink-3)", lineHeight:1.7 }}>从左侧雷达图<br/>选一个关键词查看详情</div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {showAdd && (
+        <div onClick={() => setShowAdd(false)} style={{ position:"fixed", inset:0, background:"rgba(26,31,58,0.4)", backdropFilter:"blur(8px)", zIndex:50, display:"flex", alignItems:"center", justifyContent:"center" }}>
+          <div onClick={e => e.stopPropagation()} className="glass fade-up" style={{ padding:28, width:480 }}>
+            <div className="mono" style={{ fontSize:11, color:"var(--c1)", marginBottom:6, fontWeight:500 }}>✦ 新增监控</div>
+            <h2 className="display" style={{ fontSize:24, fontWeight:700, marginBottom:20 }}>添加关键词</h2>
+            <div style={{ marginBottom:18 }}>
+              <div style={{ fontSize:12, color:"var(--ink-2)", marginBottom:6, fontWeight:500 }}>关键词 *</div>
+              <input value={newKw} onChange={e=>setNewKw(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()} autoFocus
+                placeholder="如：Claude Code、AI Agent..."
+                className="glass-soft" style={{ width:"100%", padding:"11px 14px", fontSize:14, borderRadius:10 }} />
+            </div>
+            <div style={{ marginBottom:18 }}>
+              <div style={{ fontSize:12, color:"var(--ink-2)", marginBottom:6, fontWeight:500 }}>监控平台</div>
+              <div style={{ display:"flex", gap:6 }}>{Object.keys(PLAT).map(p => <Pill key={p} p={p} />)}</div>
+            </div>
+            <div style={{ marginBottom:24 }}>
+              <div style={{ fontSize:12, color:"var(--ink-2)", marginBottom:6, fontWeight:500 }}>监控频率</div>
+              <div className="glass-soft" style={{ display:"inline-flex", padding:3, borderRadius:99 }}>
+                {["15 分钟","30 分钟","1 小时","1 天"].map((f,i) => (
+                  <button key={f} style={{ padding:"5px 14px", fontSize:12, fontWeight: i===1?600:500, borderRadius:99, color:i===1?"#fff":"var(--ink-2)", background:i===1?"var(--grad)":"transparent" }}>{f}</button>
+                ))}
+              </div>
+            </div>
+            <div style={{ display:"flex", gap:10 }}>
+              <button onClick={() => setShowAdd(false)} className="glass-soft" style={{ flex:1, padding:"11px", borderRadius:99, fontSize:13, fontWeight:500, color:"var(--ink-2)" }}>取消</button>
+              <button onClick={add} style={{ flex:2, padding:"11px", borderRadius:99, fontSize:13, fontWeight:600, color:"#fff", background:"var(--grad)", boxShadow:"0 4px 12px rgba(124,92,255,0.35)" }}>✨ 创建监控</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Radar({ keywords, sel, setSel }) {
+  const [angle, setAngle] = useState(0);
+  useEffect(() => {
+    let raf;
+    const tick = () => { setAngle(a => (a+0.4) % 360); raf = requestAnimationFrame(tick); };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+  const size = 380, c = size/2;
+  return (
+    <div style={{ display:"flex", justifyContent:"center" }}>
+      <svg width={size} height={size}>
+        <defs>
+          <radialGradient id="rsweep">
+            <stop offset="0%" stopColor="rgba(124,92,255,0.35)" />
+            <stop offset="100%" stopColor="rgba(124,92,255,0)" />
+          </radialGradient>
+          <radialGradient id="rcenter">
+            <stop offset="0%" stopColor="rgba(255,255,255,0.5)" />
+            <stop offset="100%" stopColor="rgba(255,255,255,0)" />
+          </radialGradient>
+        </defs>
+        <circle cx={c} cy={c} r="170" fill="url(#rcenter)" />
+        {[50, 100, 150].map(r => (
+          <circle key={r} cx={c} cy={c} r={r} fill="none" stroke="rgba(124,92,255,0.15)" strokeWidth="1" strokeDasharray="2 4" />
+        ))}
+        <line x1={c} y1="20" x2={c} y2={size-20} stroke="rgba(124,92,255,0.1)" />
+        <line x1="20" y1={c} x2={size-20} y2={c} stroke="rgba(124,92,255,0.1)" />
+        <g transform={`rotate(${angle} ${c} ${c})`}>
+          <path d={`M ${c} ${c} L ${c+170} ${c} A 170 170 0 0 0 ${c + 170*Math.cos(-Math.PI/3)} ${c + 170*Math.sin(-Math.PI/3)} Z`} fill="url(#rsweep)" />
+          <line x1={c} y1={c} x2={c+170} y2={c} stroke="#7c5cff" strokeWidth="1.5" strokeLinecap="round" />
+        </g>
+        {keywords.map((k, i) => {
+          const a = (i/keywords.length) * Math.PI * 2 - Math.PI/2;
+          const r = 50 + (k.score/100) * 110;
+          const x = c + r * Math.cos(a), y = c + r * Math.sin(a);
+          const isSel = sel?.id === k.id;
+          const col = !k.on ? "#c8ccd8" : k.score>=80 ? "#db2777" : k.score>=60 ? "#f59e0b" : "#7c5cff";
+          return (
+            <g key={k.id} onClick={() => setSel(k)} style={{ cursor:"pointer" }}>
+              {isSel && <circle cx={x} cy={y} r="14" fill="none" stroke={col} strokeWidth="1.5" opacity="0.5" />}
+              <circle cx={x} cy={y} r={isSel?7:5} fill={col} style={{ transition:"all .3s", filter:`drop-shadow(0 0 ${isSel?8:4}px ${col})` }} />
+              <text x={x} y={y - 14} textAnchor="middle" fontSize="11" fontFamily="Inter Tight" fontWeight={isSel?700:500} fill={isSel?col:"#4b5263"}>{k.keyword}</text>
+            </g>
+          );
+        })}
+        <circle cx={c} cy={c} r="4" fill="#7c5cff" />
+        <circle cx={c} cy={c} r="8" fill="none" stroke="#7c5cff" strokeWidth="1" opacity="0.4" />
+      </svg>
+    </div>
+  );
+}
+
+// ─── TRENDS ──────────────────────────────────────────────────
+function TrendsPage() {
+  const companies = [
+    { name:"OpenAI", score:98, change:"+5%", c:"#7c5cff" },
+    { name:"Anthropic", score:94, change:"+12%", c:"#db2777" },
+    { name:"Google DeepMind", score:79, change:"-3%", c:"#06b6d4" },
+    { name:"Meta AI", score:65, change:"+8%", c:"#f59e0b" },
+    { name:"Mistral AI", score:58, change:"+22%", c:"#10b981" },
+    { name:"Stability AI", score:52, change:"+15%", c:"#ef4444" },
+  ];
+  const series = [
+    { name:"Claude", data:[45,52,49,78,92,88,76], c:"#db2777" },
+    { name:"OpenAI", data:[80,75,82,79,85,91,88], c:"#7c5cff" },
+    { name:"Gemini", data:[30,35,38,42,39,45,41], c:"#06b6d4" },
+  ];
+  const w=420, h=180;
+  return (
+    <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden", position:"relative", zIndex:1 }}>
+      <PageHeader kicker="Trends" title="趋势分析" sub="过去 7 天 AI 行业声量变化" />
+      <div style={{ flex:1, overflow:"auto", padding:"4px 36px 36px", display:"flex", flexDirection:"column", gap:20 }}>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:18 }}>
+          <div className="glass fade-up" style={{ padding:22 }}>
+            <h3 className="display" style={{ fontWeight:700, fontSize:16, marginBottom:18 }}>🏢 公司声量排名（7 天）</h3>
+            {companies.map((co, i) => (
+              <div key={co.name} style={{ marginBottom:14 }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
+                  <div style={{ display:"flex", gap:8, alignItems:"baseline" }}>
+                    <span style={{ fontSize:11, color:"var(--ink-3)" }}>#{i+1}</span>
+                    <span style={{ fontSize:13, fontWeight:600 }}>{co.name}</span>
+                  </div>
+                  <div style={{ display:"flex", gap:10, alignItems:"center" }}>
+                    <span className="mono" style={{ fontSize:11, color: co.change.startsWith("+")?"#10b981":"#db2777", fontWeight:600 }}>{co.change}</span>
+                    <span className="display" style={{ fontSize:18, fontWeight:700, color:co.c, width:30, textAlign:"right" }}>{co.score}</span>
+                  </div>
+                </div>
+                <div style={{ height:6, background:"rgba(124,92,255,0.06)", borderRadius:99, overflow:"hidden" }}>
+                  <div className="fill-bar" style={{ width:`${co.score}%`, height:"100%", background:co.c, borderRadius:99, animationDelay:`${i*0.08}s` }}></div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="glass fade-up" style={{ padding:22, animationDelay:"0.1s" }}>
+            <h3 className="display" style={{ fontWeight:700, fontSize:16, marginBottom:18 }}>📊 主要模型讨论热度</h3>
+            <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none">
+              {series.map(s => {
+                const pts = s.data.map((v,i)=>`${i*(w/6)},${h-(v/100)*h*0.85}`);
+                return <g key={s.name}>
+                  <polyline points={pts.join(" ")} fill="none" stroke={s.c} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
+                  {pts.map((p,i)=>{ const [x,y]=p.split(","); return <circle key={i} cx={x} cy={y} r="3" fill="#fff" stroke={s.c} strokeWidth="2" />; })}
+                </g>;
+              })}
+            </svg>
+            <div style={{ display:"flex", justifyContent:"space-between", marginTop:6 }}>
+              {["周一","周二","周三","周四","周五","周六","周日"].map(d => <span key={d} style={{ fontSize:11, color:"var(--ink-3)" }}>{d}</span>)}
+            </div>
+            <div style={{ display:"flex", gap:14, marginTop:14, paddingTop:14, borderTop:"1px solid var(--line)" }}>
+              {series.map(s => (
+                <div key={s.name} style={{ display:"flex", alignItems:"center", gap:6 }}>
+                  <div style={{ width:14, height:3, borderRadius:2, background:s.c }}></div>
+                  <span style={{ fontSize:12, color:"var(--ink-2)", fontWeight:500 }}>{s.name}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="fade-up" style={{ animationDelay:"0.2s" }}>
+          <h3 className="display" style={{ fontWeight:700, fontSize:18, marginBottom:14 }}>🚀 增速最快关键词</h3>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(4, 1fr)", gap:12 }}>
+            {[
+              { kw:"Vibe Coding", g:320, ct:892, c:"#db2777" },
+              { kw:"Claude 4", g:280, ct:743, c:"#7c5cff" },
+              { kw:"AI Agent", g:145, ct:1203, c:"#06b6d4" },
+              { kw:"Local LLM", g:98, ct:456, c:"#f59e0b" },
+              { kw:"Cursor", g:87, ct:678, c:"#10b981" },
+              { kw:"o3 API", g:75, ct:389, c:"#ef4444" },
+              { kw:"LangGraph", g:63, ct:234, c:"#7c5cff" },
+              { kw:"Gemini 2.5", g:48, ct:567, c:"#06b6d4" },
+            ].map((k, i) => (
+              <div key={k.kw} className="glass glass-hover fade-up" style={{ padding:"16px 18px", animationDelay:`${0.25+i*0.05}s` }}>
+                <div style={{ fontSize:11, color:"var(--ink-3)", marginBottom:6 }}>#{i+1}</div>
+                <div style={{ fontSize:14, fontWeight:600, marginBottom:8 }}>{k.kw}</div>
+                <div className="display" style={{ fontSize:30, fontWeight:700, color:k.c, lineHeight:1, letterSpacing:"-0.03em" }}>+{k.g}<span style={{ fontSize:18 }}>%</span></div>
+                <div style={{ fontSize:11, color:"var(--ink-3)", marginTop:8 }}>{k.ct.toLocaleString()} 条讨论</div>
+                <div style={{ marginTop:10 }}>
+                  <MiniSpark data={[10,15,22,18,30,45,60+k.g/10].map(v=>v+Math.random()*8)} color={k.c} w={140} h={26} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── VAULT ───────────────────────────────────────────────────
+function VaultPage({ openItem }) {
+  const [q, setQ] = useState("");
+  const list = q ? NEWS.filter(n => (n.title+n.summary+n.tags.join(" ")).toLowerCase().includes(q.toLowerCase())) : NEWS;
+  return (
+    <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden", position:"relative", zIndex:1 }}>
+      <PageHeader kicker="Vault" title="内容库" sub="所有抓取数据可搜索、可回溯" />
+      <div style={{ padding:"0 36px 16px" }}>
+        <div className="glass" style={{ padding:"6px", borderRadius:99, display:"flex", alignItems:"center", gap:12 }}>
+          <span style={{ fontSize:18, padding:"0 8px 0 12px" }}>🔍</span>
+          <input value={q} onChange={e=>setQ(e.target.value)} placeholder="搜索标题、摘要、标签、作者..." style={{ flex:1, fontSize:14, padding:"8px 0", background:"transparent", border:"none" }} />
+          <button style={{ padding:"8px 18px", borderRadius:99, fontSize:13, fontWeight:600, color:"#fff", background:"var(--grad)" }}>搜索</button>
+        </div>
+        <div style={{ display:"flex", gap:8, marginTop:14, flexWrap:"wrap" }}>
+          {["Claude","OpenAI","AI Agent","Cursor","开源","融资","Local LLM"].map((s,i) => (
+            <button key={s} onClick={() => setQ(s)} style={{ padding:"5px 14px", fontSize:12, fontWeight:500, borderRadius:99, color:["#7c5cff","#db2777","#f59e0b","#06b6d4","#10b981"][i%5], background:`${["#7c5cff","#db2777","#f59e0b","#06b6d4","#10b981"][i%5]}10`, border:`1px solid ${["#7c5cff","#db2777","#f59e0b","#06b6d4","#10b981"][i%5]}20` }}>{s}</button>
+          ))}
+        </div>
+      </div>
+      <div style={{ flex:1, overflow:"auto", padding:"8px 36px 36px" }}>
+        <div style={{ fontSize:12, color:"var(--ink-3)", marginBottom:14 }}>找到 {list.length} 条结果{q && ` · "${q}"`}</div>
+        <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+          {list.map((n, i) => (
+            <div key={n.id} onClick={() => openItem(n)} className="glass glass-hover fade-up" style={{ padding:"14px 18px", display:"flex", gap:16, cursor:"pointer", animationDelay:`${i*0.04}s` }}>
+              <div className="display" style={{ width:36, fontSize:18, fontWeight:700, color:"var(--ink-4)", textAlign:"right" }}>{String(i+1).padStart(3,'0')}</div>
+              <div style={{ flex:1 }}>
+                <div style={{ fontSize:14, fontWeight:600, marginBottom:5 }}>{n.title}</div>
+                <div style={{ fontSize:12, color:"var(--ink-2)", marginBottom:8, lineHeight:1.55, overflow:"hidden", display:"-webkit-box", WebkitLineClamp:2, WebkitBoxOrient:"vertical" }}>{n.summary}</div>
+                <div style={{ display:"flex", gap:6, alignItems:"center" }}>
+                  {n.platform.map(p => <Pill key={p} p={p} />)}
+                  <span style={{ fontSize:11, color:"var(--ink-3)" }}>· {n.time} · {n.author}</span>
+                </div>
+              </div>
+              <HeatBadge score={n.heat} />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── App ─────────────────────────────────────────────────────
+function App() {
+  const [page, setPage] = useState("home");
+  const [item, setItem] = useState(null);
+  const openItem = (n) => { setItem(n); setPage("detail"); };
+
+  const pages = {
+    home: <HomePage setPage={setPage} openItem={openItem} />,
+    feed: <FeedPage openItem={openItem} />,
+    detail: <DetailPage item={item} setPage={setPage} />,
+    radar: <RadarPage />,
+    trends: <TrendsPage />,
+    vault: <VaultPage openItem={openItem} />,
+  };
+
+  return (
+    <>
+      <Sidebar page={page==="detail"?"feed":page} setPage={setPage} notif={3} />
+      {pages[page] || pages.home}
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
