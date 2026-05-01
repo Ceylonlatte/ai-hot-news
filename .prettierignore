@@ -1,0 +1,9 @@
+node_modules/
+.next/
+.turbo/
+dist/
+data/
+src/generated/
+pnpm-lock.yaml
+*.md
+docs/Design/
