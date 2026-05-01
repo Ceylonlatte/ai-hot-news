@@ -1,4 +1,4 @@
-import { PrismaClient } from './generated/index.js';
+import { PrismaClient } from './generated';
 
 let prismaInstance: PrismaClient | undefined;
 
@@ -11,5 +11,5 @@ export function getPrisma(): PrismaClient {
   return prismaInstance;
 }
 
-export type { PrismaClient } from './generated/index.js';
-export * from './generated/index.js';
+export type { PrismaClient } from './generated';
+export * from './generated';

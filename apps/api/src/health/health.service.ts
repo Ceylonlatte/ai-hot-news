@@ -1,10 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import type { PrismaClient } from '@ai-hot-news/db';
+import { getPrisma } from '@ai-hot-news/db';
 import Redis from 'ioredis';
-
-const dynamicImport = new Function('m', 'return import(m)') as (
-  m: string,
-) => Promise<{ getPrisma: () => PrismaClient }>;
 
 export interface HealthResponse {
   ok: boolean;
@@ -41,7 +37,6 @@ export class HealthService {
 
   private async checkDb(): Promise<'ok' | 'fail'> {
     try {
-      const { getPrisma } = await dynamicImport('@ai-hot-news/db');
       await getPrisma().$queryRaw`SELECT 1`;
       return 'ok';
     } catch {
