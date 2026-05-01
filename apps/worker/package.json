@@ -1,0 +1,35 @@
+{
+  "name": "@ai-hot-news/worker",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "dev": "nest start --watch --entryFile main",
+    "build": "nest build",
+    "start": "node dist/main",
+    "lint": "eslint src/",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@ai-hot-news/db": "workspace:*",
+    "@ai-hot-news/types": "workspace:*",
+    "@nestjs/common": "^11.0.0",
+    "@nestjs/config": "^4.0.0",
+    "@nestjs/core": "^11.0.0",
+    "@nestjs/schedule": "^4.1.2",
+    "bullmq": "^5.34.0",
+    "ioredis": "^5.4.1",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^11.0.0",
+    "@nestjs/schematics": "^11.0.0",
+    "@nestjs/testing": "^11.0.0",
+    "@types/node": "^22.9.0",
+    "ts-loader": "^9.5.1",
+    "tsconfig-paths": "^4.2.0",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.5"
+  }
+}
