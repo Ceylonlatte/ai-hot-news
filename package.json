@@ -11,7 +11,7 @@
   "scripts": {
     "dev": "turbo run dev --parallel",
     "build": "turbo run build",
-    "lint": "eslint . && turbo run lint",
+    "lint": "eslint . --no-error-on-unmatched-pattern && turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "format": "prettier --write .",
