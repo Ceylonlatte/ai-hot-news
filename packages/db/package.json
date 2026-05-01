@@ -3,10 +3,10 @@
   "version": "0.0.1",
   "private": true,
   "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "types": "./src/index.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
+      "types": "./src/index.ts",
       "default": "./dist/index.js"
     }
   },
@@ -17,13 +17,14 @@
     "db:studio": "prisma studio",
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit",
-    "build": "prisma generate && tsc && cp -R src/generated dist/generated"
+    "build": "prisma generate && esbuild src/index.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist/index.js --external:@prisma/client --external:./generated && mkdir -p dist/generated && cp -R src/generated/. dist/generated/"
   },
   "dependencies": {
     "@prisma/client": "^6.1.0",
     "prisma": "^6.1.0"
   },
   "devDependencies": {
+    "esbuild": "^0.28.0",
     "typescript": "^5.6.3"
   }
 }
