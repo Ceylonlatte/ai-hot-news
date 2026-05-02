@@ -1,2 +1,2 @@
-export { normalizeUrl } from './url.js';
-export { computeDedupeHash } from './dedupe.js';
+export { normalizeUrl } from './url';
+export { computeDedupeHash } from './dedupe';
