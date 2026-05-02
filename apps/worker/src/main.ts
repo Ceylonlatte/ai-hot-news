@@ -6,6 +6,7 @@ async function bootstrap() {
   const app = await NestFactory.createApplicationContext(WorkerModule, {
     logger: ['error', 'warn', 'log'],
   });
+  app.enableShutdownHooks();
 
   const logger = new Logger('Worker');
   logger.log('Worker ready, no jobs registered yet');

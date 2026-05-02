@@ -1,11 +1,10 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { getPrisma } from '@ai-hot-news/db';
-import { Logger } from '@nestjs/common';
 import type { RawCrawledItem } from '@ai-hot-news/types';
 import { IngestionService } from './ingestion.service';
 
 const prisma = getPrisma();
-const ingestion = new IngestionService(new Logger('IngestionTest'));
+const ingestion = new IngestionService();
 const SOURCE = {
   id: 'test-src',
   platform: 'RSS' as const,

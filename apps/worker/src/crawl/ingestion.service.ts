@@ -19,7 +19,7 @@ interface SourceLike {
 
 @Injectable()
 export class IngestionService {
-  constructor(private readonly logger = new Logger(IngestionService.name)) {}
+  private readonly logger = new Logger(IngestionService.name);
 
   async ingest(items: RawCrawledItem[], _source: SourceLike): Promise<IngestResult> {
     const prisma = getPrisma();
