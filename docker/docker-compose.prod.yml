@@ -33,6 +33,9 @@ services:
       CORS_ORIGIN: ${CORS_ORIGIN}
       NODE_ENV: production
       PORT: 3001
+    ports:
+      # 仅 bind 到 127.0.0.1，对外不暴露；cloudflared 可按需 ingress
+      - "127.0.0.1:3001:3001"
     depends_on:
       postgres:
         condition: service_healthy
@@ -70,6 +73,9 @@ services:
       NODE_ENV: production
       # Next.js standalone 默认只绑容器 service IP，不绑 127.0.0.1，导致 healthcheck 'wget localhost' 失败
       HOSTNAME: 0.0.0.0
+    ports:
+      # 仅 bind 到 127.0.0.1，对外不暴露；cloudflared 通过 host loopback 访问
+      - "127.0.0.1:3000:3000"
     depends_on:
       api:
         condition: service_healthy
