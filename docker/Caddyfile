@@ -1,0 +1,20 @@
+{$DOMAIN} {
+    encode gzip zstd
+
+    # API 反代到 NestJS（去掉 /api 前缀传给后端）
+    handle_path /api/* {
+        reverse_proxy api:3001
+    }
+
+    # 健康检查直通（运维方便）
+    handle /health {
+        reverse_proxy api:3001
+    }
+
+    # 其余请求给 Next.js
+    handle {
+        reverse_proxy web:3000
+    }
+
+    # Caddy 默认自动 Let's Encrypt（无需额外配置）
+}
