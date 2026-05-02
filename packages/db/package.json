@@ -19,12 +19,14 @@
     "typecheck": "tsc --noEmit",
     "build": "prisma generate && esbuild src/index.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist/index.js --external:@prisma/client --external:./generated && mkdir -p dist/generated && cp -R src/generated/. dist/generated/"
   },
+  "prisma": { "seed": "tsx prisma/seed.ts" },
   "dependencies": {
     "@prisma/client": "^6.1.0",
     "prisma": "^6.1.0"
   },
   "devDependencies": {
     "esbuild": "^0.28.0",
+    "tsx": "^4.19.2",
     "typescript": "^5.6.3"
   }
 }

@@ -103,6 +103,7 @@ model SourceConfig {
   updatedAt      DateTime     @updatedAt
 
   @@index([platform, enabled])
+  @@unique([platform, url])
   @@map("source_configs")
 }
 
