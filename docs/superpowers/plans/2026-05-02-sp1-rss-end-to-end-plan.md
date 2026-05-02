@@ -999,24 +999,28 @@ export class IngestionService {
         }
         const sourceUrl = normalizeUrl(raw.sourceUrl);
         const dedupeHash = computeDedupeHash(sourceUrl, raw.title);
-        const before = Date.now();
-        const row = await prisma.hotNews.upsert({
-          where: { sourceUrl },
-          update: {},
-          create: {
-            title: raw.title,
-            content: raw.contentText,
-            rawHtml: raw.rawHtml,
-            sourcePlatform: Platform.RSS,
-            sourceUrl,
-            author: raw.author,
-            publishedAt: raw.publishedAt ?? new Date(),
-            dedupeHash,
-          },
-        });
-        const isNew = row.crawledAt.getTime() >= before - 1_000;
-        if (isNew) result.inserted += 1;
-        else result.skipped += 1;
+        try {
+          await prisma.hotNews.create({
+            data: {
+              title: raw.title,
+              content: raw.contentText,
+              rawHtml: raw.rawHtml,
+              sourcePlatform: Platform.RSS,
+              sourceUrl,
+              author: raw.author,
+              publishedAt: raw.publishedAt ?? new Date(),
+              dedupeHash,
+            },
+          });
+          result.inserted += 1;
+        } catch (createErr) {
+          // P2002 = unique constraint violation → existing row, treat as skip.
+          if ((createErr as { code?: string }).code === 'P2002') {
+            result.skipped += 1;
+          } else {
+            throw createErr;
+          }
+        }
       } catch (err) {
         this.logger.warn(`Ingest item failed: ${raw.sourceUrl} → ${(err as Error).message}`);
         result.failed += 1;
@@ -1026,6 +1030,8 @@ export class IngestionService {
   }
 }
 ```
+
+> **Why `create` + P2002 catch instead of `upsert`?** SP-1 dedupe semantics are "insert if new, otherwise skip — never overwrite" (per spec §3.3). An `upsert({ update: {} })` would accomplish that, but distinguishing inserted-vs-skipped via `row.crawledAt` timestamp is racy: a fresh insert and a same-second skip can both fall inside any tolerance window, mis-counting metrics. `create` + Prisma error code `P2002` cleanly bifurcates the two paths with no time dependency. If a future SP needs to refresh stored fields on re-crawl, switch back to `upsert` and design the diff explicitly.
 
 - [ ] **Step 4: Run the test to verify it passes**
 
