@@ -16,8 +16,10 @@ export class RssCrawler implements Crawler {
   private readonly parser: Parser<unknown, CustomItem>;
 
   constructor(private readonly source: SourceLike) {
+    const rawTimeout = parseInt(process.env.RSS_FETCH_TIMEOUT_MS ?? '15000', 10);
+    const timeout = Number.isFinite(rawTimeout) && rawTimeout > 0 ? rawTimeout : 15000;
     this.parser = new Parser<unknown, CustomItem>({
-      timeout: parseInt(process.env.RSS_FETCH_TIMEOUT_MS ?? '15000', 10),
+      timeout,
       headers: {
         'User-Agent': process.env.RSS_USER_AGENT ?? 'ai-hot-news-bot/0.1',
       },
