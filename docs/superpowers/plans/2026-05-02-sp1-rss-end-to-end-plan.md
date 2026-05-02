@@ -18,9 +18,9 @@
 
 | Path | Responsibility |
 |---|---|
-| `packages/utils/package.json` | New workspace package `@ai-hot-news/utils` (ESM, types-only-style source export) |
+| `packages/utils/package.json` | New workspace package `@ai-hot-news/utils` (CJS dist via esbuild — see "ESM vs CJS" note in §Conventions; mirrors `@ai-hot-news/db`) |
 | `packages/utils/tsconfig.json` | Extends `tsconfig.base.json`, mirrors `packages/types` |
-| `packages/utils/src/index.ts` | Barrel export |
+| `packages/utils/src/index.ts` | Barrel export (no `.js` suffix on relative imports — TS resolution handles it) |
 | `packages/utils/src/url.ts` | `normalizeUrl(input: string): string` |
 | `packages/utils/src/url.spec.ts` | URL normalization unit tests |
 | `packages/utils/src/dedupe.ts` | `computeDedupeHash(sourceUrl: string, title: string): string` |
@@ -84,6 +84,7 @@
 - **Run all tests:** `pnpm turbo run test`.
 - **Lint/typecheck before each commit:** `pnpm turbo run lint typecheck` (or scoped to the package being changed for speed).
 - **Never run `pnpm db:migrate:reset`** unless this plan says so — it wipes data.
+- **ESM vs CJS in shared packages:** `apps/worker` and `apps/api` are CJS (no `"type": "module"`, `tsconfig.json#module: CommonJS`). Any workspace package whose runtime code is consumed by them (e.g. `@ai-hot-news/utils`, `@ai-hot-news/db`) MUST emit a CJS dist (esbuild-bundled, target `node22`) and expose it via `package.json#main`. Type-only packages like `@ai-hot-news/types` can stay source-only because TypeScript erases them at runtime.
 
 ---
 
@@ -110,19 +111,22 @@ db  types
   "name": "@ai-hot-news/utils",
   "version": "0.0.1",
   "private": true,
-  "type": "module",
-  "main": "./src/index.ts",
+  "main": "./dist/index.js",
   "types": "./src/index.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
   },
   "scripts": {
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit",
-    "build": "echo 'no-op (source-only package)'",
+    "build": "esbuild src/index.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist/index.js",
     "test": "vitest run"
   },
   "devDependencies": {
+    "esbuild": "^0.28.0",
     "typescript": "^5.6.3",
     "vitest": "^2.1.5"
   }
@@ -367,9 +371,11 @@ Expected: 5 tests pass.
 Replace `packages/utils/src/index.ts` with:
 
 ```ts
-export { normalizeUrl } from './url.js';
-export { computeDedupeHash } from './dedupe.js';
+export { normalizeUrl } from './url';
+export { computeDedupeHash } from './dedupe';
 ```
+
+> The relative imports use no `.js` suffix because the package is now CJS (no `type: module`); TypeScript module resolution handles it. Also remember to run `pnpm --filter @ai-hot-news/utils build` once before the worker can `require()` it (Task 9 dev smoke step does this implicitly via `pnpm build` / turbo).
 
 - [ ] **Step 10: Run all utils tests + typecheck**
 
@@ -980,7 +986,12 @@ interface SourceLike {
 
 @Injectable()
 export class IngestionService {
-  constructor(private readonly logger = new Logger(IngestionService.name)) {}
+  // Logger as a class field, not a constructor default arg: NestJS 11
+  // DI scans constructor params via reflect-metadata, and a default-
+  // value `logger: Logger` parameter still gets registered as a required
+  // injectable, causing UnknownDependenciesException at module init.
+  // The class-field form has no DI footprint.
+  private readonly logger = new Logger(IngestionService.name);
 
   async ingest(items: RawCrawledItem[], _source: SourceLike): Promise<IngestResult> {
     const prisma = getPrisma();
@@ -1211,7 +1222,9 @@ export class CrawlScheduler implements OnModuleInit {
         { sourceConfigId: source.id },
         {
           repeat: { every: source.crawlInterval * 1000 },
-          jobId: `rss-crawl:${source.id}`,
+          // BullMQ 5.76+ rejects custom jobIds containing ':' (the colon is
+          // reserved in BullMQ's internal Redis key scheme). Use '-' instead.
+          jobId: `rss-crawl-repeat-${source.id}`,
           removeOnComplete: { count: 100 },
           removeOnFail: { count: 100 },
           attempts: 3,
@@ -1224,7 +1237,7 @@ export class CrawlScheduler implements OnModuleInit {
         CRAWL_QUEUE_NAME,
         { sourceConfigId: source.id },
         {
-          jobId: `rss-crawl:boot:${source.id}:${Date.now()}`,
+          jobId: `rss-crawl-boot-${source.id}-${Date.now()}`,
           attempts: 3,
           backoff: { type: 'exponential', delay: 60_000 },
           removeOnComplete: true,
@@ -1360,6 +1373,30 @@ docker compose -f docker/docker-compose.dev.yml exec redis redis-cli FLUSHDB
 ```
 Expected output: `OK`.
 
+- [ ] **Step 4.5: Pre-build dependent workspace packages**
+
+```bash
+pnpm --filter @ai-hot-news/db build
+pnpm --filter @ai-hot-news/utils build
+```
+
+`apps/worker` runs as CJS and `require()`s `@ai-hot-news/db` and `@ai-hot-news/utils` from their respective `dist/`. Re-run the relevant `build` whenever you change those packages' source.
+
+- [ ] **Step 4.6: Worker `dev` script must use the tsc compiler**
+
+`apps/worker/package.json` ships with `"dev": "nest start --watch --entryFile main"`. On a clean checkout the default nest CLI compiler silently emits nothing (likely tied to `ts-loader` being present without webpack). Patch the script to:
+
+```json
+"dev": "nest start --watch --entryFile main --tsc",
+"build": "nest build --tsc",
+```
+
+Equivalent: run `pnpm exec tsc` and then `node dist/main.js` directly (which is what the dev smoke verifies works).
+
+- [ ] **Step 4.7: Enable Nest shutdown hooks**
+
+In `apps/worker/src/main.ts`, after `NestFactory.createApplicationContext(...)`, add `app.enableShutdownHooks();`. Without it, `OnModuleDestroy` (used by `CrawlModule` to close the BullMQ Worker and the Redis connection) does not run on SIGINT/SIGTERM — the process leaks the Redis connection on shutdown.
+
 - [ ] **Step 5: Start the worker in the foreground (dev) and watch logs**
 
 In one terminal: `pnpm --filter @ai-hot-news/worker dev`
@@ -1391,7 +1428,7 @@ Expected: count ≥ 10.
 ```bash
 docker compose -f docker/docker-compose.dev.yml exec redis redis-cli --scan --pattern "bull:rss-crawl:repeat:*" | wc -l
 ```
-Expected: number equals the count of enabled RSS sources (3), not double.
+Expected: number equals **2 × enabled RSS sources** (BullMQ 5.x stores both a `repeat:<hash>` key and a `repeat:<hash>:<next-run-ts>` key per repeatable). For 3 enabled sources, expect 6. The important observation is the count does NOT double on subsequent restarts (i.e., still 6 after restart, not 12). Use `redis-cli --scan --pattern "bull:rss-crawl:repeat:*" | grep -v ':' | wc -l` to count the per-source hashes (you should see 3, equal to enabled sources).
 
 - [ ] **Step 9: Stop the worker again.**
 
