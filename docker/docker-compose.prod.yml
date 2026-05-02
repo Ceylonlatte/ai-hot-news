@@ -68,6 +68,8 @@ services:
     environment:
       NEXT_PUBLIC_API_URL: ${PUBLIC_API_URL}
       NODE_ENV: production
+      # Next.js standalone 默认只绑容器 service IP，不绑 127.0.0.1，导致 healthcheck 'wget localhost' 失败
+      HOSTNAME: 0.0.0.0
     depends_on:
       api:
         condition: service_healthy

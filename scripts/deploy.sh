@@ -6,9 +6,14 @@ set -euo pipefail
 
 REPO_DIR="/srv/ai-hot-news"
 COMPOSE_FILE="docker/docker-compose.prod.yml"
+ENV_FILE="$REPO_DIR/.env"
 IMAGE_TAG="${1:-latest}"
 
 cd "$REPO_DIR"
+
+# docker compose 从 -f 文件所在目录找 .env，而我们的 .env 在仓库根。
+# 用 --env-file 显式指定，避免变量被解析为空字符串导致 invalid reference format。
+COMPOSE="docker compose --env-file $ENV_FILE -f $COMPOSE_FILE"
 
 echo "==> Pulling latest source"
 git fetch origin main
@@ -18,16 +23,16 @@ echo "==> Logging into GHCR"
 echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
 
 echo "==> Pulling latest images (tag=$IMAGE_TAG)"
-IMAGE_TAG="$IMAGE_TAG" docker compose -f "$COMPOSE_FILE" pull
+IMAGE_TAG="$IMAGE_TAG" $COMPOSE pull
 
 echo "==> Running database migrations"
-IMAGE_TAG="$IMAGE_TAG" docker compose -f "$COMPOSE_FILE" run --rm \
+IMAGE_TAG="$IMAGE_TAG" $COMPOSE run --rm \
   --entrypoint sh api -c "cd packages/db && npx prisma migrate deploy"
 
-echo "==> Bringing up services"
-IMAGE_TAG="$IMAGE_TAG" docker compose -f "$COMPOSE_FILE" up -d
+echo "==> Bringing up services (excluding caddy until 443 is free; see SP-0 deployment notes)"
+IMAGE_TAG="$IMAGE_TAG" $COMPOSE up -d --no-deps postgres redis api worker web
 
 echo "==> Container status"
-IMAGE_TAG="$IMAGE_TAG" docker compose -f "$COMPOSE_FILE" ps
+IMAGE_TAG="$IMAGE_TAG" $COMPOSE ps
 
 echo "==> Done"
