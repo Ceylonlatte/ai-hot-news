@@ -216,7 +216,7 @@ apps/worker/
 │       ├── rss.crawler.spec.ts
 │       ├── ingestion.service.integration.spec.ts
 │       └── fixtures/
-│           └── sample-rss-feed.xml      # 测试用样本（OpenAI Blog 模拟）
+│           └── sample-rss-feed.xml      # 测试用样本（OpenAI News 模拟，含 author/无 author/无 pubDate 等边界 case）
 └── package.json                         # 新依赖：rss-parser、@nestjs/bullmq、bullmq、ioredis
 ```
 
@@ -357,18 +357,26 @@ import { PrismaClient } from '../src/generated';
 
 const prisma = new PrismaClient();
 
-const candidates = [
-  { name: 'OpenAI Blog',      url: 'https://openai.com/blog/rss.xml' },
-  { name: 'Anthropic News',   url: 'https://www.anthropic.com/news/rss.xml' },
-  { name: 'Hugging Face Blog', url: 'https://huggingface.co/blog/feed.xml' },
+// 4 家头部 AI 实验室。URL 已在 2026-05-02 通过 curl HEAD 实测：
+//   - OpenAI:    /blog/rss.xml 已 307 → /news/rss.xml；直接用终点
+//   - Anthropic: 无官方 RSS（常见路径全 404）。占位写入，enabled=false；
+//                实施时若找到 RSSHub 代理（如 https://rsshub.app/anthropic/news）
+//                可改 url + enabled=true，或留到后续 SP 用其他方式接入。
+//   - Google AI: research.google 的官方研究 blog（包含大量 AI 内容），200 OK
+//   - DeepMind:  deepmind.google/blog/rss.xml 200 OK
+const candidates: Array<{ name: string; url: string; enabled: boolean }> = [
+  { name: 'OpenAI News',          url: 'https://openai.com/news/rss.xml',     enabled: true  },
+  { name: 'Anthropic News',       url: 'https://www.anthropic.com/news/rss',  enabled: false }, // 占位；URL 待实施时核实
+  { name: 'Google Research Blog', url: 'https://research.google/blog/rss/',   enabled: true  },
+  { name: 'Google DeepMind Blog', url: 'https://deepmind.google/blog/rss.xml', enabled: true  },
 ];
 
 async function main() {
   for (const c of candidates) {
     await prisma.sourceConfig.upsert({
       where: { platform_url: { platform: 'RSS', url: c.url } },  // 依赖 @@unique
-      create: { platform: 'RSS', name: c.name, url: c.url, enabled: true, crawlInterval: 1800 },
-      update: { name: c.name, enabled: true },
+      create: { platform: 'RSS', name: c.name, url: c.url, enabled: c.enabled, crawlInterval: 1800 },
+      update: { name: c.name },  // 不覆盖 enabled，允许运维手工调整后保持
     });
   }
 }
@@ -378,7 +386,16 @@ main()
   .finally(() => prisma.$disconnect());
 ```
 
-实施时 dev 阶段先 `curl` 三个 URL，对返回 200 的源 `enabled=true`，对返回 4xx/5xx 的源在 seed 中临时改 `enabled=false`，并在 commit message 备注实测结果。
+实施时 dev 阶段先 `curl -I` 四个 URL，确保返回 200 的源 `enabled=true`，返回 4xx/5xx 的源 `enabled=false`，并在 commit message 备注实测结果。设计阶段已用 `curl` 在 2026-05-02 实测过，结果：
+
+| 源 | URL | 状态 | 默认 enabled |
+|---|---|---|---|
+| OpenAI News | `https://openai.com/news/rss.xml` | 200 ✅（原 `/blog/rss.xml` 307 重定向到此处） | true |
+| Anthropic News | 暂用 `https://www.anthropic.com/news/rss`（占位） | 404 ❌ Anthropic 当前无官方 RSS | **false**（实施时若找到 RSSHub 代理或其他可用 feed，再改 URL + enabled=true） |
+| Google Research Blog | `https://research.google/blog/rss/` | 200 ✅（含大量 AI 内容） | true |
+| Google DeepMind Blog | `https://deepmind.google/blog/rss.xml` | 200 ✅ | true |
+
+3 个启用源足够保证 boot 回填后 ≥10 条数据（每家头部实验室 blog 历史条目通常都有几十条）。
 
 `packages/db/package.json` 加：
 
@@ -454,9 +471,9 @@ apps/api/
     {
       "id": "ckxxxxx",
       "title": "GPT-5 announced",
-      "sourceUrl": "https://openai.com/blog/gpt-5",
+      "sourceUrl": "https://openai.com/index/gpt-5",
       "sourcePlatform": "RSS",
-      "author": "OpenAI Team",
+      "author": "OpenAI",
       "publishedAt": "2026-05-01T08:00:00.000Z",
       "crawledAt": "2026-05-01T08:30:00.000Z"
     }
@@ -744,13 +761,14 @@ docker compose -f docker/docker-compose.prod.yml exec postgres \
 
 | 风险 | 影响 | 缓解 |
 |---|---|---|
-| OpenAI Blog RSS URL 已变 | 首抓 0 条 | seed 写入 3 个候选（OpenAI / Anthropic / HuggingFace），实施时 dev 阶段先 curl 三个 URL 选可用的 enable=true，其余 enabled=false |
+| 头部实验室 RSS URL 变更/失效 | 首抓 0 条 | seed 写入 4 个候选（OpenAI / Anthropic / Google Research / DeepMind），其中 OpenAI / Google Research / DeepMind 已实测 200 OK；Anthropic 当前无官方 RSS，seed 中 enabled=false 占位，待 SP 实施或后续 SP 找到代理后再启用 |
+| Anthropic 长期没有官方 RSS | 一个候选源缺位 | 当前 3 个启用源足够覆盖 ≥10 条验收阈值；若 SP-1 内有时间，可探索 RSSHub 代理（`https://rsshub.app/anthropic/news`）作为可选启用项；否则推迟到 SP-2/3 阶段统一处理 |
 | RSS feed 体积过大（首抓回填几十条 content+rawHtml） | DB 体积膨胀 | 单源典型 ~30 条 × 50KB ≈ 1.5MB 可接受；如真有问题在 SP-4 引入清洗 |
 | `prisma migrate deploy` 在 prod 因新 unique 索引失败（重复数据） | 部署 break | prod 此前没有 SourceConfig 数据（SP-0 没 seed），不存在重复；安全 |
 | BullMQ repeatable 重启后重复注册 | 重复任务 | 用固定 `jobId` 即可（设计已规避） |
 | Worker 启动慢 → docker healthcheck 失败 | 容器重启 | liveness file 在 `LivenessService.onModuleInit` 立即写一次（已有）；`CrawlScheduler` enqueue 不阻塞启动；超时阈值 60s 充足 |
 | Web 端 SSR fetch 走 caddy 走外网 | 慢 | dev 走 localhost，无问题；prod SSR 经外网 ~1s 内可接受。SP-9 起再引入 INTERNAL_API_URL 优化容器内调用 |
-| 单一 RSS 源更新慢，很久看不到新数据 | 验收信心不足 | seed 写入 3 个候选；boot 回填一次性补齐历史 ≥ 10 条 |
+| 单一 RSS 源更新慢，很久看不到新数据 | 验收信心不足 | seed 写入 4 个候选（3 个默认启用）；boot 回填一次性补齐历史 ≥ 10 条 |
 | rss-parser 对国内网络不稳定 | dev 体验 | 不强制翻墙；本地 dev 失败时 logger.warn 但不 crash；prod 在境外 VPS 没此问题 |
 
 ### 6.5 完工 Checklist
