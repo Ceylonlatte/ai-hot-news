@@ -530,10 +530,12 @@ The resulting top-level shape (relevant fields only):
 
 - [ ] **Step 6: Add a root-level seed script**
 
-In root `package.json`, inside `"scripts"`, add (immediately after `db:studio`):
+In root `package.json`, inside `"scripts"`, add (immediately after `db:studio`).
+
+The script sources the root `.env` first because Prisma CLI only loads `.env` from the schema directory or the cwd of the spawned `pnpm --filter` (i.e. `packages/db/`), not the monorepo root. The `if [ -f ./.env ]` guard makes CI runs (where env vars come from service containers, not a `.env` file) still work.
 
 ```json
-"db:seed": "pnpm --filter @ai-hot-news/db exec prisma db seed",
+"db:seed": "if [ -f ./.env ]; then set -a; . ./.env; set +a; fi && pnpm --filter @ai-hot-news/db exec prisma db seed",
 ```
 
 - [ ] **Step 7: Install the new `tsx` dev dependency**
