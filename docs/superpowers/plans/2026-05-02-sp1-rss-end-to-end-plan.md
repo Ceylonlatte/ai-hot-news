@@ -632,6 +632,7 @@ git commit -m "feat(db): add @@unique([platform, url]) on SourceConfig and seed 
 - Create: `apps/worker/src/crawl/crawlers/rss.crawler.spec.ts`
 - Create: `apps/worker/src/crawl/fixtures/sample-rss-feed.xml`
 - Modify: `apps/worker/package.json` (add `rss-parser`, `@ai-hot-news/utils`)
+- Modify: `apps/worker/tsconfig.json` (exclude `**/*.spec.ts` so the spec's `@ts-expect-error` directives—necessary to reach into the private `parser` field via bracket access—don't trip TS2578; vitest still typechecks specs via esbuild)
 
 - [ ] **Step 1: Add `rss-parser` and the workspace utils dep to worker**
 
@@ -808,7 +809,11 @@ export class RssCrawler implements Crawler {
   }
 
   private toRaw(item: Parser.Item & CustomItem): RawCrawledItem {
-    const rawHtml = item.contentEncoded ?? item.content ?? null;
+    // Note: rss-parser maps <description> into item.content. We deliberately
+    // do NOT fall back to it here — many feeds put plain-text summaries in
+    // <description>, and storing those as rawHtml would be incorrect.
+    // `rawHtml` is reserved for the genuinely-HTML <content:encoded> element.
+    const rawHtml = item.contentEncoded ?? null;
     const title = (item.title ?? '').trim() || '(untitled)';
     return {
       title,
@@ -836,10 +841,19 @@ function stripHtml(input: string): string {
 Run: `pnpm --filter @ai-hot-news/worker exec vitest run src/crawl/crawlers/rss.crawler.spec.ts --reporter=verbose`
 Expected: 2 tests pass.
 
+- [ ] **Step 8.5: Exclude spec files from `tsc --noEmit`**
+
+The spec uses `@ts-expect-error` to reach into the private `parser` field via bracket access. TypeScript does not enforce access modifiers on bracket-indexed reads, so the `@ts-expect-error` directive becomes "unused", which `tsc` reports as TS2578. Vitest itself transpiles specs through esbuild, so excluding them from `tsc` does not lose any production-code typing safety.
+
+In `apps/worker/tsconfig.json`, change the `exclude` array from `["node_modules", "dist"]` to `["node_modules", "dist", "**/*.spec.ts"]`.
+
+Then run: `pnpm --filter @ai-hot-news/worker typecheck`
+Expected: exit 0.
+
 - [ ] **Step 9: Commit**
 
 ```bash
-git add apps/worker/src apps/worker/package.json pnpm-lock.yaml
+git add apps/worker/src apps/worker/package.json apps/worker/tsconfig.json pnpm-lock.yaml
 git commit -m "feat(worker): add Crawler interface and RssCrawler with rss-parser"
 ```
 
