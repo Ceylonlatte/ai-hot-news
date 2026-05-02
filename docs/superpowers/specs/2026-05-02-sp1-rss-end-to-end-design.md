@@ -199,28 +199,28 @@ export interface Crawler {
 apps/worker/
 ├── src/
 │   ├── main.ts                          # 现有，无改动
-│   ├── worker.module.ts                 # 修改：imports 新增 PrismaModule、CrawlModule
+│   ├── worker.module.ts                 # 修改：imports 新增 CrawlModule
 │   ├── liveness.service.ts              # 现有，不变
 │   ├── liveness.service.spec.ts         # 现有，不变
-│   ├── prisma/
-│   │   ├── prisma.module.ts             # @Global，提供 PrismaService（@ai-hot-news/db 包装）
-│   │   └── prisma.service.ts
 │   └── crawl/
-│       ├── crawl.module.ts              # imports BullModule.registerQueue('rss-crawl')
+│       ├── crawl.module.ts              # 提供 Queue 与各服务（手工实例化 BullMQ Queue）
+│       ├── queue.provider.ts            # 创建 BullMQ Queue + Worker（用 ioredis 共享连接）
 │       ├── crawlers/
 │       │   ├── crawler.interface.ts     # Crawler 抽象
 │       │   └── rss.crawler.ts           # RssCrawler implements Crawler
-│       ├── crawl.processor.ts           # @Processor('rss-crawl')，消费 job
+│       ├── crawl.processor.ts           # 处理函数（接收 Job → 调 Crawler → 调 Ingestion）
 │       ├── crawl.scheduler.ts           # OnModuleInit，注册 repeatable + boot 触发
-│       ├── ingestion.service.ts         # normalize + dedupe + 写库
+│       ├── ingestion.service.ts         # normalize + dedupe + 写库（Prisma 直接 from `getPrisma()`）
 │       ├── rss.crawler.spec.ts
 │       ├── ingestion.service.integration.spec.ts
 │       └── fixtures/
 │           └── sample-rss-feed.xml      # 测试用样本（OpenAI News 模拟，含 author/无 author/无 pubDate 等边界 case）
-└── package.json                         # 新依赖：rss-parser、@nestjs/bullmq、bullmq、ioredis
+└── package.json                         # 新依赖：rss-parser；bullmq/ioredis SP-0 已装
 ```
 
-`apps/api` 同步引入 `prisma/prisma.module.ts` 同样的 wrapper（避免 worker 与 api 各搞一套，保持一致）。
+> **Prisma 用法**：直接从 `@ai-hot-news/db` 引入 `getPrisma()`（已在 SP-0 提供单例），与 `apps/api/src/health/health.service.ts` 保持一致。**不再额外封装 NestJS PrismaService**。
+>
+> **BullMQ 用法**：直接 `import { Queue, Worker } from 'bullmq'` 手工实例化（连接同一个 ioredis 实例），**不引入 `@nestjs/bullmq`**。理由：仅需 1 个 queue / 1 个 worker，装饰器层（`@Processor`、`@InjectQueue`）反而引入额外抽象成本。
 
 ### 3.2 RssCrawler 实现要点
 
@@ -268,13 +268,14 @@ export class RssCrawler implements Crawler {
 
 ```ts
 async ingest(items: RawCrawledItem[], source: SourceConfig): Promise<IngestResult> {
+  const prisma = getPrisma();  // from @ai-hot-news/db
   let inserted = 0, skipped = 0, failed = 0;
   for (const raw of items) {
     try {
       if (!raw.sourceUrl) { skipped++; continue; }
       const sourceUrl = normalizeUrl(raw.sourceUrl);
       const dedupeHash = computeDedupeHash(sourceUrl, raw.title);
-      const result = await this.prisma.hotNews.upsert({
+      const result = await prisma.hotNews.upsert({
         where: { sourceUrl },
         update: {},  // SP-1 已存在不更新
         create: {
@@ -306,13 +307,12 @@ async ingest(items: RawCrawledItem[], source: SourceConfig): Promise<IngestResul
 ```ts
 @Injectable()
 export class CrawlScheduler implements OnModuleInit {
-  constructor(
-    @InjectQueue('rss-crawl') private readonly queue: Queue,
-    private readonly prisma: PrismaService,
-  ) {}
+  private readonly logger = new Logger(CrawlScheduler.name);
+
+  constructor(@Inject(CRAWL_QUEUE) private readonly queue: Queue) {}
 
   async onModuleInit() {
-    const sources = await this.prisma.sourceConfig.findMany({
+    const sources = await getPrisma().sourceConfig.findMany({
       where: { platform: 'RSS', enabled: true },
     });
     for (const source of sources) {
@@ -436,21 +436,20 @@ model SourceConfig {
 apps/api/
 ├── src/
 │   ├── main.ts                   # 现有，无改动
-│   ├── app.module.ts             # 修改：imports 新增 PrismaModule、HotNewsModule
-│   ├── prisma/
-│   │   ├── prisma.module.ts      # @Global，提供 PrismaService（与 worker 同形态）
-│   │   └── prisma.service.ts
+│   ├── app.module.ts             # 修改：imports 新增 HotNewsModule
 │   ├── health/                   # 现有，不变
 │   └── hot-news/
 │       ├── hot-news.module.ts
 │       ├── hot-news.controller.ts
-│       ├── hot-news.service.ts
+│       ├── hot-news.service.ts   # 直接 import { getPrisma } from '@ai-hot-news/db'
 │       ├── dto/
 │       │   ├── list-hot-news.query.ts
 │       │   └── hot-news-list.response.ts
 │       └── hot-news.controller.spec.ts
 └── package.json                  # 无新依赖（class-validator/transformer SP-0 已装）
 ```
+
+> 与 worker 同样不另封装 NestJS PrismaService，直接复用 `@ai-hot-news/db` 暴露的 `getPrisma()` 单例（`HealthService` 已是这种用法）。
 
 ### 4.2 端点契约
 
@@ -517,12 +516,11 @@ export class HotNewsController {
 // hot-news.service.ts
 @Injectable()
 export class HotNewsService {
-  constructor(private readonly prisma: PrismaService) {}
-
   async list(page: number, pageSize: number): Promise<HotNewsListResponseDto> {
+    const prisma = getPrisma();  // from @ai-hot-news/db
     const skip = (page - 1) * pageSize;
-    const [rows, total] = await this.prisma.$transaction([
-      this.prisma.hotNews.findMany({
+    const [rows, total] = await prisma.$transaction([
+      prisma.hotNews.findMany({
         skip, take: pageSize,
         orderBy: { publishedAt: 'desc' },
         select: {
@@ -530,7 +528,7 @@ export class HotNewsService {
           author: true, publishedAt: true, crawledAt: true,
         },
       }),
-      this.prisma.hotNews.count(),
+      prisma.hotNews.count(),
     ]);
     return {
       items: rows.map((r) => ({
