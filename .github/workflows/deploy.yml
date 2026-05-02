@@ -17,12 +17,11 @@ jobs:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          envs: GHCR_USER,GHCR_TOKEN
+          # 用 sha-<40-char> 标签部署，与 docker/metadata-action `type=sha,format=long` 输出对齐
+          # 这样可以追溯到具体哪个 commit 上线，避免和并行 push 抢 latest tag
           script: |
             cd /srv/ai-hot-news
-            export GHCR_USER="${{ github.actor }}"
-            export GHCR_TOKEN="${{ secrets.GHCR_PULL_TOKEN }}"
-            bash scripts/deploy.sh "${{ github.event.workflow_run.head_sha }}"
+            bash scripts/deploy.sh "sha-${{ github.event.workflow_run.head_sha }}"
 
       - name: Smoke check
         run: |

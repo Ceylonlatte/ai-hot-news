@@ -19,8 +19,9 @@ echo "==> Pulling latest source"
 git fetch origin main
 git reset --hard origin/main
 
-echo "==> Logging into GHCR"
-echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+# GHCR 镜像随 public 仓库自动 public，docker pull 无需登录。
+# 若以后改 private 包，恢复 docker login：
+#   echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
 
 echo "==> Pulling latest images (tag=$IMAGE_TAG)"
 IMAGE_TAG="$IMAGE_TAG" $COMPOSE pull
