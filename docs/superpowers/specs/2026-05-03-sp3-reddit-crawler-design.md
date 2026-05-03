@@ -1,10 +1,36 @@
 # SP-3：Reddit 抓取器 设计
 
 - **日期**：2026-05-03
-- **状态**：Draft，待用户审阅
+- **状态**：Draft v2，待用户审阅（v1 OAuth 路线已废弃，详见 §0 历史）
 - **所属**：Phase 2 / SP-3（详见 `2026-05-01-ai-hot-news-decomposition-design.md` 第 6 节）
-- **预计工作量**：~1 天
+- **预计工作量**：~0.5-0.8 天（v2 比 v1 减少约 30%，无 OAuth 模块）
 - **本文档定位**：单个子项目实现 spec，用户审阅通过后调用 `writing-plans` 生成 step-by-step 实施计划。
+
+---
+
+## 0. 历史与方向调整（重要）
+
+**v1 (2026-05-03 早些)**：原计划走 Reddit OAuth Application-Only（`client_credentials` grant），用户在 https://www.reddit.com/prefs/apps 自助注册 type=script app 拿 client_id/secret。
+
+**v1 路线被废弃，原因**：
+
+1. **Reddit 2025 末上线 [Responsible Builder Policy](https://support.reddithelp.com/hc/en-us/articles/42728983564564-Responsible-Builder-Policy)**：API 接入**不再 self-service**，必须提交申请并等待 Reddit 人工审核（无明确周期，可能数周到数月，可能被拒）。用户实测点 `create app` 即被跳转到 policy 文档页且无 accept 按钮，正是该政策落地的前端表现。
+2. **凭据风险**：审批通过后的 client_secret 也要管理；任何 ToS 违规（包括 UA 不规范）会被 revoke 全部 8 sub 立即静默失败。
+3. **业务上不需要写权限**：本项目只读 `hot` 列表，无需 OAuth 提供的"代用户操作"能力。
+
+**v2 路线（本 spec 实施版）**：直接走 **Reddit 公开 `.json` 端点**（无需 OAuth）。
+
+参考研究：
+- [Reddit Has a Secret JSON API — Just Add .json to Any URL (2026)](https://dev.to/__8ef7243a4f/reddit-has-a-secret-json-api-just-add-json-to-any-url-437b) — 端点 2026 仍可用
+- [Reddit Data API 2026 Survey (DEV.to)](https://dev.to/agenthustler/reddit-data-api-2026-after-the-pricing-change-heres-what-developers-actually-use-4o2h) — 公开 .json 是 ToS 灰色区但技术上稳定，~60 req/min/IP，强制 UA
+- [github.com/karanb192/reddit-mcp-buddy issue #39](https://github.com/karanb192/reddit-mcp-buddy/issues/39) — 多个 OSS 项目 2025 末集体踩 OAuth 自助关闭的坑
+
+**v2 相对 v1 简化点**：
+- 删除整个 `RedditOAuthClient` (~110 行 + spec)
+- 删除 `REDDIT_CLIENT_ID` / `REDDIT_CLIENT_SECRET` 环境变量
+- `RedditCrawler` 直接 `fetch('https://www.reddit.com/r/{sub}/hot.json?limit=25')`
+- 增加：429 / 5xx 退避 + 强制规范 UA + IP 风控应对
+- `SourceConfig.url` 可选地直接存完整 URL，**为未来"关键词搜索源 / 多 sub 集群源 / sub 内话题搜索源"留扩展点**（详见 §1.2 与 §3.5）
 
 ---
 
@@ -12,46 +38,46 @@
 
 ### 1.1 目标
 
-在 SP-2 已抽象的 `Crawler` / `CrawlerFactory` / `CrawlScheduler` / `IngestionService` 基础设施上，新增 Reddit 数据源 —— 通过 Reddit OAuth Application-Only 授权，抓取 PRD §7.5.2 推荐的 8 个 AI 相关 subreddit 的 `hot` 列表，把帖子（包含 score / num_comments / upvote_ratio）入库到 `hot_news`。
+在 SP-2 已抽象的 `Crawler` / `CrawlerFactory` / `CrawlScheduler` / `IngestionService` 基础设施上，新增 Reddit 数据源 —— 通过 Reddit **公开 `.json` 端点**（无 OAuth，无审核）抓取 PRD §7.5.2 推荐的 8 个 AI 相关 subreddit 的 `hot` 列表，把帖子（含 score / num_comments / upvote_ratio）入库到 `hot_news`。
 
-新增的 `RedditOAuthClient` 是 SP-22（Twitter 抓取器）可直接复用的"OAuth token cache + 401 retry"模式资产。
-
-**故意不做**：评论原文抓取（→ SP-5 AI 摘要时按需 enrich）；关键词/搜索接入（→ SP-14 KeywordMonitor）；按 `upvote_ratio` 阈值过滤（→ SP-4 内容清洗）；NSFW / 政治内容过滤（→ SP-4 / SP-5）；详情页"社区情绪"分数（→ SP-6 热度公式 / SP-11 详情页）。
+**故意不做**：评论原文抓取（→ SP-5 AI 摘要时按需 enrich）；按 `upvote_ratio` 阈值过滤（→ SP-4 内容清洗）；NSFW / 政治内容过滤（→ SP-4 / SP-5）；详情页"社区情绪"分数（→ SP-6 热度公式 / SP-11 详情页）；OAuth 接入（v1 已废，未来 Reddit 重新放开 self-service 或我们获得审批后再说）；多 worker 实例 IP 共享 / 代理池（当前单 worker 容器，YAGNI）。
 
 ### 1.2 In-scope
 
 | 模块 | 内容 |
 |---|---|
 | `packages/db`（扩展） | `prisma/seed.ts` 新增 8 条 Reddit `SourceConfig`（按 PRD §7.5.2 推荐 subreddit），`crawlInterval=3600`（60 分钟）|
-| `apps/worker`（扩展，最小改造） | 新增 `RedditCrawler`、`RedditOAuthClient`、`reddit.types.ts`；`CrawlerFactory.create()` 加 `case Platform.REDDIT`；`CrawlScheduler` 的 `platform.in [...]` 加 `Platform.REDDIT`；`CrawlModule` 注册 `RedditOAuthClient` 为 provider |
+| `apps/worker`（扩展，最小改造） | 新增 `RedditCrawler`、`reddit.types.ts`；`CrawlerFactory.create()` 加 `case Platform.REDDIT`；`CrawlScheduler` 的 `platform.in [...]` 加 `Platform.REDDIT`；`CrawlModule` 注册 1 个 env value provider（`REDDIT_USER_AGENT`）|
 | `packages/types` | **不变**（SP-2 已加 `interactionData`） |
 | `packages/utils` | **不变**（`stripHtml` SP-2 已抽出，SP-3 直接用） |
 | `apps/api` | **无契约变化**（`GET /hot-news` 已 platform-agnostic） |
 | `apps/web` | **无变化**（SP-2 时已把 Reddit 红色徽章 `bg-red-50 text-red-700` 加进 `PLATFORM_BADGE_CLASS`）|
-| 环境变量 | 新增 `REDDIT_CLIENT_ID` / `REDDIT_CLIENT_SECRET` / `REDDIT_USER_AGENT`（默认 `ai-hot-news-bot/0.1 (by /u/<owner>)`）/ `REDDIT_FETCH_TIMEOUT_MS`（默认 15000）|
-| 部署 | VPS `.env` 写入真实 Reddit OAuth credentials；`scripts/deploy.sh` **不变**（auto-seed 已就位，新加的 8 条 SourceConfig 自动生效）|
+| 环境变量 | 新增 `REDDIT_USER_AGENT`（**必填**，规范格式 `<bot>/<ver> (by /u/<owner>)`）/ `REDDIT_FETCH_TIMEOUT_MS`（默认 15000）|
+| 部署 | VPS `.env` 写入真实 `REDDIT_USER_AGENT`；`scripts/deploy.sh` **不变**（auto-seed 已就位，新加的 8 条 SourceConfig 自动生效）|
 | 依赖 | **零新增**（Node 22 global `fetch`，无 Reddit SDK）|
+
+**为未来扩展预留**（spec 不实施，但架构上保证零成本接入）：
+- `seed.ts` 用 `SourceConfig.identifier` 表示 subreddit 名，`SourceConfig.url` 留 `null`（subreddit 模式）；
+- 当未来想加 **关键词搜索源**（如 "AI agent" / "Claude" 全站搜）或 **多 sub 集群源**（如 `r/MachineLearning+LocalLLaMA+OpenAI/hot`），**直接在 seed 里多塞一种形态的 SourceConfig 即可，无需改代码**。详见 §3.5。
 
 ### 1.3 Out-of-scope（明确不做）
 
-- **评论原文抓取**：PRD §7.5.3 第 4 条 "支持评论区摘要" 是 SP-5 范围。SP-3 仅记录 `comments=post.num_comments`（计数），不抓 `comments/{id}.json`。理由见 §11 OAuth 配额预算。
-- **关键词搜索 (`/r/<sub>/search.json?q=...`)**：→ SP-14 KeywordMonitor，作为另一种 source-type 接入。
-- **`upvote_ratio < 0.5` 低质量帖过滤**：→ SP-4 内容清洗。SP-3 入库所有非 stickied / 非 NSFW 帖。
-- **NSFW (`over_18=true`) 过滤之外的 mod/政治/娱乐过滤**：→ SP-4 / SP-5。SP-3 仅过滤 NSFW 和 mod 置顶（stickied）。
-- **post 编辑后回写更新 score / num_comments / upvote_ratio**：→ SP-6 时统一独立 worker `refresh-interaction-data` 解决（与 SP-2 HN 一致策略）。
-- **多 worker 实例 OAuth token 共享**：当前 prod 单 worker 容器，进程内 in-memory 缓存即可（详见 §5.3）。
-- **subreddit 自动发现 / pack 分享**：单用户场景 YAGNI（clawfeed 的 source_packs 思路记进 decomposition spec 决策日志，作为未来 SP-24 后台管理 UX 参考，不在 SP-3 实现）。
-- **`/r/<sub>/new` 或 `/top/day` 等其他 sort**：SP-3 统一 `hot`，与 PRD §7.5.2 推荐 + Reddit 自身热度算法对齐；其他 sort 留作 future identifier 扩展。
+- **OAuth 接入**：见 §0，整个废弃。
+- **评论原文抓取**：→ SP-5。
+- **关键词搜索 / 多 sub 集群源 seed**：架构留好但 **本 spec 只 seed 8 个标准 sub**，避免一次摊太多需求。
+- **`upvote_ratio < 0.5` 低质量帖过滤**：→ SP-4。
+- **NSFW (`over_18=true`) 之外的 mod / 政治 / 娱乐过滤**：→ SP-4 / SP-5。本 spec 仅过滤 NSFW + mod 置顶 (stickied)。
+- **post 编辑后回写更新 score / num_comments / upvote_ratio**：→ SP-6 独立 worker `refresh-interaction-data`（与 HN 一致策略）。
+- **代理池 / 多 IP 抓取**：YAGNI。当前 8 sub × 1 GET / h = 8 req/h，远低于 ~60 req/min/IP 的公开端点限速。
+- **`/r/<sub>/new` 或 `/top/day` 等其他 sort**：本 spec 统一 `hot`，与 PRD §7.5.2 推荐 + Reddit 自身热度算法对齐；其他 sort 留作未来扩展。
 - **列表 UI 按 platform 过滤**：→ SP-10 FeedPage。
 - **subreddit 热门帖外链正文抽取**：→ SP-4 ArticleExtractor（Reddit link-post 的 `externalUrl` 作为 SP-4 的检测哨兵之一，与 HN 共享同一处理路径）。
 
 ### 1.4 硬验收标准
 
 ```bash
-# === 本地 dev 全流程（前提：已在 https://www.reddit.com/prefs/apps 注册 type=script app）===
+# === 本地 dev 全流程 ===
 # .env 已加入：
-#   REDDIT_CLIENT_ID=xxx
-#   REDDIT_CLIENT_SECRET=yyy
 #   REDDIT_USER_AGENT=ai-hot-news-bot/0.1 (by /u/<your-username>)
 
 pnpm install                                  # 0 错（无新增依赖）
@@ -61,13 +87,12 @@ pnpm db:seed                                  # 写入 14 条 SourceConfig（3 R
 pnpm dev                                      # 三进程并行
 
 # 等待 ~5-8 分钟（worker concurrency=1 串行处理 14 个 boot job：
-#   3 × RSS + 3 × HN（30-60s 每条）+ 8 × Reddit（5-10s 每条，单 GET）≈ 总 5-8 分钟）
+#   3 × RSS + 3 × HN（30-60s 每条）+ 8 × Reddit（3-5s 每条，单 GET 公开端点）≈ 总 5-7 分钟）
 # Worker 日志期望包含：
 #   "Registered 14 enabled sources: 3 RSS, 3 HACKERNEWS, 8 REDDIT"
 #   "REDDIT crawled: source=r/LocalLLaMA fetched=25 inserted=A skipped=B failed=0"
 #   ... 8 行 REDDIT crawled
-#   首次 OAuth：1 条 "Reddit OAuth: refreshed token (expires in 86400s)"
-#   后续 7 条 Reddit crawl 无新 token 请求（缓存复用）
+#   不应出现：任何 OAuth / token / 401 字样
 
 # === API 验证 ===
 curl 'localhost:3001/hot-news?pageSize=200' | jq '.items | group_by(.sourcePlatform) | map({plat: .[0].sourcePlatform, n: length})'
@@ -98,11 +123,15 @@ curl 'localhost:3001/hot-news?pageSize=1' | jq '.total'
 # 期望：第二次启动后 total 增量 ≪ 第一次（hot 榜变化少，大部分 P2002 跳过）
 # 期望日志含：8 行 "REDDIT crawled: ... skipped=>15"（25 - hot 榜变化数）
 
+# === 429 退避验证（人工触发或集成测试 mock）===
+# RedditCrawler 单元测试覆盖：第一次 fetch 返回 429 + Retry-After: 5 → throw → BullMQ 退避重试
+# 不在硬验收里手工触发（本 spec 不主动撞限速）
+
 # === CI ===
-# ci.yml 全绿（含新加 RedditOAuthClient + RedditCrawler 单元测试 + IngestionService Reddit case 集成测试）
+# ci.yml 全绿（含新加 RedditCrawler 单元测试 + IngestionService Reddit case 集成测试）
 
 # === 部署后（push 到 main 触发 deploy.yml）===
-# 1. VPS .env 提前加入 REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET / REDDIT_USER_AGENT
+# 1. VPS .env 提前加入 REDDIT_USER_AGENT
 # 2. deploy.sh 自动跑 prisma db seed → 14 条 SourceConfig 入库
 # 3. deploy.sh 自动 restart worker → 8 个 Reddit boot job 在 5 分钟内完成
 curl https://<domain>/api/hot-news?pageSize=200 | jq '.items | map(.sourcePlatform) | unique'
@@ -143,16 +172,19 @@ curl https://<domain>/api/hot-news?pageSize=200 | jq '.items | map(.sourcePlatfo
 │   │     switch source.platform                                             │
 │   │       case 'RSS'        → new RssCrawler({id, url})                    │
 │   │       case 'HACKERNEWS' → new HackerNewsCrawler({id, identifier})      │
-│   │       case 'REDDIT'     → new RedditCrawler({id, identifier},          │
-│   │                              this.oauthClient)        ← SP-3 新增      │
+│   │       case 'REDDIT'     → new RedditCrawler({id, url, identifier},    │
+│   │                              userAgent)                ← SP-3 新增      │
 │   ├─ items = await crawler.fetch()                                         │
 │   └─ ingestion.ingest(items, source) → 透传 interactionData                │
 │                                                                            │
 │  RedditCrawler.fetch()                                            ← 新增   │
-│   ├─ subreddit = source.identifier  // 'LocalLLaMA' / 'OpenAI' / ...       │
-│   ├─ url = `https://oauth.reddit.com/r/${subreddit}/hot?limit=25`          │
-│   ├─ res = await this.oauth.fetch(url)                                     │
-│   │     OAuthClient 处理 token cache + 401 自动 refresh + 一次 retry       │
+│   ├─ url = source.url ?? `https://www.reddit.com/r/${identifier}/hot.json` │
+│   │       + ?limit=25&raw_json=1                                            │
+│   │       （url 优先：未来加搜索源 / 多 sub 集群源时直接 seed 完整 URL）   │
+│   ├─ res = fetch(url, { headers: { 'User-Agent': REDDIT_USER_AGENT },     │
+│   │                     signal: AbortSignal.timeout(REDDIT_FETCH_TIMEOUT) })│
+│   ├─ 429 → throw with Retry-After hint → BullMQ 指数退避                  │
+│   ├─ 5xx → throw → BullMQ 指数退避                                         │
 │   ├─ posts = res.data.children.map(c => c.data)  // 25 RedditPost          │
 │   ├─ filter !post.stickied && !post.over_18 && post.title (isValidPost)    │
 │   └─ map → RawCrawledItem[]                                                │
@@ -164,23 +196,6 @@ curl https://<domain>/api/hot-news?pageSize=200 | jq '.items | map(.sourcePlatfo
 │         interactionData 字段:                                              │
 │           { score, comments, externalUrl,                                  │
 │             redditId, redditSubreddit, redditUpvoteRatio }                 │
-│                                                                            │
-│  RedditOAuthClient（单例 provider）                              ← 新增    │
-│   ├─ private token: { value, expiresAt } | null = null                     │
-│   ├─ fetch(url, init?):                                                    │
-│   │     ├─ token = await getToken()  // cache hit OR refreshToken()       │
-│   │     ├─ res = doFetch(url, token)                                       │
-│   │     ├─ if res.status === 401 (token revoked):                          │
-│   │     │     this.token = null                                            │
-│   │     │     token = await getToken()                                     │
-│   │     │     res = doFetch(url, token)                                    │
-│   │     └─ return res                                                      │
-│   ├─ private getToken(): cache 内 → 复用；过期/null → refreshToken()     │
-│   └─ private refreshToken():                                               │
-│         POST https://www.reddit.com/api/v1/access_token                    │
-│           Authorization: Basic base64(client_id:secret)                    │
-│           grant_type=client_credentials                                    │
-│         res.access_token, res.expires_in (默认 86400s = 24h)              │
 └────────────────────────────────────────────────────────────────────────────┘
                                   │
                                   ▼ 写入
@@ -201,43 +216,25 @@ curl https://<domain>/api/hot-news?pageSize=200 | jq '.items | map(.sourcePlatfo
 
 | 单元 | 输入 | 输出 | 依赖 | 备注 |
 |---|---|---|---|---|
-| `RedditOAuthClient`（worker 新增） | `clientId / clientSecret / userAgent` | `fetch(url, init?): Promise<Response>` | global `fetch`、`Logger` | 单例（CrawlModule provider）；in-memory token cache + 401 retry |
-| `RedditCrawler`（worker 新增） | `{ id, identifier: subreddit-name }` + `RedditOAuthClient` 引用 | `Promise<RawCrawledItem[]>` | `RedditOAuthClient`、`stripHtml`、`reddit.types` | 实现 `Crawler` 接口；通过 oauth client fetch 单个 `/r/<sub>/hot.json` |
-| `CrawlerFactory`（worker 改造） | `SourceConfig` | `Crawler` | `RssCrawler`、`HackerNewsCrawler`、`RedditCrawler` + `RedditOAuthClient` | 加 `case Platform.REDDIT`；factory 构造函数注入 `RedditOAuthClient`，传给 `RedditCrawler` |
+| `RedditCrawler`（worker 新增） | `{ id, url, identifier }` + `userAgent: string` | `Promise<RawCrawledItem[]>` | global `fetch`、`stripHtml`、`reddit.types` | 实现 `Crawler` 接口；`url` 优先（未来扩展形态），缺省按 `identifier` 拼 `/r/<sub>/hot.json` |
+| `CrawlerFactory`（worker 改造） | `SourceConfig` | `Crawler` | `RssCrawler`、`HackerNewsCrawler`、`RedditCrawler` + `REDDIT_USER_AGENT` | 加 `case Platform.REDDIT`；构造函数注入 `REDDIT_USER_AGENT` 字符串，传给 `RedditCrawler` |
 | `CrawlScheduler`（worker 微调） | — | repeatable + boot enqueue | Queue、Prisma | `platform.in [...]` 加 `Platform.REDDIT` |
-| `CrawlModule`（worker 微调） | — | DI 容器 | `RedditOAuthClient` 注册为 `@Injectable()` provider | `CrawlerFactory.create()` 路由到 `RedditCrawler` 时注入 |
+| `CrawlModule`（worker 微调） | — | DI 容器 | 注册 `REDDIT_USER_AGENT` 为 value provider | `CrawlerFactory` 构造函数 inject |
 
 ### 2.3 关键接口签名（变化）
 
 ```ts
-// apps/worker/src/crawl/crawlers/reddit-oauth.client.ts —— 新增
-@Injectable()
-export class RedditOAuthClient {
-  constructor(
-    @Inject(REDDIT_CLIENT_ID) private readonly clientId: string,
-    @Inject(REDDIT_CLIENT_SECRET) private readonly clientSecret: string,
-    @Inject(REDDIT_USER_AGENT) private readonly userAgent: string,
-  ) {}
-
-  /** 自动续 token + 401 一次重试。所有 RedditCrawler 的 fetch 走这个。 */
-  async fetch(url: string, init?: RequestInit): Promise<Response>;
-
-  // 内部：缓存 / 续 token / 实际 GET
-  private async getToken(): Promise<string>;
-  private async refreshToken(): Promise<void>;
-  private async doFetch(url: string, token: string, init?: RequestInit): Promise<Response>;
-}
-
 // apps/worker/src/crawl/crawlers/reddit.crawler.ts —— 新增
-interface RedditSource {
+export interface RedditSource {
   id: string;
-  identifier: string | null;  // subreddit name, e.g. "LocalLLaMA"
+  url: string | null;          // 优先：完整 URL（搜索源 / 集群源）
+  identifier: string | null;   // 缺省：subreddit 名（拼 /r/<sub>/hot.json）
 }
 
 export class RedditCrawler implements Crawler {
   constructor(
     private readonly source: RedditSource,
-    private readonly oauth: RedditOAuthClient,
+    private readonly userAgent: string,
   ) {}
 
   async fetch(): Promise<RawCrawledItem[]>;
@@ -253,8 +250,8 @@ export interface CrawlerSource {
 
 @Injectable()
 export class CrawlerFactory {
-  // 改造：构造函数注入 RedditOAuthClient
-  constructor(private readonly redditOauth: RedditOAuthClient) {}
+  // 改造：构造函数注入 REDDIT_USER_AGENT 字符串
+  constructor(@Inject(REDDIT_USER_AGENT) private readonly redditUserAgent: string) {}
 
   create(source: CrawlerSource): Crawler {
     switch (source.platform) {
@@ -263,7 +260,10 @@ export class CrawlerFactory {
       case Platform.HACKERNEWS:
         return new HackerNewsCrawler({ id: source.id, identifier: source.identifier });
       case Platform.REDDIT:
-        return new RedditCrawler({ id: source.id, identifier: source.identifier }, this.redditOauth);
+        return new RedditCrawler(
+          { id: source.id, url: source.url, identifier: source.identifier },
+          this.redditUserAgent,
+        );
       default:
         throw new Error(`Unsupported crawler platform: ${source.platform}`);
     }
@@ -278,27 +278,23 @@ export class CrawlerFactory {
 | `DATABASE_URL` / `REDIS_URL` | api / worker | SP-0 | 不变 |
 | `RSS_USER_AGENT` | RSS / HN crawler | `ai-hot-news-bot/0.1` | 不变（Reddit 走独立 `REDDIT_USER_AGENT`，因为 Reddit 要求 UA 含联系人 `(by /u/<username>)`）|
 | `RSS_FETCH_TIMEOUT_MS` / `HN_FETCH_TIMEOUT_MS` / `HN_CONCURRENCY` | RSS / HN | SP-1 / SP-2 | 不变 |
-| `REDDIT_CLIENT_ID` | RedditOAuthClient | — | **新增**，必填，从 https://www.reddit.com/prefs/apps 获取 |
-| `REDDIT_CLIENT_SECRET` | RedditOAuthClient | — | **新增**，必填，同上 |
-| `REDDIT_USER_AGENT` | RedditOAuthClient + RedditCrawler | `ai-hot-news-bot/0.1 (by /u/anonymous)` | **新增**，**Reddit 要求 UA 唯一且含联系人**，prod 应填真实 username |
+| `REDDIT_USER_AGENT` | RedditCrawler | `ai-hot-news-bot/0.1 (by /u/anonymous)` | **新增**，**Reddit 强烈要求 UA 唯一且含联系人**，prod 应填真实 username |
 | `REDDIT_FETCH_TIMEOUT_MS` | RedditCrawler | `15000` | **新增** |
+
+**注意**：相比 v1 spec **不再需要** `REDDIT_CLIENT_ID` / `REDDIT_CLIENT_SECRET`。
 
 新增变量加进 `apps/worker/.env.example`：
 
 ```
 # Reddit
-REDDIT_CLIENT_ID=
-REDDIT_CLIENT_SECRET=
 REDDIT_USER_AGENT=ai-hot-news-bot/0.1 (by /u/anonymous)
 REDDIT_FETCH_TIMEOUT_MS=15000
 ```
 
-> **Reddit UA 政策**：Reddit API ToS 要求 UA 不能伪装浏览器、必须唯一标识应用、推荐含联系方式。`ai-hot-news-bot/0.1 (by /u/<owner-username>)` 格式符合规范。prod 部署时把 `<owner-username>` 替换为账号持有人的 Reddit 用户名（不是必须真实存在的账号，但建议是 owner 的 reddit handle 便于 Reddit team 联系）。
-
-> **DI 注入选择**：`REDDIT_CLIENT_ID` 等通过 `@Inject(REDDIT_CLIENT_ID)` token 注入而非直接 `process.env.REDDIT_CLIENT_ID`，便于测试 mock 和未来切换 ConfigService。`CrawlModule` 注册 valueProvider 把 env → token：
+> **Reddit UA 政策**：Reddit 要求 UA 不能伪装浏览器、必须唯一标识应用、推荐含联系方式。`ai-hot-news-bot/0.1 (by /u/<owner-username>)` 格式符合规范。**默认 UA `(by /u/anonymous)` 在生产严格意义上不合规，必须 prod 部署前替换为真实 owner 的 reddit handle**。否则可能被 IP 封禁。
+>
+> **DI 注入选择**：`REDDIT_USER_AGENT` 通过 `@Inject(REDDIT_USER_AGENT)` token 注入而非直接 `process.env.REDDIT_USER_AGENT`，便于测试 mock 和未来切换 ConfigService。`CrawlModule` 注册 valueProvider 把 env → token：
 > ```ts
-> { provide: REDDIT_CLIENT_ID, useFactory: () => process.env.REDDIT_CLIENT_ID ?? '' },
-> { provide: REDDIT_CLIENT_SECRET, useFactory: () => process.env.REDDIT_CLIENT_SECRET ?? '' },
 > { provide: REDDIT_USER_AGENT, useFactory: () => process.env.REDDIT_USER_AGENT ?? 'ai-hot-news-bot/0.1 (by /u/anonymous)' },
 > ```
 
@@ -313,11 +309,11 @@ apps/worker/
 ├── src/
 │   ├── worker.module.ts                          # 不变
 │   └── crawl/
-│       ├── crawl.module.ts                       # 修改：注册 RedditOAuthClient + 3 个 env value providers
+│       ├── crawl.module.ts                       # 修改：注册 REDDIT_USER_AGENT value provider
 │       ├── crawl.processor.ts                    # 不变
 │       ├── crawl.scheduler.ts                    # 修改：platform.in [...] 加 REDDIT
 │       ├── crawl.scheduler.spec.ts               # 修改：assertion 加 REDDIT 计数
-│       ├── crawler.factory.ts                    # 修改：构造函数注入 RedditOAuthClient + 加 case REDDIT
+│       ├── crawler.factory.ts                    # 修改：构造函数注入 REDDIT_USER_AGENT + 加 case REDDIT
 │       ├── crawler.factory.spec.ts               # 修改：加 REDDIT 路由测试
 │       ├── ingestion.service.ts                  # 不变（SP-2 已通用化）
 │       ├── ingestion.service.integration.spec.ts # 修改：加 REDDIT case
@@ -330,17 +326,14 @@ apps/worker/
 │       │   ├── hackernews.types.ts               # 不变
 │       │   ├── reddit.crawler.ts                 # 新增
 │       │   ├── reddit.crawler.spec.ts            # 新增
-│       │   ├── reddit.types.ts                   # 新增（RedditPost / RedditListingResponse 接口）
-│       │   ├── reddit-oauth.client.ts            # 新增
-│       │   └── reddit-oauth.client.spec.ts       # 新增
+│       │   └── reddit.types.ts                   # 新增（RedditPost / RedditListingResponse + REDDIT_USER_AGENT token 接口）
 │       └── fixtures/
 │           ├── (existing rss/hn fixtures)        # 不变
 │           ├── reddit-hot-listing.json           # 新增（mock /r/<sub>/hot.json 标准 listing 响应，含 5 条混合 post）
 │           ├── reddit-self-post.json             # 新增（is_self=true，含 selftext_html）
 │           ├── reddit-link-post.json             # 新增（is_self=false，含 url 外链）
 │           ├── reddit-stickied-post.json         # 新增（stickied=true，应被过滤）
-│           ├── reddit-nsfw-post.json             # 新增（over_18=true，应被过滤）
-│           └── reddit-oauth-token.json           # 新增（mock POST /api/v1/access_token 响应）
+│           └── reddit-nsfw-post.json             # 新增（over_18=true，应被过滤）
 └── package.json                                  # 不变（无新依赖）
 ```
 
@@ -349,174 +342,87 @@ packages/db/prisma/
 └── seed.ts                                       # 修改：加 8 条 Reddit candidates + seedReddit() + main() 调用
 ```
 
-### 3.2 RedditOAuthClient 详细实现
+**对比 v1 删除的文件**：
+- `reddit-oauth.client.ts`（删）
+- `reddit-oauth.client.spec.ts`（删）
+- `reddit-oauth-token.json` fixture（删）
 
-```ts
-// apps/worker/src/crawl/crawlers/reddit-oauth.client.ts
-import { Inject, Injectable, Logger } from '@nestjs/common';
-
-export const REDDIT_CLIENT_ID = Symbol('REDDIT_CLIENT_ID');
-export const REDDIT_CLIENT_SECRET = Symbol('REDDIT_CLIENT_SECRET');
-export const REDDIT_USER_AGENT = Symbol('REDDIT_USER_AGENT');
-
-const TOKEN_URL = 'https://www.reddit.com/api/v1/access_token';
-
-interface CachedToken {
-  value: string;
-  expiresAt: number; // unix ms
-}
-
-interface TokenResponse {
-  access_token: string;
-  token_type: 'bearer';
-  expires_in: number; // seconds，默认 86400 = 24h
-  scope: string;
-}
-
-@Injectable()
-export class RedditOAuthClient {
-  private readonly logger = new Logger(RedditOAuthClient.name);
-  private token: CachedToken | null = null;
-
-  constructor(
-    @Inject(REDDIT_CLIENT_ID) private readonly clientId: string,
-    @Inject(REDDIT_CLIENT_SECRET) private readonly clientSecret: string,
-    @Inject(REDDIT_USER_AGENT) private readonly userAgent: string,
-  ) {}
-
-  async fetch(url: string, init?: RequestInit): Promise<Response> {
-    let token = await this.getToken();
-    let res = await this.doFetch(url, token, init);
-    if (res.status === 401) {
-      this.logger.warn(`Reddit OAuth: 401 received, clearing cached token and retrying`);
-      this.token = null;
-      token = await this.getToken();
-      res = await this.doFetch(url, token, init);
-    }
-    return res;
-  }
-
-  private async getToken(): Promise<string> {
-    if (this.token && this.token.expiresAt > Date.now() + 60_000) {
-      // 提前 60s 续期，避免请求中途过期
-      return this.token.value;
-    }
-    await this.refreshToken();
-    if (!this.token) {
-      throw new Error('Reddit OAuth: token refresh succeeded but cache empty');
-    }
-    return this.token.value;
-  }
-
-  private async refreshToken(): Promise<void> {
-    if (!this.clientId || !this.clientSecret) {
-      throw new Error(
-        'Reddit OAuth: REDDIT_CLIENT_ID and REDDIT_CLIENT_SECRET must be set',
-      );
-    }
-    const basicAuth = Buffer.from(`${this.clientId}:${this.clientSecret}`).toString('base64');
-    const res = await fetch(TOKEN_URL, {
-      method: 'POST',
-      signal: AbortSignal.timeout(this.timeoutMs()),
-      headers: {
-        'Authorization': `Basic ${basicAuth}`,
-        'User-Agent': this.userAgent,
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: 'grant_type=client_credentials',
-    });
-    if (!res.ok) {
-      throw new Error(
-        `Reddit OAuth: token refresh failed ${res.status} ${res.statusText}`,
-      );
-    }
-    const data = (await res.json()) as TokenResponse;
-    this.token = {
-      value: data.access_token,
-      expiresAt: Date.now() + data.expires_in * 1000,
-    };
-    this.logger.log(
-      `Reddit OAuth: refreshed token (expires in ${data.expires_in}s)`,
-    );
-  }
-
-  private async doFetch(
-    url: string,
-    token: string,
-    init?: RequestInit,
-  ): Promise<Response> {
-    return fetch(url, {
-      ...init,
-      signal: init?.signal ?? AbortSignal.timeout(this.timeoutMs()),
-      headers: {
-        ...(init?.headers as Record<string, string> | undefined),
-        'Authorization': `Bearer ${token}`,
-        'User-Agent': this.userAgent,
-      },
-    });
-  }
-
-  private timeoutMs(): number {
-    const raw = parseInt(process.env.REDDIT_FETCH_TIMEOUT_MS ?? '15000', 10);
-    return Number.isFinite(raw) && raw > 0 ? raw : 15000;
-  }
-}
-```
-
-> **设计要点**：
-> 1. **构造函数注入 string** 而非读 `process.env`：单元测试可直接 `new RedditOAuthClient('test-id', 'test-secret', 'test-ua')`，无需 mock global env。
-> 2. **token cache 提前 60s 续期**：避免 fetch 发出后 token 在飞行中过期。Reddit token 默认 24h 有效，60s 缓冲完全够。
-> 3. **401 仅一次重试**：避免 credentials 永久失效时无限循环。第二次仍 401 → throw → BullMQ 自然重试。
-> 4. **`timeoutMs()` 走 method 而非构造时读**：与 `HackerNewsCrawler` 风格保持一致；env 改了之后下次抓取就生效，无需 worker 重启。
-
-### 3.3 RedditCrawler 详细实现
+### 3.2 RedditCrawler 详细实现
 
 ```ts
 // apps/worker/src/crawl/crawlers/reddit.crawler.ts
 import { stripHtml } from '@ai-hot-news/utils';
 import type { RawCrawledItem } from '@ai-hot-news/types';
 import type { Crawler } from './crawler.interface';
-import type { RedditOAuthClient } from './reddit-oauth.client';
 import type { RedditListingResponse, RedditPost } from './reddit.types';
 
-const REDDIT_BASE = 'https://oauth.reddit.com';
 const HOT_LIMIT = 25;
 
-interface RedditSource {
+export interface RedditSource {
   id: string;
-  identifier: string | null;
+  url: string | null;          // 优先：完整 URL（搜索 / 多 sub 集群）
+  identifier: string | null;   // 缺省：subreddit 名（拼 /r/<sub>/hot.json）
 }
 
 export class RedditCrawler implements Crawler {
   constructor(
     private readonly source: RedditSource,
-    private readonly oauth: RedditOAuthClient,
+    private readonly userAgent: string,
   ) {}
 
   async fetch(): Promise<RawCrawledItem[]> {
-    const subreddit = this.source.identifier;
-    if (!subreddit) {
+    const url = this.resolveUrl();
+    const subredditHint = this.resolveSubredditHint();
+
+    const res = await fetch(url, {
+      signal: AbortSignal.timeout(this.timeoutMs()),
+      headers: {
+        'User-Agent': this.userAgent,
+        'Accept': 'application/json',
+      },
+    });
+
+    if (res.status === 429) {
+      const retryAfter = res.headers.get('retry-after') ?? 'unknown';
       throw new Error(
-        `Reddit SourceConfig ${this.source.id} missing identifier (subreddit name)`,
+        `Reddit rate-limited (429) for ${url}, Retry-After=${retryAfter}`,
       );
     }
-    const url = `${REDDIT_BASE}/r/${subreddit}/hot?limit=${HOT_LIMIT}&raw_json=1`;
-    const res = await this.oauth.fetch(url);
     if (!res.ok) {
       throw new Error(
-        `Reddit fetch ${res.status} ${res.statusText} for r/${subreddit}`,
+        `Reddit fetch ${res.status} ${res.statusText} for ${url}`,
       );
     }
+
     const data = (await res.json()) as RedditListingResponse;
     if (data?.kind !== 'Listing' || !Array.isArray(data?.data?.children)) {
       throw new Error(
-        `Reddit r/${subreddit} response not a Listing: ${JSON.stringify(data).slice(0, 100)}`,
+        `Reddit ${url} response not a Listing: ${JSON.stringify(data).slice(0, 100)}`,
       );
     }
     const posts = data.data.children
       .map((c) => c.data)
       .filter(this.isValidPost);
-    return posts.map((p) => this.toRaw(p, subreddit));
+    return posts.map((p) => this.toRaw(p, subredditHint));
+  }
+
+  private resolveUrl(): string {
+    // url 优先：未来扩展形态（关键词搜索 / 多 sub 集群）seed 时直接给完整 URL
+    if (this.source.url && this.source.url.trim().length > 0) {
+      return this.source.url;
+    }
+    if (!this.source.identifier) {
+      throw new Error(
+        `Reddit SourceConfig ${this.source.id} missing both url and identifier`,
+      );
+    }
+    return `https://www.reddit.com/r/${this.source.identifier}/hot.json?limit=${HOT_LIMIT}&raw_json=1`;
+  }
+
+  /** subredditHint 用于把 RedditPost.subreddit 透传到 interactionData。
+   *  优先 source.identifier；没有时 fallback 到 post.subreddit（多 sub 集群源走这条）。 */
+  private resolveSubredditHint(): string | null {
+    return this.source.identifier;
   }
 
   private isValidPost = (p: RedditPost): boolean => {
@@ -528,9 +434,11 @@ export class RedditCrawler implements Crawler {
     return true;
   };
 
-  private toRaw(p: RedditPost, subreddit: string): RawCrawledItem {
+  private toRaw(p: RedditPost, subredditHint: string | null): RawCrawledItem {
     const isSelfPost = !!p.is_self;
     const selftextHtml = (p.selftext_html ?? '').trim();
+    // 多 sub 集群源（subredditHint=null）时走 post.subreddit；标准 sub 源走 hint
+    const subreddit = subredditHint ?? p.subreddit ?? 'unknown';
     return {
       title: p.title,
       contentText: isSelfPost ? stripHtml(selftextHtml || p.title) : p.title,
@@ -548,11 +456,18 @@ export class RedditCrawler implements Crawler {
       },
     };
   }
+
+  private timeoutMs(): number {
+    const raw = parseInt(process.env.REDDIT_FETCH_TIMEOUT_MS ?? '15000', 10);
+    return Number.isFinite(raw) && raw > 0 ? raw : 15000;
+  }
 }
 ```
 
 ```ts
 // apps/worker/src/crawl/crawlers/reddit.types.ts
+export const REDDIT_USER_AGENT = Symbol('REDDIT_USER_AGENT');
+
 export interface RedditListingResponse {
   kind: 'Listing';
   data: {
@@ -585,23 +500,28 @@ export interface RedditPost {
 ```
 
 > **设计要点**：
-> 1. **`?raw_json=1`**：Reddit 默认会把响应里的 `<` `>` `&` 转义为 HTML entity（`&lt;`），加这个参数关闭转义，让 `selftext_html` 直接可用。
-> 2. **`sourceUrl` 用 reddit permalink 而非 `post.url`**：与 SP-2 HN 的设计对齐 —— 同一外链可能在多个 subreddit 出现，外链作为 `interactionData.externalUrl` 字段保留，但 `sourceUrl`（去重锚点）是 reddit 自身的稳定 permalink。
-> 3. **`author='[deleted]'` 归一化为 null**：Reddit 把已删用户的 author 字段填字符串 `"[deleted]"`，不是真 author，归一化避免污染查询。
-> 4. **不抓 `selftext`（markdown 原文）**：只抓 `selftext_html`，因为 SP-2 HN 也是存 HTML，保持一致；后续 SP-5 摘要 / SP-4 清洗都从 HTML 走 stripHtml。
-> 5. **`upvote_ratio` 可能为 null**：极冷帖（投票数 < 3）Reddit 不计算 ratio，设为 `null` 透传；SP-6 热度公式消费时要 nullable handling。
+> 1. **公开端点 `https://www.reddit.com/r/<sub>/hot.json` 而非 `oauth.reddit.com`**：v1 → v2 唯一核心变化。无需 token。
+> 2. **`?raw_json=1`**：Reddit 默认会把响应里的 `<` `>` `&` 转义为 HTML entity（`&lt;`），加这个参数关闭转义，让 `selftext_html` 直接可用。
+> 3. **`?limit=25`**：与 SP-2 / v1 一致。
+> 4. **`url` 优先于 `identifier`**：seed 给完整 URL 时直接用（搜索源 / 集群源走这条）；只给 subreddit 名时拼标准 hot.json。代码无 if-else 分叉，`resolveUrl()` 一处处理。
+> 5. **429 单独识别 + 包含 Retry-After**：日志明确，便于运维诊断；不在 crawler 层做主动 sleep（避免阻塞 BullMQ 单 worker concurrency=1），交给 BullMQ 退避。
+> 6. **`sourceUrl` 用 reddit permalink 而非 `post.url`**：与 SP-2 HN 的设计对齐 —— 同一外链可能在多个 subreddit 出现，外链作为 `interactionData.externalUrl` 字段保留，但 `sourceUrl`（去重锚点）是 reddit 自身的稳定 permalink。
+> 7. **`author='[deleted]'` 归一化为 null**。
+> 8. **不抓 `selftext`（markdown 原文）**：只抓 `selftext_html`，与 SP-2 HN 一致。
+> 9. **`upvote_ratio` 可能为 null**：极冷帖（投票数 < 3）Reddit 不计算 ratio，设为 `null` 透传；SP-6 热度公式消费时要 nullable handling。
+> 10. **`subredditHint=null` fallback 到 `post.subreddit`**：为未来"多 sub 集群源"（如 `r/A+B+C/hot`）预留，标准 sub 源行为不变。
 
-### 3.4 CrawlerFactory 改造
+### 3.3 CrawlerFactory 改造
 
 ```ts
 // apps/worker/src/crawl/crawler.factory.ts —— 改造后
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { Platform } from '@ai-hot-news/db';
 import type { Crawler } from './crawlers/crawler.interface';
 import { RssCrawler } from './crawlers/rss.crawler';
 import { HackerNewsCrawler } from './crawlers/hackernews.crawler';
 import { RedditCrawler } from './crawlers/reddit.crawler';
-import { RedditOAuthClient } from './crawlers/reddit-oauth.client';
+import { REDDIT_USER_AGENT } from './crawlers/reddit.types';
 
 export interface CrawlerSource {
   id: string;
@@ -612,7 +532,9 @@ export interface CrawlerSource {
 
 @Injectable()
 export class CrawlerFactory {
-  constructor(private readonly redditOauth: RedditOAuthClient) {}
+  constructor(
+    @Inject(REDDIT_USER_AGENT) private readonly redditUserAgent: string,
+  ) {}
 
   create(source: CrawlerSource): Crawler {
     switch (source.platform) {
@@ -622,8 +544,8 @@ export class CrawlerFactory {
         return new HackerNewsCrawler({ id: source.id, identifier: source.identifier });
       case Platform.REDDIT:
         return new RedditCrawler(
-          { id: source.id, identifier: source.identifier },
-          this.redditOauth,
+          { id: source.id, url: source.url, identifier: source.identifier },
+          this.redditUserAgent,
         );
       default:
         throw new Error(`Unsupported crawler platform: ${source.platform}`);
@@ -632,7 +554,7 @@ export class CrawlerFactory {
 }
 ```
 
-### 3.5 CrawlScheduler 改造（极小）
+### 3.4 CrawlScheduler 改造（极小）
 
 ```ts
 // apps/worker/src/crawl/crawl.scheduler.ts —— 仅一处改动
@@ -646,11 +568,11 @@ const sources = await getPrisma().sourceConfig.findMany({
 
 > 其他逻辑（obliterate 老队列、repeatable + boot enqueue、按 platform 分组日志）SP-2 已建立，SP-3 不动。
 
-### 3.6 CrawlModule 改造
+### 3.5 CrawlModule 改造
 
 ```ts
 // apps/worker/src/crawl/crawl.module.ts —— 增量
-import { RedditOAuthClient, REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET, REDDIT_USER_AGENT } from './crawlers/reddit-oauth.client';
+import { REDDIT_USER_AGENT } from './crawlers/reddit.types';
 
 @Module({
   providers: [
@@ -665,15 +587,6 @@ import { RedditOAuthClient, REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET, REDDIT_USER_
     CrawlerFactory,
     CrawlScheduler,
     // === SP-3 新增 ===
-    RedditOAuthClient,
-    {
-      provide: REDDIT_CLIENT_ID,
-      useFactory: () => process.env.REDDIT_CLIENT_ID ?? '',
-    },
-    {
-      provide: REDDIT_CLIENT_SECRET,
-      useFactory: () => process.env.REDDIT_CLIENT_SECRET ?? '',
-    },
     {
       provide: REDDIT_USER_AGENT,
       useFactory: () => process.env.REDDIT_USER_AGENT ?? 'ai-hot-news-bot/0.1 (by /u/anonymous)',
@@ -683,6 +596,22 @@ import { RedditOAuthClient, REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET, REDDIT_USER_
 })
 export class CrawlModule { /* 其余不变 */ }
 ```
+
+### 3.6 SourceConfig.url 与 .identifier 的语义约定（重要扩展点）
+
+| Source 形态 | `platform` | `url` | `identifier` | RedditCrawler 行为 |
+|---|---|---|---|---|
+| **标准 subreddit hot**（本 spec 默认）| `REDDIT` | `null` | `"LocalLLaMA"` | 拼 `https://www.reddit.com/r/LocalLLaMA/hot.json?limit=25&raw_json=1` |
+| **关键词全站搜索**（未来扩展）| `REDDIT` | `https://www.reddit.com/search.json?q=AI+agent&sort=new&t=day&limit=25` | `null` | 直接用 url；`subredditHint=null` → 走 `post.subreddit` 透传 |
+| **sub 内话题搜索**（未来扩展）| `REDDIT` | `https://www.reddit.com/r/MachineLearning/search.json?q=agent&restrict_sr=1&sort=hot` | `"MachineLearning"` | 直接用 url；`subredditHint=identifier` |
+| **多 sub 集群 hot**（未来扩展）| `REDDIT` | `https://www.reddit.com/r/MachineLearning+LocalLLaMA+OpenAI/hot.json?limit=50` | `null` | 直接用 url；`subredditHint=null` → 走 `post.subreddit` |
+
+**原则**：
+- `url` 非空 → 直接 fetch（任意合法 Reddit `.json` 端点）
+- `url` 空 + `identifier` 非空 → 走 subreddit hot 默认拼接
+- 二者都空 → throw（seed 错误）
+
+**本 spec 仅 seed 8 条标准 subreddit 形态**，但代码已具备处理另外 3 种形态的能力，未来加扩展无需改 RedditCrawler。
 
 ---
 
@@ -748,19 +677,20 @@ LIMIT 100;
 interface RedditCandidate {
   name: string;            // 显示名，如 "r/LocalLLaMA"
   identifier: string;      // subreddit 名，如 "LocalLLaMA"
+  url: string | null;      // 标准 sub 形态用 null；未来扩展形态填完整 URL
   enabled: boolean;
   crawlInterval: number;   // 秒
 }
 
 const redditCandidates: RedditCandidate[] = [
-  { name: 'r/LocalLLaMA',       identifier: 'LocalLLaMA',       enabled: true, crawlInterval: 3600 },
-  { name: 'r/MachineLearning',  identifier: 'MachineLearning',  enabled: true, crawlInterval: 3600 },
-  { name: 'r/artificial',       identifier: 'artificial',       enabled: true, crawlInterval: 3600 },
-  { name: 'r/OpenAI',           identifier: 'OpenAI',           enabled: true, crawlInterval: 3600 },
-  { name: 'r/ChatGPT',          identifier: 'ChatGPT',          enabled: true, crawlInterval: 3600 },
-  { name: 'r/singularity',      identifier: 'singularity',      enabled: true, crawlInterval: 3600 },
-  { name: 'r/StableDiffusion',  identifier: 'StableDiffusion',  enabled: true, crawlInterval: 3600 },
-  { name: 'r/ClaudeAI',         identifier: 'ClaudeAI',         enabled: true, crawlInterval: 3600 },
+  { name: 'r/LocalLLaMA',       identifier: 'LocalLLaMA',       url: null, enabled: true, crawlInterval: 3600 },
+  { name: 'r/MachineLearning',  identifier: 'MachineLearning',  url: null, enabled: true, crawlInterval: 3600 },
+  { name: 'r/artificial',       identifier: 'artificial',       url: null, enabled: true, crawlInterval: 3600 },
+  { name: 'r/OpenAI',           identifier: 'OpenAI',           url: null, enabled: true, crawlInterval: 3600 },
+  { name: 'r/ChatGPT',          identifier: 'ChatGPT',          url: null, enabled: true, crawlInterval: 3600 },
+  { name: 'r/singularity',      identifier: 'singularity',      url: null, enabled: true, crawlInterval: 3600 },
+  { name: 'r/StableDiffusion',  identifier: 'StableDiffusion',  url: null, enabled: true, crawlInterval: 3600 },
+  { name: 'r/ClaudeAI',         identifier: 'ClaudeAI',         url: null, enabled: true, crawlInterval: 3600 },
 ];
 
 async function seedReddit() {
@@ -774,6 +704,7 @@ async function seedReddit() {
         where: { id: existing.id },
         data: {
           name: c.name,
+          url: c.url,
           crawlInterval: c.crawlInterval,
           // 不覆盖 enabled / status，便于运维手工 disable 噪音 sub
         },
@@ -783,7 +714,7 @@ async function seedReddit() {
         data: {
           platform: 'REDDIT',
           name: c.name,
-          url: null,
+          url: c.url,
           identifier: c.identifier,
           enabled: c.enabled,
           crawlInterval: c.crawlInterval,
@@ -802,56 +733,56 @@ async function main() {
 ```
 
 > **完全幂等**：第二次跑 seed 不会创建重复行，也不会覆盖你手工 disable 的 subreddit。如果未来发现某 sub 噪音太大想 disable，直接 SQL `UPDATE source_configs SET enabled=false WHERE identifier='ChatGPT'`，下次 deploy seed 不会被覆盖。
-
+>
 > **PRD §7.5.2 8 个 sub 全开**：用户决策点（详见 brainstorming 记录）。如果实施后发现某 sub 实际信号差，按"运维手工 disable"流程关掉，不需要改代码。
+>
+> **未来扩展形态（不在本 spec 实施，但 seed 数据结构已准备好）**：
+> ```ts
+> { name: 'AI Agent 全站搜索', identifier: null, url: 'https://www.reddit.com/search.json?q=AI+agent&sort=new&t=day&limit=25', enabled: true, crawlInterval: 3600 },
+> { name: 'AI 集群 hot', identifier: null, url: 'https://www.reddit.com/r/MachineLearning+LocalLLaMA+OpenAI/hot.json?limit=50', enabled: true, crawlInterval: 3600 },
+> ```
+> RedditCrawler `resolveUrl()` 会自动走 url 分支处理。
 
 ---
 
 ## 5. 设计决策与可选方案
 
-### 5.1 OAuth 方式：Application-Only（已选）vs 公开 .json vs RSS
+### 5.1 抓取通道：公开 .json（已选）vs OAuth（v1 废弃）vs PullPush vs RSS
 
 | 方案 | 决策 | 理由 |
 |---|---|---|
-| **A. 公开 `.json` 端点**（无 auth） | ❌ 拒绝 | Reddit 2023-06 起对无凭证爬虫风控严格，VPS IP 一旦被封会让所有 8 sub 同时静默失败；且无凭证上限 ~10 req/min/IP，远小于 OAuth 的 100/min |
-| **B. OAuth Application-Only（client_credentials）** | ✅ 已选 | 5 分钟注册 type=script app，拿 client_id/secret 即可；100 req/min/client，本项目 8 sub × 1 GET/h = 8 req/h 远低于限额；token 24h 有效 |
-| **C. Reddit `.rss`** | ❌ 拒绝 | 拿不到 score / num_comments / upvote_ratio，PRD §7.5.3 明说要"支持社区情绪判断"，丢了核心数据 |
+| **A. 公开 `.json` 端点**（无 auth） | ✅ 已选 | 2026 仍可用且无审核；~60 req/min/IP，本项目 8 sub × 1 GET/h = 8 req/h 远低于限速；零凭据管理；与 OAuth 返回的 JSON 字段完全一致 |
+| **B. OAuth Application-Only** | ❌ 废弃 | 见 §0：Reddit 2025 末上线 Responsible Builder Policy，self-service 关闭，必须人工审核（不确定周期 + 可能被拒）|
+| **C. PullPush.io 第三方镜像** | ❌ 拒绝 | 上游"unreliable uptime + data gaps"；偏向历史数据；服务可能某天没了 |
+| **D. Reddit `.rss`** | ❌ 拒绝 | 拿不到 score / num_comments / upvote_ratio，PRD §7.5.3 明说要"支持社区情绪判断"，丢了核心数据 |
+| **E. Arctic Shift 第三方** | ❌ 拒绝 | 主要面向 Python 生态；偏研究用；增加跨语言运行时复杂度 |
 
 ### 5.2 抓取模式：每 sub 独立 SourceConfig（已选）vs 单 SourceConfig 多 sub
 
 | 方案 | 决策 | 理由 |
 |---|---|---|
 | **A. 每 sub 一条 SourceConfig** | ✅ 已选 | 与 SP-2 HN（top/ask/show 三条）模式一致；可独立 disable / 调 crawlInterval；运维灵活 |
-| **B. 单 SourceConfig (`identifier='multi'`) 内部循环 8 sub** | ❌ 拒绝 | 失败粒度坏（一个 sub 失败拖累整批）；状态字段（`lastCrawledAt` / `errorCount`）失效；与 HN 模式不一致 |
+| **B. 单 SourceConfig (`identifier='multi'`) 内部循环 8 sub** | ❌ 拒绝 | 失败粒度坏（一个 sub 失败拖累整批）；状态字段（`lastCrawledAt` / `errorCount`）失效 |
+| **C. 多 sub 集群单 GET（`r/A+B+C/hot`）** | 🟡 不在本 spec，架构留好 | 未来想节省请求数 / 把"AI 集群"作为话题概念时，直接 seed 一条 url=多 sub 集群形态即可，本 spec 不实施 |
 
-### 5.3 OAuth Token 缓存：进程内 in-memory（已选）vs Redis 共享 vs 不缓存
-
-| 方案 | 决策 | 理由 |
-|---|---|---|
-| **A. 进程内 in-memory 单例** | ✅ 已选 | 当前 prod 单 worker 容器（无 replicas），无多实例 race；Redis 共享是过度工程；token 24h 有效，单进程一天 1 次 refresh 即可 |
-| **B. Redis 共享 token cache** | ❌ 拒绝 | 当前用例下增加 Redis dep + 引入 race（两实例同时 401 → 同时 refresh，浪费 1 次但无副作用）；当 SP-22 / 流量真上来要多 worker 时再升 |
-| **C. 不缓存（每次 fetch 前 refresh）** | ❌ 拒绝 | 8 个 GET/轮 → 8 次 token 请求，浪费且容易撞限速 |
-
-> **未来升级钩子**：当 worker 扩到 ≥2 replicas 时，把 in-memory cache 替换为 Redis 共享（key=`reddit:oauth:token`），仅改 `RedditOAuthClient` 内部，其他代码不动。spec §7 记录此钩子。
-
-### 5.4 评论抓取：不抓（已选）vs 全抓 vs top 3
+### 5.3 评论抓取：不抓（已选）vs 全抓 vs top 3
 
 | 方案 | 决策 | 理由 |
 |---|---|---|
-| **A. 不抓评论原文，仅记 `comments` 计数** | ✅ 已选 | OAuth 配额预算友好（8 req/h vs 200 req/h）；评论原文真实消费者是 SP-5 AI 摘要，到时候独立 worker `enrich-reddit-comments` 按"高热度帖"按需抓更经济 |
-| **B. SP-3 抓所有评论原文存 `interactionData.comments[]`** | ❌ 拒绝 | 8 sub × 25 帖 × 1 GET = 200 req/h，逼近 100/min 限速并占用宝贵配额；存储成本剧增（每帖 ~50 KB JSON × 200 帖/h × 24 h ≈ 240 MB/天）；且 SP-3 完工时还没人消费这些数据 |
-| **C. 仅抓 top 3 热评拼进 `interactionData.topComments`** | ❌ 拒绝 | 仍要 200 req/h；增加 SP-3 复杂度但收益模糊（SP-5 还得自己再决定抓多少） |
+| **A. 不抓评论原文，仅记 `comments` 计数** | ✅ 已选 | 公开端点配额非常友好（8 req/h），但评论真实消费者是 SP-5 AI 摘要，到时候独立 worker `enrich-reddit-comments` 按"高热度帖"按需抓更经济 |
+| **B. SP-3 抓所有评论原文** | ❌ 拒绝 | 8 sub × 25 帖 × 1 GET = 200 req/h，向 ~60 req/min/IP 限速逼近 4× 安全余量减少；存储成本剧增（每帖 ~50 KB JSON × 200 帖/h × 24 h ≈ 240 MB/天）；且 SP-3 完工时还没人消费这些数据 |
+| **C. 仅抓 top 3 热评** | ❌ 拒绝 | 仍要 200 req/h；增加 SP-3 复杂度但收益模糊（SP-5 还得自己再决定抓多少） |
 
-### 5.5 抓取频率：60 分钟（已选）vs 30 vs 15 vs 异构
+### 5.4 抓取频率：60 分钟（已选）vs 30 vs 15 vs 异构
 
 | 方案 | 决策 | 理由 |
 |---|---|---|
 | **A. 60 分钟（3600s）** | ✅ 已选 | Reddit 帖子半衰期普遍 ≥6h（远长于 HN 的 ~2h），60 分钟数据延迟可接受；与 HN 30 分钟错开抓取节奏；hot_news 增长率温和（8 sub × 25 帖 × 0.3 新增比例 / h ≈ 60 行/h ≈ 1500 行/天）|
 | **B. 30 分钟（1800s）** | ❌ 拒绝 | 节奏跟 HN 重叠不必要；hot_news 增长翻倍但实际新数据少（多次抓到的大部分帖子被 P2002 跳过，只增加 db 写入压力）|
-| **C. 15 分钟（900s）** | ❌ 拒绝 | OAuth 配额绰绰有余但 hot_news 增长压力大；刚被 prod 磁盘满教训过一次，节奏保守为先 |
+| **C. 15 分钟（900s）** | ❌ 拒绝 | 配额绰绰有余但 hot_news 增长压力大；刚被 prod 磁盘满教训过一次，节奏保守为先 |
 | **D. 异构（高质量 sub 30 分、噪音 sub 60 分）** | ❌ 拒绝 | 增加 spec / seed 复杂度；初期统一 60 分钟，监控一段时间看实际信号差异再决定；运维可手工 SQL 调单条 `crawlInterval` |
 
-### 5.6 fetch limit：25（已选）vs 50 vs 100 vs env
+### 5.5 fetch limit：25（已选）vs 50 vs 100 vs env
 
 | 方案 | 决策 | 理由 |
 |---|---|---|
@@ -859,6 +790,14 @@ async function main() {
 | **B. 50** | ❌ 拒绝 | 1 次响应翻倍，但实际新数据增量极小，db 写入压力翻倍 |
 | **C. 100**（Reddit 上限）| ❌ 拒绝 | 同上，过度抓取 |
 | **D. env 可调** | ❌ 拒绝 | YAGNI；如果实测 25 不够再升 |
+
+### 5.6 SourceConfig 字段语义：url 优先 vs identifier 优先
+
+| 方案 | 决策 | 理由 |
+|---|---|---|
+| **A. url 非空时优先用 url，否则按 identifier 拼标准 hot.json** | ✅ 已选 | 标准 sub 模式 seed 极简（只填 identifier）；未来扩展形态（搜索 / 集群）零代码改动接入 |
+| **B. 严格按 identifier 拼，不接受 url** | ❌ 拒绝 | 把"未来扩展形态"完全堵死，任何新形态都要改 RedditCrawler |
+| **C. 严格按 url，不接受 identifier 拼接** | ❌ 拒绝 | 8 个标准 sub 的 url 重复又长，seed 维护痛苦 |
 
 ---
 
@@ -897,19 +836,19 @@ IMAGE_TAG="$IMAGE_TAG" $COMPOSE run --rm \
 IMAGE_TAG="$IMAGE_TAG" $COMPOSE restart worker                    # ← 自动重启 worker
 ```
 
-**唯一需要手工的一步**：把 Reddit OAuth credentials 写进 VPS `/srv/ai-hot-news/.env`（**必须在 push SP-3 commit 前完成**，否则 worker 启动 OAuth refresh 失败）：
+**唯一需要手工的一步**（v2 比 v1 简化）：把 Reddit UA 写进 VPS `/srv/ai-hot-news/.env`（**最好在 push SP-3 commit 前完成**，否则会用默认 UA `(by /u/anonymous)`，仍能跑但不合规）：
 
 ```bash
 ssh deploy@<vps>
 cat >> /srv/ai-hot-news/.env <<'EOF'
-REDDIT_CLIENT_ID=<from reddit prefs/apps>
-REDDIT_CLIENT_SECRET=<from reddit prefs/apps>
 REDDIT_USER_AGENT=ai-hot-news-bot/0.1 (by /u/<your-reddit-username>)
 REDDIT_FETCH_TIMEOUT_MS=15000
 EOF
 ```
 
-> **如果忘记预先填 .env**：worker 启动后第一次 Reddit boot job 会 throw `Reddit OAuth: REDDIT_CLIENT_ID and REDDIT_CLIENT_SECRET must be set`，BullMQ 重试 3 次后 8 个 SourceConfig 全部 status='FAILED'。补 env 后 `docker compose restart worker` 即恢复。
+> **如果忘记预先填 UA**：worker 仍能启动（默认值兜底），但 UA `by /u/anonymous` 不合规，**Reddit 有概率（不一定立即）触发 IP 风控**。补 UA 后 `docker compose restart worker` 即恢复。
+>
+> **不再需要** `REDDIT_CLIENT_ID` / `REDDIT_CLIENT_SECRET`（v1 路线遗留概念，v2 已废）。
 
 ---
 
@@ -917,9 +856,8 @@ EOF
 
 | 测试 | 文件 | 类型 | 关键 case |
 |---|---|---|---|
-| `RedditOAuthClient` | `apps/worker/src/crawl/crawlers/reddit-oauth.client.spec.ts` | 单元 | mock global.fetch；首次 `getToken()` → POST `/api/v1/access_token` 返回 token + expires_in；token 在缓存窗口内复用（`expiresAt > now+60s`）；过期后自动 `refreshToken()`；首次 fetch 401 → clear + refresh + retry 一次成功；首次 fetch 401 + 二次 401 → return 401（不无限循环）；refresh 401 → throw；refresh 网络错 → throw；missing client_id/secret → throw clear message |
-| `RedditCrawler.fetch` | `apps/worker/src/crawl/crawlers/reddit.crawler.spec.ts` | 单元 | mock RedditOAuthClient；`hot.json` 200 → 25 posts → toRaw 全部正确映射；link-post → `externalUrl=post.url`, `rawHtml=null`, `contentText=title`；self-post → `rawHtml=selftext_html`, `contentText=stripHtml(selftext_html)`, `externalUrl=null`；空 self-post（`selftext_html=null`）→ `rawHtml=null`, `contentText=title`；`stickied=true` → 过滤；`over_18=true` → 过滤；`title=null` → 过滤；`author='[deleted]'` → 归一化为 null；`upvote_ratio=null` → 透传 null；`identifier=null` → throw；非 Listing 响应 → throw；非 200 → throw |
-| `CrawlerFactory` | `apps/worker/src/crawl/crawler.factory.spec.ts`（**扩展**）| 单元 | 加 `Platform.REDDIT → RedditCrawler` 实例化测试；构造函数依赖 `RedditOAuthClient` 注入；现有 RSS / HN case 继续通过 |
+| `RedditCrawler.fetch` | `apps/worker/src/crawl/crawlers/reddit.crawler.spec.ts` | 单元 | mock global.fetch；`hot.json` 200 → 25 posts → toRaw 全部正确映射；link-post → `externalUrl=post.url`, `rawHtml=null`, `contentText=title`；self-post → `rawHtml=selftext_html`, `contentText=stripHtml(selftext_html)`, `externalUrl=null`；空 self-post（`selftext_html=null`）→ `rawHtml=null`, `contentText=title`；`stickied=true` → 过滤；`over_18=true` → 过滤；`title=null` → 过滤；`author='[deleted]'` → 归一化为 null；`upvote_ratio=null` → 透传 null；`url` 字段优先于 `identifier`；二者皆空 → throw；`identifier=null` 且 `url` 非空 → 走 url 分支并 fallback `subreddit` 字段；非 Listing 响应 → throw；非 200 → throw；429 响应 → throw with Retry-After hint；UA 头被正确设置 |
+| `CrawlerFactory` | `apps/worker/src/crawl/crawler.factory.spec.ts`（**扩展**）| 单元 | 加 `Platform.REDDIT → RedditCrawler` 实例化测试；构造函数依赖 `REDDIT_USER_AGENT` 注入；现有 RSS / HN case 继续通过 |
 | `CrawlScheduler` | `apps/worker/src/crawl/crawl.scheduler.spec.ts`（**扩展**）| 单元 | 加 8 个 REDDIT source 的 enqueue assertion；platform-counts log 含 `8 REDDIT` |
 | `IngestionService` Reddit | `apps/worker/src/crawl/ingestion.service.integration.spec.ts`（**扩展**）| 集成（真 PG）| 加 REDDIT case：`interactionData={ score, comments, externalUrl, redditId, redditSubreddit, redditUpvoteRatio }` 完整透传；同 sourceUrl 第二次 ingest 跳过；`upvoteRatio=null` 时也能透传；`redditUpvoteRatio` 在 PG JSONB 列里以 number 存（`SELECT interaction_data->>'redditUpvoteRatio' = '0.95'`）|
 | `processCrawlJob` | （**不单测**，由 integration spec 隐式覆盖）| — | 与 SP-2 同策略 |
@@ -930,7 +868,7 @@ CI 中：
 - `pnpm turbo test` —— 现有，自动捕获新单元 + 集成测试
 - 集成测试沿用 SP-1 的 PG service container
 
-**测试 fixture 准备清单**（6 个 JSON 文件）：
+**测试 fixture 准备清单**（5 个 JSON 文件，比 v1 少 1 个 oauth-token）：
 
 ```json
 // reddit-hot-listing.json (mock /r/<sub>/hot.json 完整响应)
@@ -987,14 +925,6 @@ CI 中：
   "created_utc": 1746230600, "score": 1, "num_comments": 0, "upvote_ratio": 0.5,
   "stickied": false, "over_18": true
 }
-
-// reddit-oauth-token.json (mock POST /api/v1/access_token 响应)
-{
-  "access_token": "test-bearer-token-xyz",
-  "token_type": "bearer",
-  "expires_in": 86400,
-  "scope": "*"
-}
 ```
 
 ---
@@ -1005,28 +935,28 @@ CI 中：
 
 | 失败类型 | 行为 |
 |---|---|
-| OAuth token 401（token revoked / expired racy） | OAuthClient 自动 clear + refresh + retry 一次；二次仍 401 → throw → BullMQ 重试 3 次 |
-| OAuth token refresh 401（凭据错） | throw immediately + `logger.error`；BullMQ 重试 3 次后 8 个 Reddit source 全部 `status='FAILED'`，`errorMessage="Reddit OAuth: token refresh failed 401 ..."` |
-| OAuth token refresh 网络错 / 超时 | throw → BullMQ 指数退避重试 |
-| `hot.json` 429（限速）| `RedditCrawler.fetch` throw → BullMQ 指数退避重试 60s/120s/240s |
-| `hot.json` 5xx | 同上 |
+| `hot.json` 429（限速）| `RedditCrawler.fetch` throw with `Retry-After` hint → BullMQ 指数退避重试 60s/120s/240s |
+| `hot.json` 5xx | throw → BullMQ 指数退避重试 |
+| `hot.json` 403 / 404（subreddit 私有 / 不存在 / IP 被风控）| throw → BullMQ 重试 3 次后 status='FAILED'；运维诊断 |
 | `hot.json` 200 但 `kind != 'Listing'` | throw → BullMQ 重试（防御 Reddit API 异常返回） |
+| 网络超时（`AbortSignal.timeout`）| throw → BullMQ 重试 |
 | 单 post `title=null` / `id=null` | `isValidPost` 过滤，整批继续 |
 | `stickied=true` / `over_18=true` | `isValidPost` 过滤 |
 | 单 post 缺失 `selftext_html` | `rawHtml=null`, `contentText=title`（退化为 link-post 等价行为） |
-| subreddit 不存在（404） | throw → BullMQ 重试 → status='FAILED'；seed 给的 8 个都是确定存在的 sub，理论上不会触发 |
+| `url` + `identifier` 都为 null（seed 错误）| throw at `resolveUrl()` → status='FAILED' 并 errorMessage 明确 |
 | `ingest` P2002 重复 sourceUrl | `result.skipped++`，不算失败（与 SP-2 同策略）|
 
 ### 8.2 升级钩子（spec 显式记录）
 
 | 触发条件 | 当前实现 | 升级路径 |
 |---|---|---|
-| Worker 扩到 ≥2 replicas | OAuth token 单进程 in-memory cache | 把 `RedditOAuthClient.token` 替换为 Redis 共享 cache（key=`reddit:oauth:token`，TTL=expires_in-60s）；其他代码不动 |
-| Reddit OAuth 收费 / 限速大幅紧缩 | 100 req/min/client 用得很省（8 req/h） | 短期：把 `crawlInterval` 从 3600 提到 7200；长期：考虑 RSS 降级（丢 score/comments 但保 title/url）|
+| Reddit 重新放开 self-service OAuth 或我们获得审批 | 公开 .json，无 token | 加回 `RedditOAuthClient`（参考废弃的 v1 spec），把 `RedditCrawler.fetch` 的 `fetch(...)` 换成 `oauthClient.fetch(...)`；URL 改 `oauth.reddit.com`；其他不动 |
+| Reddit 公开 .json 端点限速收紧 / IP 风控 | 单 IP 8 req/h，远低于限速 | 短期：`crawlInterval` 从 3600 提到 7200；中期：加代理池（轮询多个出口 IP）；长期：申请 OAuth 走授权通道 |
 | 高热度 post 的 score / comments 变化（first-write-wins 不更新） | spec §1.3 故意限制 | SP-6 增加独立 `refresh-interaction-data` worker，按 `heatScore desc limit 200` 周期刷新 score / comments / upvote_ratio；与 HN 共享同一 worker |
 | 8 sub 信号差异显著 | 统一 60min `crawlInterval` | 运维手工 SQL `UPDATE source_configs SET crawl_interval=1800 WHERE identifier='LocalLLaMA'`；下次 deploy seed 不会覆盖 |
 | 想加新 sub | 改 `seed.ts` 的 `redditCandidates` 数组 + push | deploy auto-seed 自动生效；零手工 SQL |
-| 评论数据成 SP-5 瓶颈 | SP-3 不抓评论 | 独立 `enrich-reddit-comments` worker 按"score≥100 且 comments_fetched_at IS NULL"按需抓 `comments/{id}.json` |
+| 想加 **关键词搜索源** / **多 sub 集群源** | 架构已支持但 seed 暂未启用 | seed 加一条 `{ identifier: null, url: 'https://www.reddit.com/search.json?q=...' }` → deploy 自动 enqueue；`RedditCrawler.resolveUrl()` 走 url 分支 |
+| 评论数据成 SP-5 瓶颈 | SP-3 不抓评论 | 独立 `enrich-reddit-comments` worker 按"score≥100 且 comments_fetched_at IS NULL"按需抓 `comments/{id}.json`（仍可走公开 .json）|
 | Reddit `redditUpvoteRatio` 字段不可靠 | 直接透传 | SP-6 热度公式消费时增加 nullable handling + fallback 到 score-only |
 
 ---
@@ -1035,49 +965,48 @@ CI 中：
 
 | 风险 | 影响 | 缓解 |
 |---|---|---|
-| Reddit OAuth 凭据未在 deploy 前写进 VPS `.env` | 8 个 Reddit source 全部 `status='FAILED'`，prod 暂时无 Reddit 数据但其他平台正常 | §6.3 已写明部署清单；spec checklist §10 加显式步骤 |
-| Reddit UA 不规范触发 IP 封禁 | 全部 Reddit 抓取静默失败 | UA 严格按 `<bot>/0.1 (by /u/<owner>)` 格式（Reddit ToS 要求）；prod 用真实 owner 的 reddit username |
-| OAuth client_secret 不慎泄露（commit / log） | 攻击者用我们配额 / 关联到 owner | `.env.example` 只放占位；真实值仅 VPS `.env`（已 .gitignore）；GitHub repo 无任何泄露面；`logger.log` 不打印 token / secret |
-| Reddit API 偶发 5xx 或网络抖动 | 单 sub 单轮抓取失败 | BullMQ 默认 3 次指数退避 + status='FAILED' 写回；下次 repeatable 触发自动恢复 |
+| `REDDIT_USER_AGENT` 用默认 `(by /u/anonymous)` 上 prod | 不合规 UA，Reddit 有概率（不一定立即）触发 IP 风控 → 全部 Reddit 抓取静默失败 | §6.3 写明部署清单；checklist §10 显式步骤；prod 必须填真实 owner reddit handle |
+| Reddit 公开 .json 端点未来收紧 / 全面下线 | 全部 Reddit 抓取失败 | §8.2 升级钩子：可走 OAuth（如审批通过）/ 加代理池 / 降级到 RSS（损失数据但可用）|
+| Reddit IP 风控（403）针对 VPS 出口 IP | 单 IP 全部 sub 静默失败 | UA 严格规范 + 60min 间隔 + 单 worker；8 req/h 远低于 ~60 req/min/IP；如真触发，可用 §8.2 加代理池路径 |
+| 网络抖动 / 偶发 5xx | 单 sub 单轮抓取失败 | BullMQ 默认 3 次指数退避 + status='FAILED' 写回；下次 repeatable 触发自动恢复 |
 | 8 个 Reddit sub 一轮抓取 ~25 行/sub × 8 = ~200 候选，prod hot_news 增长率 +30% | 磁盘压力 | 60min interval + P2002 去重大部分新轮抓的 ≥80% 重复（hot 榜变化慢）→ 实际净增 ≈ 60 行/h ≈ 1500 行/天 ≈ 0.5 GB/年；远低于刚清理出的 12GB；OPS-2026-05-03 后 deploy.sh 会 prune 镜像，无递归撑爆风险 |
-| `selftext_html` 包含恶意 HTML（XSS） | rawHtml 字段被 web 直接渲染时风险 | SP-3 入库阶段不做处理（Reddit 已经 sanitize 一道）；SP-11 详情页渲染时**必须**走 React 自动转义或 dompurify；spec §9.3 升级钩子记录 |
+| `selftext_html` 包含恶意 HTML（XSS） | rawHtml 字段被 web 直接渲染时风险 | SP-3 入库阶段不做处理（Reddit 已经 sanitize 一道）；SP-11 详情页渲染时**必须**走 React 自动转义或 dompurify；spec 升级钩子记录 |
 | 一个 sub 被 mod 关闭 / 重命名（如 r/LocalLLaMA 改名） | 该 sub 持续 404 | BullMQ 重试 3 次后 status='FAILED'，errorMessage 含 `404`；运维手工 disable 该 SourceConfig；不影响其他 7 sub |
-| OAuth `expires_in` 字段缺失（API 异常）| token cache `expiresAt=NaN` → 永远过期 → 每次 refresh | spec §3.2 实现里 `data.expires_in * 1000` 若 `expires_in` 是 undefined 会得到 NaN，cache `expiresAt=Date.now()+NaN=NaN`，`expiresAt > Date.now()+60_000` 为 false（NaN 比较恒 false）→ 自然走 refresh；副作用是每次 fetch 都 refresh，增加 1 次 token 请求；可接受，且如果发生会被 log 警示（每条 fetch 一行 `refreshed token`）|
-| RedditCrawler 在 worker 启动 immediate 阶段 race（OAuth token 还没 refresh）| 第一次 boot job 触发 OAuth refresh，并发 8 boot job 时可能同时 refresh 8 次 | 当前 `BullMQ worker concurrency=1`（SP-1 默认），8 boot job 串行执行，第一个 refresh 后后 7 个 cache 复用；无 race |
+| 公开 .json 端点偶发返回非 Listing JSON（如错误页、维护页） | 单轮抓取 throw | 防御性 `data?.kind !== 'Listing'` 校验 + throw → BullMQ 重试 |
+| Reddit ToS 灰色区争议 | 项目合规性疑虑 | §0 已明示选择该路径的权衡；公开 .json 是 Reddit 自家页面调用同一接口，技术上无 ToS 直接禁止条款；如未来 ToS 明确禁止再行升级 |
 
 ---
 
 ## 10. 完工 Checklist
 
 ```text
-[ ] 用户已在 https://www.reddit.com/prefs/apps 注册 type=script app，拿到 client_id/secret
-[ ] 本地 apps/worker/.env 加入 REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET / REDDIT_USER_AGENT
-[ ] apps/worker/.env.example 加入 4 个 Reddit env 占位
+[ ] 本地 apps/worker/.env 加入 REDDIT_USER_AGENT（含真实 owner reddit username）
+[ ] apps/worker/.env.example 加入 2 个 Reddit env 占位（USER_AGENT + FETCH_TIMEOUT_MS）
 [ ] packages/types RawCrawledItem 不变（SP-2 已就位）
-[ ] apps/worker/src/crawl/crawlers/reddit.types.ts 新增（RedditPost / RedditListingResponse 接口）
-[ ] apps/worker/src/crawl/crawlers/reddit-oauth.client.ts + spec 新增并通过（5 个核心 case）
-[ ] apps/worker/src/crawl/crawlers/reddit.crawler.ts + spec 新增并通过（10+ 个 case：link/self/stickied/nsfw/[deleted]/upvoteRatio=null/...）
-[ ] apps/worker/src/crawl/crawler.factory.ts 加 case REDDIT + 构造函数注入 RedditOAuthClient
+[ ] apps/worker/src/crawl/crawlers/reddit.types.ts 新增（REDDIT_USER_AGENT token + RedditPost / RedditListingResponse 接口）
+[ ] apps/worker/src/crawl/crawlers/reddit.crawler.ts + spec 新增并通过（≥12 个 case：link/self/stickied/nsfw/[deleted]/upvoteRatio=null/url优先/identifier缺/429/non-listing/...）
+[ ] apps/worker/src/crawl/crawler.factory.ts 加 case REDDIT + 构造函数 @Inject(REDDIT_USER_AGENT)
 [ ] apps/worker/src/crawl/crawler.factory.spec.ts 加 REDDIT 路由测试 + DI mock
 [ ] apps/worker/src/crawl/crawl.scheduler.ts platform.in [...] 加 REDDIT
 [ ] apps/worker/src/crawl/crawl.scheduler.spec.ts assertion 加 REDDIT 计数
-[ ] apps/worker/src/crawl/crawl.module.ts 注册 RedditOAuthClient + 3 个 env value providers
+[ ] apps/worker/src/crawl/crawl.module.ts 注册 REDDIT_USER_AGENT value provider
 [ ] apps/worker/src/crawl/ingestion.service.integration.spec.ts 加 REDDIT case 通过
 [ ] packages/db/prisma/seed.ts 加 redditCandidates + seedReddit() + main() 调用
 [ ] CI 全绿（lint / typecheck / build / test）
 [ ] 本地 pnpm db:seed → 14 条 SourceConfig 入库（3 RSS + 3 HN + 8 Reddit）
 [ ] 本地 pnpm dev → worker 日志含 "Registered 14 enabled sources: 3 RSS, 3 HACKERNEWS, 8 REDDIT"
-[ ] 本地 pnpm dev → worker 日志含 1 条 "Reddit OAuth: refreshed token (expires in 86400s)"
-[ ] 本地 pnpm dev → 5-8 分钟内 worker 日志含 8 条 "REDDIT crawled: source=r/* fetched=25 inserted=*" 正常
+[ ] 本地 pnpm dev → 5-7 分钟内 worker 日志含 8 条 "REDDIT crawled: source=r/* fetched=25 inserted=*" 正常
+[ ] 本地 pnpm dev → worker 日志中**无任何** OAuth / token / 401 字样
 [ ] curl localhost:3001/hot-news?pageSize=200 | jq '.items[] | select(.sourcePlatform == "REDDIT") | .interactionData' 字段完整（6 个字段）
 [ ] open localhost:3000/news → 浏览器看到 Reddit 项有红色 "Reddit" 徽标
 [ ] 重启 worker 验证 idempotency：第二次 boot 抓取后大部分 P2002 跳过（log 含 skipped=>15）
-[ ] VPS /srv/ai-hot-news/.env 加入 4 个 Reddit env（**push commit 前完成**）
+[ ] VPS /srv/ai-hot-news/.env 加入 2 个 Reddit env（**push commit 前完成**）
 [ ] push 到 main → CI/Deploy 自动通过 → deploy.sh auto-seed 8 条 Reddit + restart worker
 [ ] curl https://<domain>/api/hot-news?pageSize=200 | jq '.items | map(.sourcePlatform) | unique' → 含 ["HACKERNEWS","REDDIT","RSS"]
 [ ] decomposition spec §6 + §11 回写：SP-3 完成 + 把 SP-2 §4.2 "Reddit 预留" 行更新为"Reddit 已落地"
-[ ] decomposition spec 决策日志加 SP-3 4 条决策（OAuth Application-Only / 8 sub hot 25 / 60min / 不抓评论）
+[ ] decomposition spec 决策日志加 SP-3 5 条决策（**通道改公开 .json（v1→v2 pivot）** / 8 sub hot 25 / 60min / 不抓评论 / url 优先 vs identifier）
 [ ] decomposition spec 决策日志加 clawfeed 学到的 2 个点（URL auto-detect → SP-24 / source_packs → 未来 UX 参考）
+[ ] decomposition spec 风险日志加：Reddit 公开端点 ToS 灰色区 + IP 风控应对升级路径（§8.2 链接）
 ```
 
 ---
@@ -1090,5 +1019,5 @@ CI 中：
 2. 计划文档审阅通过后，进入 SP-3 实施
 3. SP-3 完成（Checklist 全打勾）后：
    - **回写 decomposition spec §6 + §11**：标记 SP-3 完成 + 更新 SP-2 §4.2 表格"Reddit 预留"为"Reddit 已落地"
-   - **回写决策日志**：4 条 SP-3 决策 + 2 条 clawfeed 学到的点
+   - **回写决策日志**：5 条 SP-3 决策 + 2 条 clawfeed 学到的点
    - 启动 **Phase 3** 路线选择：按 spec 顺序进 SP-4（去重升级）；或按"用户感受"优先级先做 SP-5（AI 标签摘要）/ SP-6（热度计算），让数据真正"有秩序"
