@@ -1982,7 +1982,12 @@ git commit -m "feat(web): add /news listing page wired to GET /hot-news"
 
 > **实施时的偏差（commit `9991acd`）**：生产环境 cloudflared tunnel 将 `${DOMAIN}` 全部流量导到 web 容器（3000 端口），NestJS API 容器的 `/hot-news` 并不对外。计划里写的 `curl https://${DOMAIN}/api/hot-news` smoke probe 需要一个 Next.js Route Handler 做 BFF 转发，才能真正命中。采用方案：新增 `apps/web/app/api/hot-news/route.ts`，用 `fetch(process.env.API_URL + '/hot-news?...')` 转发并透传 status + body + content-type。同时加 10 秒 `AbortSignal.timeout` + 502 fallback 避免 RSC 挂起。
 >
-> **生产 compose 补丁（Deploy run #7 红在 smoke check，后续 commit）**：`docker/docker-compose.prod.yml` 原本只给 web 容器注入 `NEXT_PUBLIC_API_URL`（公网 URL，供客户端 bundle），但 SP-1 Task 11 把 `lib/api.ts` + 新 Route Handler 改成读取 `API_URL`（无前缀、仅服务端可见）。生产 web 容器里 `API_URL` 未定义 → fallback 到 `http://localhost:3001`，但 web 容器内部没有 3001 监听 → BFF route 返回 502，smoke probe 以 HTTP 502 触发 `curl --fail` exit 22。修法：在 compose `web.environment` 加 `API_URL: http://api:3001`（compose 默认网络里服务名 DNS 互通）。`NEXT_PUBLIC_API_URL` 保留，future client components 可用。
+> **生产 compose 补丁（Deploy run #7 红在 smoke check，commit `1268232`）**：`docker/docker-compose.prod.yml` 原本只给 web 容器注入 `NEXT_PUBLIC_API_URL`（公网 URL，供客户端 bundle），但 SP-1 Task 11 把 `lib/api.ts` + 新 Route Handler 改成读取 `API_URL`（无前缀、仅服务端可见）。生产 web 容器里 `API_URL` 未定义 → fallback 到 `http://localhost:3001`，但 web 容器内部没有 3001 监听 → BFF route 返回 502，smoke probe 以 HTTP 502 触发 `curl --fail` exit 22。修法：在 compose `web.environment` 加 `API_URL: http://api:3001`（compose 默认网络里服务名 DNS 互通）。`NEXT_PUBLIC_API_URL` 保留，future client components 可用。
+
+> **生产 seed + worker 镜像补丁（首次 VPS seed 失败，本次 commit）**：
+>
+> 1. **worker 启动后循环 restart**，日志 `Cannot find module '@ai-hot-news/utils'`：`apps/worker/Dockerfile` 只 COPY 了 `packages/db` / `packages/types` 的 package.json 和产物，没处理 SP-1 Task 1 新增的 `packages/utils`。三处补丁：deps stage 加 `COPY packages/utils/package.json`；builder stage 加 `COPY --from=deps ... packages/utils/node_modules` + `RUN pnpm --filter @ai-hot-news/utils build`；runner stage 加 `COPY ... packages/utils/package.json` + `packages/utils/dist`。
+> 2. **`docker compose run api ... prisma db seed` 静默跳过**（无 `seeded:` 输出）：生产 api 镜像走 `pnpm install --prod`，`tsx` 作为 `packages/db` 的 devDependency 被 prune；`packages/db/package.json` 的 prisma seed 配置是 `tsx prisma/seed.ts`，tsx 不在 → 整段配置找不到可执行文件。修法：把 `tsx` 从 `devDependencies` 提到 `dependencies`（它本来就是运行时工具，不是 build-only 工具）。
 
 - [ ] **Step 1: Add the smoke probe for `/api/hot-news`**
 

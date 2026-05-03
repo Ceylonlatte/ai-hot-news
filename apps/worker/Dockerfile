@@ -11,6 +11,7 @@ COPY apps/web/package.json apps/web/
 COPY apps/worker/package.json apps/worker/
 COPY packages/db/package.json packages/db/
 COPY packages/types/package.json packages/types/
+COPY packages/utils/package.json packages/utils/
 RUN pnpm install --frozen-lockfile
 
 FROM node:${NODE_VERSION} AS builder
@@ -21,8 +22,10 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/apps/worker/node_modules ./apps/worker/node_modules
 COPY --from=deps /app/packages/db/node_modules ./packages/db/node_modules
 COPY --from=deps /app/packages/types/node_modules ./packages/types/node_modules
+COPY --from=deps /app/packages/utils/node_modules ./packages/utils/node_modules
 COPY . .
 RUN pnpm --filter @ai-hot-news/db build
+RUN pnpm --filter @ai-hot-news/utils build
 RUN pnpm --filter @ai-hot-news/worker build
 
 FROM node:${NODE_VERSION} AS runner
@@ -34,10 +37,12 @@ COPY --from=builder /app/package.json /app/pnpm-lock.yaml /app/pnpm-workspace.ya
 COPY --from=builder /app/apps/worker/package.json apps/worker/package.json
 COPY --from=builder /app/packages/db/package.json packages/db/package.json
 COPY --from=builder /app/packages/types/package.json packages/types/package.json
+COPY --from=builder /app/packages/utils/package.json packages/utils/package.json
 COPY --from=builder /app/apps/worker/dist apps/worker/dist
 COPY --from=builder /app/packages/db/dist packages/db/dist
 COPY --from=builder /app/packages/db/prisma packages/db/prisma
 COPY --from=builder /app/packages/types/src packages/types/src
+COPY --from=builder /app/packages/utils/dist packages/utils/dist
 RUN pnpm install --prod --frozen-lockfile --filter @ai-hot-news/worker...
 
 HEALTHCHECK --interval=60s --timeout=5s --start-period=30s --retries=3 \
