@@ -3,9 +3,12 @@ import { Platform } from '@ai-hot-news/db';
 import { CrawlerFactory } from './crawler.factory';
 import { RssCrawler } from './crawlers/rss.crawler';
 import { HackerNewsCrawler } from './crawlers/hackernews.crawler';
+import { RedditCrawler } from './crawlers/reddit.crawler';
+
+const TEST_UA = 'ai-hot-news-bot/0.1 (by /u/test)';
 
 describe('CrawlerFactory', () => {
-  const factory = new CrawlerFactory();
+  const factory = new CrawlerFactory(TEST_UA);
 
   it('returns an RssCrawler instance for RSS sources', () => {
     const crawler = factory.create({
@@ -25,6 +28,16 @@ describe('CrawlerFactory', () => {
       identifier: 'top',
     });
     expect(crawler).toBeInstanceOf(HackerNewsCrawler);
+  });
+
+  it('returns a RedditCrawler instance for REDDIT sources', () => {
+    const crawler = factory.create({
+      id: 'src1',
+      platform: Platform.REDDIT,
+      url: null,
+      identifier: 'OpenAI',
+    });
+    expect(crawler).toBeInstanceOf(RedditCrawler);
   });
 
   it('throws for unsupported platforms', () => {
