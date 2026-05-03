@@ -1980,7 +1980,9 @@ git commit -m "feat(web): add /news listing page wired to GET /hot-news"
 - Modify: `README.md`
 - Create: `apps/web/app/api/hot-news/route.ts`（**实施时追加**，见下方说明）
 
-> **实施时的偏差（commit 待提交）**：生产环境 cloudflared tunnel 将 `${DOMAIN}` 全部流量导到 web 容器（3000 端口），NestJS API 容器的 `/hot-news` 并不对外。计划里写的 `curl https://${DOMAIN}/api/hot-news` smoke probe 需要一个 Next.js Route Handler 做 BFF 转发，才能真正命中。采用方案：新增 `apps/web/app/api/hot-news/route.ts`，用 `fetch(process.env.API_URL + '/hot-news?...')` 转发并透传 status + body + content-type。同时加 10 秒 `AbortSignal.timeout` + 502 fallback 避免 RSC 挂起。
+> **实施时的偏差（commit `9991acd`）**：生产环境 cloudflared tunnel 将 `${DOMAIN}` 全部流量导到 web 容器（3000 端口），NestJS API 容器的 `/hot-news` 并不对外。计划里写的 `curl https://${DOMAIN}/api/hot-news` smoke probe 需要一个 Next.js Route Handler 做 BFF 转发，才能真正命中。采用方案：新增 `apps/web/app/api/hot-news/route.ts`，用 `fetch(process.env.API_URL + '/hot-news?...')` 转发并透传 status + body + content-type。同时加 10 秒 `AbortSignal.timeout` + 502 fallback 避免 RSC 挂起。
+>
+> **生产 compose 补丁（Deploy run #7 红在 smoke check，后续 commit）**：`docker/docker-compose.prod.yml` 原本只给 web 容器注入 `NEXT_PUBLIC_API_URL`（公网 URL，供客户端 bundle），但 SP-1 Task 11 把 `lib/api.ts` + 新 Route Handler 改成读取 `API_URL`（无前缀、仅服务端可见）。生产 web 容器里 `API_URL` 未定义 → fallback 到 `http://localhost:3001`，但 web 容器内部没有 3001 监听 → BFF route 返回 502，smoke probe 以 HTTP 502 触发 `curl --fail` exit 22。修法：在 compose `web.environment` 加 `API_URL: http://api:3001`（compose 默认网络里服务名 DNS 互通）。`NEXT_PUBLIC_API_URL` 保留，future client components 可用。
 
 - [ ] **Step 1: Add the smoke probe for `/api/hot-news`**
 

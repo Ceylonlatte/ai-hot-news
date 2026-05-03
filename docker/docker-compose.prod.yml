@@ -69,6 +69,9 @@ services:
   web:
     image: ${GHCR_REPO}/web:${IMAGE_TAG:-latest}
     environment:
+      # Server-side (RSC + BFF route /api/hot-news) calls the API container over the compose network.
+      # Keep NEXT_PUBLIC_API_URL only in case a future client component needs the public URL.
+      API_URL: http://api:3001
       NEXT_PUBLIC_API_URL: ${PUBLIC_API_URL}
       NODE_ENV: production
       # Next.js standalone 默认只绑容器 service IP，不绑 127.0.0.1，导致 healthcheck 'wget localhost' 失败
