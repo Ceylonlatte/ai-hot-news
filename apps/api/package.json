@@ -3,8 +3,8 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
-    "dev": "nest start --watch --tsc",
-    "build": "nest build --tsc",
+    "dev": "rm -rf dist tsconfig.tsbuildinfo && tsc -p tsconfig.json && nest start --watch --tsc --preserveWatchOutput",
+    "build": "rm -f tsconfig.tsbuildinfo && nest build --tsc",
     "start": "node dist/main",
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit",
