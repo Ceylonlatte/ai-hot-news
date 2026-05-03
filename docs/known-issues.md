@@ -26,6 +26,38 @@
 
 ---
 
+## OPS-2026-05-03: Prod outage — VPS root disk filled by stale GHCR images
+
+- **Status**: Fixed (deploy.sh now prunes on every run)
+- **Affected**: VPS `64.64.240.84` (`/dev/sda2` 20G), prod `https://hotnews.shinpeionline.top`
+- **Symptom**:
+  1. `https://hotnews.shinpeionline.top/news` rendered "暂时无法加载内容 ... API 500: Internal server error"
+  2. `https://hotnews.shinpeionline.top/api/health` 200 (web container fine)
+  3. `https://hotnews.shinpeionline.top/api/hot-news` 500
+  4. GH Actions `Deploy aa57d3a` failed at the SSH step in 4 seconds (no useful Annotation)
+  5. `aa57d3a` images were built & pushed to GHCR successfully, but **never deployed** — `git log` on the VPS still showed `b6788fc` as `HEAD`
+- **Root cause** (stacked failures, all caused by ENOSPC):
+  1. `/dev/sda2 20G 19G 0 100% /` — root disk full
+  2. `docker images` had ~20 stale `sha-<commit>` tagged web/api/worker images (~600MB-1GB each, never pruned), totaling 15GB
+  3. Postgres tried to `checkpoint` after WAL replay → `PANIC: could not write to file "pg_logical/replorigin_checkpoint.tmp": No space left on device` → Postmaster killed checkpointer → tried to recover → wrote WAL again → PANIC again. Loop ran for ~34 hours, leaving postgres `Up (unhealthy)`
+  4. Worker `Restarting (1)` — couldn't connect to a postgres in recovery mode
+  5. API kept rejecting queries with `FATAL: the database system is in recovery mode` → BFF route `/api/hot-news` got 500 from API → web returned 500 to clients
+  6. `git fetch origin main` on the VPS itself failed: `error: unable to create temporary file: No space left on device` → SSH step in deploy.yml exited 1 in <4s, before any other deploy.sh step could run
+- **Recovery procedure** (executed 2026-05-03):
+  1. `ssh -i ~/.ssh/ai-hot-news-deploy deploy@64.64.240.84`
+  2. `docker image prune -a -f` (no time filter; only protects in-use images) → reclaimed ~12.5GB, disk dropped 100% → 38%
+  3. Postgres self-healed within seconds: WAL replay completed, checkpoint succeeded, `(unhealthy)` → `(healthy)`
+  4. Docker auto-restarted worker (it was in `Restarting (1)` loop), API queries succeeded, web rendered HN data
+  5. No data loss: `/api/hot-news?pageSize=1 → total: 1755` items intact
+- **Long-term fix** (commit pending after this postmortem): `scripts/deploy.sh` now runs `docker image prune -a -f` as the **first** step (before `git fetch`, `compose pull`, `compose up`). Prune is safe because it only removes images not referenced by any container — the 5 currently-running containers' images stay. After every deploy, the just-replaced `sha-OLD` images become unreferenced and are reclaimed by the next deploy.
+- **Why this wasn't caught earlier**: VPS provisioned 2026-04-26 with 20G; SP-0 through SP-2 only deployed ~7 times before this. Each deploy added ~2GB of new images, so the disk linearly filled to 100% over 7 days. No disk monitoring / alerting was set up.
+- **Follow-ups not in this commit**:
+  - Add a smoke check that probes `/api/hot-news` (not just `/api/health`) after deploy — the existing smoke step in `deploy.yml` does this already, but only when the SSH step succeeds. Consider a separate cron-style check from GitHub.
+  - Consider monitoring + alerting (uptime check on `/api/hot-news`, disk usage alert at 80%). Tracked in SP-25 (observability).
+  - The `docker compose up -d --no-deps caddy` is intentionally skipped (cloudflared tunnel handles ingress). Consider removing the `caddy` service from `docker-compose.prod.yml` so prune doesn't churn on its image.
+
+---
+
 ## Template for new entries
 
 ```

@@ -15,6 +15,24 @@ cd "$REPO_DIR"
 # 用 --env-file 显式指定，避免变量被解析为空字符串导致 invalid reference format。
 COMPOSE="docker compose --env-file $ENV_FILE -f $COMPOSE_FILE"
 
+# Disk hygiene must run before anything else writes to disk.
+# Background: 2026-05-03 prod outage — 20G VPS root filled to 100% by ~20 stale
+# sha-tagged web/api/worker images (each ~600MB-1GB). Postgres entered a PANIC
+# checkpoint loop ("could not write replorigin_checkpoint.tmp: No space left"),
+# api returned 500 on every query, and `git fetch` itself failed with the same
+# ENOSPC. Pruning untagged images here keeps usage bounded across deploys.
+#
+# `prune -a` only removes images NOT referenced by any container, so the 4
+# images currently `up` (postgres, redis, plus the 3 :sha-OLD tags about to be
+# replaced) are safe. After `compose up -d` swaps in :sha-NEW, the next deploy
+# will reclaim the prior :sha-OLD layers.
+echo "==> Disk usage before prune"
+df -h / | tail -1
+echo "==> Pruning unused docker images (keeps in-use only)"
+docker image prune -a -f >/dev/null
+echo "==> Disk usage after prune"
+df -h / | tail -1
+
 echo "==> Pulling latest source"
 git fetch origin main
 git reset --hard origin/main
