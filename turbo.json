@@ -17,7 +17,8 @@
       "dependsOn": ["^build", "@ai-hot-news/db#db:generate"]
     },
     "test": {
-      "dependsOn": ["^build"]
+      "dependsOn": ["^build"],
+      "env": ["DATABASE_URL", "REDIS_URL"]
     },
     "@ai-hot-news/db#db:generate": {
       "cache": false,

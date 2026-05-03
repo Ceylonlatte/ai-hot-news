@@ -2088,7 +2088,9 @@ Expected: all green. The integration test must pass against the running dev Post
 > **实施时补丁（commit 待提交）**：
 >
 > 1. **`apps/api/package.json`** 的 `dev` / `build` 必须加 `--tsc`（`nest start --watch --tsc` / `nest build --tsc`），跟 Task 9 worker 遇到的同一坑：项目内 `ts-loader` 的存在让默认 Nest CLI 走 webpack 流程，watch 模式静默不 emit `dist/`，`nest start` 立刻因找不到 `dist/main` 崩溃。
-> 2. **`apps/worker/vitest.config.ts`** 新增 `setupFiles: ['./test/setup-env.ts']` + `apps/worker/test/setup-env.ts`：Prisma 需要 `DATABASE_URL`，但 `pnpm turbo run test` 没走 `db:seed` 的 env 加载路径；setup 文件手写解析仓库根 `.env` 注入 `process.env`，让集成测试独立可运行，CI 也能用。
+> 2. **`apps/worker/vitest.config.ts`** 新增 `setupFiles: ['./test/setup-env.ts']` + `apps/worker/test/setup-env.ts`：Prisma 需要 `DATABASE_URL`，但 `pnpm turbo run test` 没走 `db:seed` 的 env 加载路径；setup 文件手写解析仓库根 `.env` 注入 `process.env`，让集成测试独立可运行，本地能用。
+>
+>    **CI 侧补丁**：CI runner 里根本没有 `.env` 文件（已 gitignore），靠的是 `ci.yml` 的 `env: DATABASE_URL / REDIS_URL` 注入；但 `turbo.json` 的 `test` task 没声明 `env` 字段，turbo 严格过滤策略会把这些变量从子任务中过滤掉，导致 `run #7` 红在 worker 集成测试上。修法：在 `turbo.json` 的 `test` task 加 `"env": ["DATABASE_URL", "REDIS_URL"]`，让 turbo 透传到每个 package 的 vitest 进程。setup-env.ts 的存在性检查（`if (existsSync(envPath))`）确保 CI 路径不会去读不存在的 `.env`，本地路径仍然可用。
 > 3. **`apps/worker/src/crawl/crawl.module.ts`** 的未使用 import `CRAWL_QUEUE` 被 ESLint `no-unused-vars` 拦住（`CRAWL_QUEUE` 仅在 `queue.provider.ts` 中使用，top-level module 不需要再 re-import）— 去掉。
 
 - [ ] **Step 4: Verify no leftover untracked files**
