@@ -1,6 +1,6 @@
-import { PrismaClient } from '../src/generated/index.js';
+import { getPrisma } from '@ai-hot-news/db';
 
-const prisma = new PrismaClient();
+const prisma = getPrisma();
 
 const candidates: Array<{ name: string; url: string; enabled: boolean }> = [
   { name: 'OpenAI News',          url: 'https://openai.com/news/rss.xml',     enabled: true  },
