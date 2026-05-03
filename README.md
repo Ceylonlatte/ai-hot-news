@@ -37,13 +37,31 @@ pnpm start                    # 日常启动：确保 docker 起来 + turbo dev 
 - **Redis**：`localhost:6379`
 - **Worker**：无 HTTP 端口；用 `/tmp/worker-alive` 心跳文件健康检查
 
-底层脚本是 [`scripts/dev-up.sh`](scripts/dev-up.sh)，按 mode 分支：preflight (Node 22 / pnpm / Docker daemon 5s timeout fail-fast) → cp .env (only setup) → pnpm install (only setup, frozen lockfile) → docker compose up + 等 healthy → prisma generate + migrate + seed (only setup) → exec pnpm dev (only start)。
+### 关停
+
+`Ctrl+C` 只杀 turbo（web/api/worker），**postgres + redis 容器会保持运行**以便下次 `pnpm start` 秒级回到 healthy 状态（pg cold start 需要 ~5 秒）。
+
+```bash
+# 关掉 turbo 进程，但保留 docker 容器（默认行为）
+Ctrl+C   # 在 pnpm start 终端
+
+# 彻底关掉 docker 容器（回收 ~50MB 内存）
+pnpm stop
+```
+
+`pnpm start` 退出时会打印提示告诉你 docker 还活着 + 怎么关。
+
+底层脚本是 [`scripts/dev-up.sh`](scripts/dev-up.sh)，按 mode 分支：
+- **`setup`**：preflight (Node 22 / pnpm / Docker daemon 5s timeout fail-fast) → cp .env → pnpm install (frozen lockfile) → docker compose up + 等 healthy → prisma generate + migrate + seed → 提示下一步
+- **`start`**：preflight → docker compose up + 等 healthy → pnpm dev（前台）→ exit trap 打印关停提示
+- **`stop`**：docker compose down，turbo 不管（如果还在跑）
 
 ### 常用命令
 
 ```bash
 pnpm setup                    # fresh-clone 一键 bootstrap（idempotent）
 pnpm start                    # 日常启动 web/api/worker（前台）
+pnpm stop                     # 关 docker 容器（turbo 用 Ctrl+C 关）
 pnpm dev                      # 等价 turbo run dev --parallel（不预检 docker，直接起）
 pnpm dev:reset                # 清空本地 hot_news + 重 seed source_configs（交互式确认）
 pnpm lint                     # 全仓库 lint（ESLint flat config）

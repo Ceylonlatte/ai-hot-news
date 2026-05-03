@@ -11,6 +11,7 @@
   "scripts": {
     "setup": "bash scripts/dev-up.sh setup",
     "start": "bash scripts/dev-up.sh start",
+    "stop": "bash scripts/dev-up.sh stop",
     "dev": "turbo run dev --parallel",
     "dev:reset": "bash scripts/dev-db-reset.sh",
     "build": "turbo run build",

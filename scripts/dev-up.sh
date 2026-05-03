@@ -21,8 +21,8 @@ REDIS_CONTAINER="ai-hot-news-redis-dev"
 
 MODE="${1:-start}"
 case "$MODE" in
-  setup|start) ;;
-  *) echo "ERROR: unknown mode '$MODE'. Use 'setup' or 'start'." >&2; exit 2 ;;
+  setup|start|stop) ;;
+  *) echo "ERROR: unknown mode '$MODE'. Use 'setup', 'start', or 'stop'." >&2; exit 2 ;;
 esac
 
 cd "$REPO_ROOT"
@@ -54,30 +54,32 @@ with_timeout() {
   wait "$pid"
 }
 
-# ── 0. Preflight: Node version ────────────────────────────────────────────────
-step "Checking Node.js version"
-if ! command -v node >/dev/null 2>&1; then
-  warn "node not found on PATH."
-  echo "    Install Node 22 LTS first: https://nodejs.org/ or 'nvm install 22 && nvm use 22'"
-  exit 1
-fi
-NODE_MAJOR="$(node --version | sed -E 's/^v([0-9]+)\..*/\1/')"
-if [ "$NODE_MAJOR" -lt 22 ] || [ "$NODE_MAJOR" -ge 23 ]; then
-  warn "Node $(node --version) is outside the supported range >=22.0.0 <23.0.0."
-  echo "    Run: $(c_dim 'nvm use 22')  or  $(c_dim 'fnm use 22')  to switch."
-  echo "    (engine-strict=true in .npmrc will also block pnpm install on the wrong major.)"
-  exit 1
-fi
-ok "Node $(node --version)"
+# ── 0. Preflight: Node version (skip in stop mode — only docker matters) ─────
+if [ "$MODE" != "stop" ]; then
+  step "Checking Node.js version"
+  if ! command -v node >/dev/null 2>&1; then
+    warn "node not found on PATH."
+    echo "    Install Node 22 LTS first: https://nodejs.org/ or 'nvm install 22 && nvm use 22'"
+    exit 1
+  fi
+  NODE_MAJOR="$(node --version | sed -E 's/^v([0-9]+)\..*/\1/')"
+  if [ "$NODE_MAJOR" -lt 22 ] || [ "$NODE_MAJOR" -ge 23 ]; then
+    warn "Node $(node --version) is outside the supported range >=22.0.0 <23.0.0."
+    echo "    Run: $(c_dim 'nvm use 22')  or  $(c_dim 'fnm use 22')  to switch."
+    echo "    (engine-strict=true in .npmrc will also block pnpm install on the wrong major.)"
+    exit 1
+  fi
+  ok "Node $(node --version)"
 
-# ── 1. Preflight: pnpm ────────────────────────────────────────────────────────
-step "Checking pnpm"
-if ! command -v pnpm >/dev/null 2>&1; then
-  warn "pnpm not found. Enable corepack:"
-  echo "    $(c_dim 'corepack enable && corepack prepare pnpm@9.15.0 --activate')"
-  exit 1
+  # ── 1. Preflight: pnpm ──────────────────────────────────────────────────────
+  step "Checking pnpm"
+  if ! command -v pnpm >/dev/null 2>&1; then
+    warn "pnpm not found. Enable corepack:"
+    echo "    $(c_dim 'corepack enable && corepack prepare pnpm@9.15.0 --activate')"
+    exit 1
+  fi
+  ok "pnpm $(pnpm --version)"
 fi
-ok "pnpm $(pnpm --version)"
 
 # ── 2. Preflight: docker ──────────────────────────────────────────────────────
 step "Checking Docker daemon"
@@ -95,6 +97,17 @@ if ! with_timeout 5 docker info >/dev/null 2>&1; then
   exit 1
 fi
 ok "Docker daemon up"
+
+# ── stop mode short-circuit: docker compose down + exit ──────────────────────
+if [ "$MODE" = "stop" ]; then
+  step "Stopping dev containers (postgres + redis)"
+  docker compose -f "$COMPOSE_FILE" down
+  ok "All dev containers stopped"
+  echo
+  echo "  $(c_dim 'Note:') turbo dev (web/api/worker) must be killed separately if still running."
+  echo "  $(c_dim 'Restart:') pnpm setup (or pnpm start if already set up)"
+  exit 0
+fi
 
 # ── 3. Bootstrap .env (setup mode only, never overwrites) ────────────────────
 if [ "$MODE" = "setup" ]; then
@@ -204,10 +217,27 @@ if [ "$MODE" = "setup" ]; then
   exit 0
 fi
 
-# ── 7. start mode: hand off to turbo dev ──────────────────────────────────────
-step "Launching turbo dev (Ctrl+C to stop)"
+# ── 7. start mode: launch turbo dev, then hint about teardown on exit ────────
+step "Launching turbo dev (Ctrl+C to stop processes; postgres/redis stay up)"
 echo "  $(c_dim 'Web:')     http://localhost:3000/news"
 echo "  $(c_dim 'API:')     http://localhost:3001/health"
 echo "  $(c_dim 'Worker:')  no HTTP, watches /tmp/worker-alive heartbeat"
 echo
-exec pnpm dev
+
+# Trap on EXIT so the hint shows whether turbo died from Ctrl+C, a crash,
+# or a normal exit. Skipped only if docker is no longer available (e.g.
+# Docker Desktop got quit between start and now).
+on_exit() {
+  echo
+  if docker ps --filter "name=ai-hot-news-postgres-dev" --format '{{.Names}}' 2>/dev/null | grep -q .; then
+    printf '%s\n' "$(c_dim 'postgres + redis containers are still running for fast restart.')"
+    printf '%s %s\n' "$(c_dim '  Next start:')" "pnpm start"
+    printf '%s %s\n' "$(c_dim '  Stop everything:')" "pnpm stop"
+  fi
+}
+trap on_exit EXIT
+
+# Not using `exec` — we want the EXIT trap to fire after turbo terminates.
+# pnpm dev forwards SIGINT to turbo correctly, so Ctrl+C still cleanly kills
+# web/api/worker children.
+pnpm dev
