@@ -2,7 +2,7 @@ import { Provider } from '@nestjs/common';
 import { Queue, Worker, ConnectionOptions } from 'bullmq';
 import IORedis from 'ioredis';
 
-export const CRAWL_QUEUE_NAME = 'rss-crawl';
+export const CRAWL_QUEUE_NAME = 'crawl';
 export const CRAWL_QUEUE = Symbol('CRAWL_QUEUE');
 export const CRAWL_WORKER = Symbol('CRAWL_WORKER');
 export const REDIS_CONNECTION = Symbol('REDIS_CONNECTION');

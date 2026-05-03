@@ -20,7 +20,7 @@ export class CrawlScheduler implements OnModuleInit {
         { sourceConfigId: source.id },
         {
           repeat: { every: source.crawlInterval * 1000 },
-          jobId: `rss-crawl-repeat-${source.id}`,
+          jobId: `crawl-repeat-${source.id}`,
           removeOnComplete: { count: 100 },
           removeOnFail: { count: 100 },
           attempts: 3,
@@ -33,7 +33,7 @@ export class CrawlScheduler implements OnModuleInit {
         CRAWL_QUEUE_NAME,
         { sourceConfigId: source.id },
         {
-          jobId: `rss-crawl-boot-${source.id}-${Date.now()}`,
+          jobId: `crawl-boot-${source.id}-${Date.now()}`,
           attempts: 3,
           backoff: { type: 'exponential', delay: 60_000 },
           removeOnComplete: true,
