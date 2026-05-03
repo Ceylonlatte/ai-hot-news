@@ -1,0 +1,119 @@
+{
+  "kind": "Listing",
+  "data": {
+    "after": "t3_1k4xz9p",
+    "before": null,
+    "children": [
+      {
+        "kind": "t3",
+        "data": {
+          "id": "1k4xz9p",
+          "title": "GPT-5 announced",
+          "author": "user_alice",
+          "subreddit": "OpenAI",
+          "url": "https://openai.com/news/gpt-5",
+          "permalink": "/r/OpenAI/comments/1k4xz9p/gpt5_announced/",
+          "is_self": false,
+          "selftext": "",
+          "selftext_html": null,
+          "created_utc": 1746230400,
+          "score": 1234,
+          "ups": 1234,
+          "downs": 0,
+          "num_comments": 56,
+          "upvote_ratio": 0.95,
+          "stickied": false,
+          "over_18": false
+        }
+      },
+      {
+        "kind": "t3",
+        "data": {
+          "id": "1k4xz9q",
+          "title": "Show: my local LLM benchmark",
+          "author": "user_bob",
+          "subreddit": "OpenAI",
+          "url": "https://www.reddit.com/r/OpenAI/comments/1k4xz9q/show_my_local_llm_benchmark/",
+          "permalink": "/r/OpenAI/comments/1k4xz9q/show_my_local_llm_benchmark/",
+          "is_self": true,
+          "selftext": "Hi everyone...",
+          "selftext_html": "<!-- SC_OFF --><div class=\"md\"><p>Hi everyone...</p></div><!-- SC_ON -->",
+          "created_utc": 1746230500,
+          "score": 89,
+          "ups": 89,
+          "downs": 0,
+          "num_comments": 12,
+          "upvote_ratio": 0.88,
+          "stickied": false,
+          "over_18": false
+        }
+      },
+      {
+        "kind": "t3",
+        "data": {
+          "id": "1k4xz9r",
+          "title": "[META] Subreddit rules update",
+          "author": "AutoModerator",
+          "subreddit": "OpenAI",
+          "url": "https://www.reddit.com/r/OpenAI/comments/1k4xz9r/meta_subreddit_rules_update/",
+          "permalink": "/r/OpenAI/comments/1k4xz9r/meta_subreddit_rules_update/",
+          "is_self": true,
+          "selftext": "Rules...",
+          "selftext_html": "<p>Rules...</p>",
+          "created_utc": 1746000000,
+          "score": 5,
+          "ups": 5,
+          "downs": 0,
+          "num_comments": 0,
+          "upvote_ratio": 1.0,
+          "stickied": true,
+          "over_18": false
+        }
+      },
+      {
+        "kind": "t3",
+        "data": {
+          "id": "1k4xz9s",
+          "title": "NSFW topic",
+          "author": "user_carol",
+          "subreddit": "OpenAI",
+          "url": "https://example.com/nsfw",
+          "permalink": "/r/OpenAI/comments/1k4xz9s/nsfw_topic/",
+          "is_self": false,
+          "selftext": "",
+          "selftext_html": null,
+          "created_utc": 1746230600,
+          "score": 1,
+          "ups": 1,
+          "downs": 0,
+          "num_comments": 0,
+          "upvote_ratio": 0.5,
+          "stickied": false,
+          "over_18": true
+        }
+      },
+      {
+        "kind": "t3",
+        "data": {
+          "id": "1k4xz9t",
+          "title": "Deleted-author self-post",
+          "author": "[deleted]",
+          "subreddit": "OpenAI",
+          "url": "https://www.reddit.com/r/OpenAI/comments/1k4xz9t/deletedauthor_selfpost/",
+          "permalink": "/r/OpenAI/comments/1k4xz9t/deletedauthor_selfpost/",
+          "is_self": true,
+          "selftext": "an orphan post",
+          "selftext_html": "<p>an orphan post</p>",
+          "created_utc": 1746230700,
+          "score": 7,
+          "ups": 7,
+          "downs": 0,
+          "num_comments": 1,
+          "upvote_ratio": null,
+          "stickied": false,
+          "over_18": false
+        }
+      }
+    ]
+  }
+}
