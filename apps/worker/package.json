@@ -20,6 +20,7 @@
     "@nestjs/schedule": "^4.1.2",
     "bullmq": "^5.34.0",
     "ioredis": "^5.4.1",
+    "p-limit": "^6.2.0",
     "reflect-metadata": "^0.2.2",
     "rss-parser": "^3.13.0",
     "rxjs": "^7.8.1"
