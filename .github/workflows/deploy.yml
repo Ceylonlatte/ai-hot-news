@@ -29,4 +29,7 @@ jobs:
           # /api/health 由 Next.js web (Route Handler) 提供，cloudflared tunnel 把
           # ${DOMAIN} 的全部流量 ingress 到 web 容器（localhost:3000）
           curl --fail --max-time 15 "https://${{ secrets.DOMAIN }}/api/health" \
-            && echo "[Smoke OK]"
+            && echo "[Smoke OK: /api/health]"
+          # /api/hot-news 是 SP-1 列表接口（200 即可，空列表也算通过）
+          curl --fail --max-time 15 "https://${{ secrets.DOMAIN }}/api/hot-news?pageSize=1" \
+            && echo "[Smoke OK: /api/hot-news]"

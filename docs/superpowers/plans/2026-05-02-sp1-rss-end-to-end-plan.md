@@ -1978,6 +1978,9 @@ git commit -m "feat(web): add /news listing page wired to GET /hot-news"
 **Files:**
 - Modify: `.github/workflows/deploy.yml`
 - Modify: `README.md`
+- Create: `apps/web/app/api/hot-news/route.ts`（**实施时追加**，见下方说明）
+
+> **实施时的偏差（commit 待提交）**：生产环境 cloudflared tunnel 将 `${DOMAIN}` 全部流量导到 web 容器（3000 端口），NestJS API 容器的 `/hot-news` 并不对外。计划里写的 `curl https://${DOMAIN}/api/hot-news` smoke probe 需要一个 Next.js Route Handler 做 BFF 转发，才能真正命中。采用方案：新增 `apps/web/app/api/hot-news/route.ts`，用 `fetch(process.env.API_URL + '/hot-news?...')` 转发并透传 status + body + content-type。同时加 10 秒 `AbortSignal.timeout` + 502 fallback 避免 RSC 挂起。
 
 - [ ] **Step 1: Add the smoke probe for `/api/hot-news`**
 

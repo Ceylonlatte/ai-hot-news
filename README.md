@@ -163,6 +163,30 @@ VPS：git pull → docker compose pull → prisma migrate deploy → up -d
 Smoke check：curl https://your-domain/health
 ```
 
+### 首次部署后跑一次 RSS seed
+
+SP-1 引入了 RSS 源种子数据。**首次部署完成后**，到 VPS 跑一次 seed（idempotent，可重复执行）：
+
+```bash
+ssh deploy@<vps-ip>
+cd /srv/ai-hot-news
+docker compose --env-file .env -f docker/docker-compose.prod.yml \
+  run --rm --entrypoint sh api -c "cd packages/db && npx prisma db seed"
+
+# 验证
+docker compose --env-file .env -f docker/docker-compose.prod.yml exec postgres \
+  psql -U $POSTGRES_USER -d $POSTGRES_DB \
+  -c "SELECT name, url, enabled FROM source_configs ORDER BY name;"
+```
+
+执行后 worker 会在下一次重启时自动注册 repeatable job。如需立即触发，重启 worker 容器：
+
+```bash
+docker compose --env-file .env -f docker/docker-compose.prod.yml restart worker
+```
+
+之后访问 `https://<your-domain>/news` 即可看到列表页。
+
 ### 手动回滚
 
 ```bash
