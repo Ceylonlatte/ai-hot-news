@@ -124,7 +124,36 @@ fi
 
 # ── 5. Start postgres + redis ─────────────────────────────────────────────────
 step "Starting docker dev services (postgres + redis)"
-docker compose -f "$COMPOSE_FILE" up -d
+
+# Wrap `docker compose up` so we can self-heal Docker Desktop's transient
+# "RWLayer of container <id> is unexpectedly nil" / "container is in
+# state Restarting" / "is already in use" failures, which crop up after
+# Docker Desktop upgrades, sleep/wake, or unclean shutdowns. The fix is
+# always: down everything, force-remove the named containers, retry once.
+compose_up_with_heal() {
+  local out
+  set +e
+  out="$(docker compose -f "$COMPOSE_FILE" up -d 2>&1)"
+  local rc=$?
+  set -e
+  printf '%s\n' "$out"
+  if [ "$rc" -eq 0 ]; then return 0; fi
+
+  # Only auto-heal on the well-known transient daemon errors. Other failures
+  # (image pull denied, port in use, etc.) should surface as-is.
+  if printf '%s' "$out" | grep -qE 'RWLayer.*is unexpectedly nil|is already in use by container|in state Restarting'; then
+    warn "Docker daemon hit a transient state issue. Attempting self-heal..."
+    docker compose -f "$COMPOSE_FILE" down >/dev/null 2>&1 || true
+    docker rm -f "$PG_CONTAINER" "$REDIS_CONTAINER" >/dev/null 2>&1 || true
+    echo "  $(c_dim '(retrying compose up after cleanup)')"
+    docker compose -f "$COMPOSE_FILE" up -d
+    return $?
+  fi
+
+  return $rc
+}
+
+compose_up_with_heal
 ok "Compose up issued"
 
 # Wait until both containers report healthy (or accept "running" if no healthcheck)

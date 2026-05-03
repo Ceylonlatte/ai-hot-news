@@ -235,6 +235,19 @@ pnpm start                    # 重新预编译 + watch
 
 脚本对 `docker info` 设了 5 秒 timeout，所以最多卡 5 秒就会报错。如果 Docker Desktop 刚启动还没 ready，**等鲸鱼图标停止动画**再重跑 `pnpm setup`。
 
+### `RWLayer of container <id> is unexpectedly nil`
+
+Docker Desktop 在升级、系统休眠唤醒、或异常关机后会留下不一致的 layer 元数据，下次 `docker compose up` 触发这个错误。**`pnpm setup` / `pnpm start` 已内置自愈**：检测到这条错误（也包括 `is already in use by container`、`in state Restarting`）会自动 `docker compose down + docker rm -f` 然后重试一次，95% 情况下二次就成功，不需要手工干预。
+
+如果自愈后仍报错，手动彻底重置：
+
+```bash
+pnpm docker:dev:down
+docker rm -f ai-hot-news-postgres-dev ai-hot-news-redis-dev
+docker volume prune -f      # 注意：会清掉本地 dev 数据
+pnpm start
+```
+
 ### Caddy 自动证书签发失败
 
 - 检查域名 DNS 是否解析到 VPS IP（`dig +short <domain>`）
