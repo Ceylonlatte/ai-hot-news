@@ -2042,11 +2042,15 @@ Expected: 7 source_configs rows confirmed (4 RSS + 3 HN, with 1 RSS disabled = 6
 
 - [ ] **Step 3: Wipe `hot_news` for a clean baseline (optional, for clean numbers)**
 
+`CASCADE` is required because `keyword_hits.hotNewsId` has a FK referencing
+`hot_news.id` (added in SP-0). Without CASCADE Postgres rejects the TRUNCATE
+with `cannot truncate a table referenced in a foreign key constraint`.
+
 Run:
 
 ```bash
 docker compose -f docker/docker-compose.dev.yml exec postgres \
-  psql -U $POSTGRES_USER -d $POSTGRES_DB -c "TRUNCATE hot_news;"
+  psql -U $POSTGRES_USER -d $POSTGRES_DB -c "TRUNCATE hot_news CASCADE;"
 ```
 
 - [ ] **Step 4: Start the dev stack**
