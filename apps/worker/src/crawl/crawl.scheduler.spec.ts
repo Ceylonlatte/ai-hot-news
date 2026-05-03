@@ -64,14 +64,14 @@ describe('CrawlScheduler', () => {
     expect(mainQueueAdd).not.toHaveBeenCalled();
   });
 
-  it('queries enabled sources where platform IN (RSS, HACKERNEWS)', async () => {
+  it('queries enabled sources where platform IN (RSS, HACKERNEWS, REDDIT)', async () => {
     prismaFindMany.mockResolvedValue([]);
     const scheduler = new CrawlScheduler(mainQueue, connection);
     await scheduler.onModuleInit();
     expect(prismaFindMany).toHaveBeenCalledWith({
       where: {
         enabled: true,
-        platform: { in: [Platform.RSS, Platform.HACKERNEWS] },
+        platform: { in: [Platform.RSS, Platform.HACKERNEWS, Platform.REDDIT] },
       },
     });
   });
@@ -80,10 +80,11 @@ describe('CrawlScheduler', () => {
     prismaFindMany.mockResolvedValue([
       { id: 'rss1', platform: Platform.RSS, crawlInterval: 1800 },
       { id: 'hn1', platform: Platform.HACKERNEWS, crawlInterval: 900 },
+      { id: 'redd1', platform: Platform.REDDIT, crawlInterval: 3600 },
     ]);
     const scheduler = new CrawlScheduler(mainQueue, connection);
     await scheduler.onModuleInit();
-    expect(mainQueueAdd).toHaveBeenCalledTimes(4);
+    expect(mainQueueAdd).toHaveBeenCalledTimes(6);
     expect(mainQueueAdd).toHaveBeenNthCalledWith(
       1,
       'crawl',
@@ -116,6 +117,23 @@ describe('CrawlScheduler', () => {
       { sourceConfigId: 'hn1' },
       expect.objectContaining({
         jobId: expect.stringMatching(/^crawl-boot-hn1-\d+$/),
+      }),
+    );
+    expect(mainQueueAdd).toHaveBeenNthCalledWith(
+      5,
+      'crawl',
+      { sourceConfigId: 'redd1' },
+      expect.objectContaining({
+        jobId: 'crawl-repeat-redd1',
+        repeat: { every: 3_600_000 },
+      }),
+    );
+    expect(mainQueueAdd).toHaveBeenNthCalledWith(
+      6,
+      'crawl',
+      { sourceConfigId: 'redd1' },
+      expect.objectContaining({
+        jobId: expect.stringMatching(/^crawl-boot-redd1-\d+$/),
       }),
     );
   });

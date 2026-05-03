@@ -29,7 +29,7 @@ export class CrawlScheduler implements OnModuleInit {
     const sources = await getPrisma().sourceConfig.findMany({
       where: {
         enabled: true,
-        platform: { in: [Platform.RSS, Platform.HACKERNEWS] },
+        platform: { in: [Platform.RSS, Platform.HACKERNEWS, Platform.REDDIT] },
       },
     });
 
