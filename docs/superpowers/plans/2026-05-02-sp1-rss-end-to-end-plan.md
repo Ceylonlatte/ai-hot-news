@@ -1524,6 +1524,7 @@ export class ListHotNewsQuery {
   @IsOptional()
   @IsInt()
   @Min(1)
+  @Max(10000)
   page: number = 1;
 
   @Type(() => Number)
@@ -1534,6 +1535,10 @@ export class ListHotNewsQuery {
   pageSize: number = 20;
 }
 ```
+
+> **Code review 追加约束**：`page` 加 `@Max(10000)` 上界以防滥用（code-reviewer P2，已采纳于 commit `6d8a371`）。<br>
+> **已知局限（SP-2 修）**：`HotNewsService.list()` 目前 `findMany` / `count()` 都没有 `where` 过滤；SP-2 加 `platform` / 日期过滤时，要把 `where` 抽成共享变量同时传给两处，避免 `items` 与 `total` 不一致（code-reviewer P1，当前无 filter 可推迟）。<br>
+> **Spec 文件细节**：`result.items[0]!.sourcePlatform` 的 `!` 非空断言来自 root `tsconfig.base.json` 的 `noUncheckedIndexedAccess: true`；`items[0]` 为 `T | undefined`，不加 `!` 则 typecheck 失败（TS2532）。
 
 - [ ] **Step 4: Create the response DTO re-export**
 
