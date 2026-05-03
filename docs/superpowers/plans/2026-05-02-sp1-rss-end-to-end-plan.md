@@ -2085,6 +2085,12 @@ pnpm turbo run lint typecheck test
 ```
 Expected: all green. The integration test must pass against the running dev Postgres (still up from Step 1).
 
+> **实施时补丁（commit 待提交）**：
+>
+> 1. **`apps/api/package.json`** 的 `dev` / `build` 必须加 `--tsc`（`nest start --watch --tsc` / `nest build --tsc`），跟 Task 9 worker 遇到的同一坑：项目内 `ts-loader` 的存在让默认 Nest CLI 走 webpack 流程，watch 模式静默不 emit `dist/`，`nest start` 立刻因找不到 `dist/main` 崩溃。
+> 2. **`apps/worker/vitest.config.ts`** 新增 `setupFiles: ['./test/setup-env.ts']` + `apps/worker/test/setup-env.ts`：Prisma 需要 `DATABASE_URL`，但 `pnpm turbo run test` 没走 `db:seed` 的 env 加载路径；setup 文件手写解析仓库根 `.env` 注入 `process.env`，让集成测试独立可运行，CI 也能用。
+> 3. **`apps/worker/src/crawl/crawl.module.ts`** 的未使用 import `CRAWL_QUEUE` 被 ESLint `no-unused-vars` 拦住（`CRAWL_QUEUE` 仅在 `queue.provider.ts` 中使用，top-level module 不需要再 re-import）— 去掉。
+
 - [ ] **Step 4: Verify no leftover untracked files**
 
 Run: `git status`

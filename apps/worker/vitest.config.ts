@@ -5,6 +5,7 @@ export default defineConfig({
     globals: false,
     environment: 'node',
     include: ['src/**/*.spec.ts'],
+    setupFiles: ['./test/setup-env.ts'],
   },
   esbuild: {
     target: 'es2022',

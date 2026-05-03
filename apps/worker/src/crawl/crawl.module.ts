@@ -4,7 +4,6 @@ import { Worker } from 'bullmq';
 import { IngestionService } from './ingestion.service';
 import { CrawlScheduler } from './crawl.scheduler';
 import {
-  CRAWL_QUEUE,
   CRAWL_WORKER,
   REDIS_CONNECTION,
   createCrawlWorker,
