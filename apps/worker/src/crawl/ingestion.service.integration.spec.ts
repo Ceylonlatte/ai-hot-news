@@ -24,6 +24,16 @@ const HN_SOURCE = {
 
 const HN_URL_PREFIX = 'https://news.ycombinator.com/item?id=';
 
+const REDDIT_URL_PREFIX = 'https://www.reddit.com/r/';
+
+const REDDIT_SOURCE = {
+  id: 'test-redd-src',
+  platform: Platform.REDDIT,
+  url: null,
+  identifier: 'OpenAI',
+  name: 'r/OpenAI Test',
+};
+
 function makeItem(n: number): RawCrawledItem {
   return {
     title: `Item ${n}`,
@@ -41,6 +51,7 @@ async function cleanup() {
       OR: [
         { sourceUrl: { startsWith: 'https://lab.example.com/post/' } },
         { sourceUrl: { startsWith: HN_URL_PREFIX } },
+        { sourceUrl: { startsWith: REDDIT_URL_PREFIX } },
       ],
     },
   });
@@ -182,6 +193,136 @@ describe('IngestionService (integration)', () => {
 
       const row = await prisma.hotNews.findFirstOrThrow({ where: { sourceUrl } });
       expect(row.interactionData).toBeNull();
+    });
+  });
+
+  describe('REDDIT platform', () => {
+    it('inserts a REDDIT item with full interactionData (6 fields)', async () => {
+      const items: RawCrawledItem[] = [
+        {
+          title: 'GPT-5 announced',
+          contentText: 'GPT-5 announced',
+          rawHtml: null,
+          sourceUrl: `${REDDIT_URL_PREFIX}OpenAI/comments/1k4xz9p`,
+          author: 'user_alice',
+          publishedAt: new Date('2026-05-03T00:00:00Z'),
+          interactionData: {
+            score: 1234,
+            comments: 56,
+            externalUrl: 'https://openai.com/news/gpt-5',
+            redditId: '1k4xz9p',
+            redditSubreddit: 'OpenAI',
+            redditUpvoteRatio: 0.95,
+          },
+        },
+      ];
+
+      const result = await ingestion.ingest(items, REDDIT_SOURCE);
+      expect(result).toEqual({ fetched: 1, inserted: 1, skipped: 0, failed: 0 });
+
+      const row = await prisma.hotNews.findFirstOrThrow({
+        where: { sourceUrl: `${REDDIT_URL_PREFIX}OpenAI/comments/1k4xz9p` },
+      });
+      expect(row.sourcePlatform).toBe(Platform.REDDIT);
+      expect(row.title).toBe('GPT-5 announced');
+      expect(row.author).toBe('user_alice');
+      expect(row.interactionData).toMatchObject({
+        score: 1234,
+        comments: 56,
+        externalUrl: 'https://openai.com/news/gpt-5',
+        redditId: '1k4xz9p',
+        redditSubreddit: 'OpenAI',
+        redditUpvoteRatio: 0.95,
+      });
+    });
+
+    it('persists redditUpvoteRatio: null verbatim (cold post)', async () => {
+      const sourceUrl = `${REDDIT_URL_PREFIX}OpenAI/comments/1k4xz9t`;
+      await ingestion.ingest(
+        [
+          {
+            title: 'Cold post',
+            contentText: 'Cold post',
+            rawHtml: null,
+            sourceUrl,
+            author: null,
+            publishedAt: new Date('2026-05-03T00:30:00Z'),
+            interactionData: {
+              score: 2,
+              comments: 0,
+              externalUrl: null,
+              redditId: '1k4xz9t',
+              redditSubreddit: 'OpenAI',
+              redditUpvoteRatio: null,
+            },
+          },
+        ],
+        REDDIT_SOURCE,
+      );
+
+      const row = await prisma.hotNews.findFirstOrThrow({ where: { sourceUrl } });
+      expect(row.interactionData).toMatchObject({
+        redditUpvoteRatio: null,
+        redditId: '1k4xz9t',
+        redditSubreddit: 'OpenAI',
+      });
+    });
+
+    it('does NOT overwrite interactionData on duplicate sourceUrl (first-write-wins)', async () => {
+      const sourceUrl = `${REDDIT_URL_PREFIX}OpenAI/comments/1k4xz9z`;
+
+      await ingestion.ingest(
+        [
+          {
+            title: 'First insert',
+            contentText: 'First insert',
+            rawHtml: null,
+            sourceUrl,
+            author: 'user_first',
+            publishedAt: new Date('2026-05-03T01:00:00Z'),
+            interactionData: {
+              score: 10,
+              comments: 1,
+              externalUrl: null,
+              redditId: '1k4xz9z',
+              redditSubreddit: 'OpenAI',
+              redditUpvoteRatio: 0.5,
+            },
+          },
+        ],
+        REDDIT_SOURCE,
+      );
+
+      const result2 = await ingestion.ingest(
+        [
+          {
+            title: 'Second insert',
+            contentText: 'Second insert',
+            rawHtml: null,
+            sourceUrl,
+            author: 'user_second',
+            publishedAt: new Date('2026-05-03T01:00:00Z'),
+            interactionData: {
+              score: 999,
+              comments: 99,
+              externalUrl: null,
+              redditId: '1k4xz9z',
+              redditSubreddit: 'OpenAI',
+              redditUpvoteRatio: 0.99,
+            },
+          },
+        ],
+        REDDIT_SOURCE,
+      );
+
+      expect(result2).toEqual({ fetched: 1, inserted: 0, skipped: 1, failed: 0 });
+
+      const row = await prisma.hotNews.findFirstOrThrow({ where: { sourceUrl } });
+      expect(row.interactionData).toMatchObject({
+        score: 10,
+        comments: 1,
+        redditUpvoteRatio: 0.5,
+      });
     });
   });
 });

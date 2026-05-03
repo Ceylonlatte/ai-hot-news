@@ -138,7 +138,7 @@ describe('RedditCrawler.fetch', () => {
     expect(item.title).toBe('GPT-5 announced');
     expect(item.contentText).toBe('GPT-5 announced');
     expect(item.rawHtml).toBeNull();
-    expect(item.sourceUrl).toBe('https://www.reddit.com/r/OpenAI/comments/1k4xz9p/');
+    expect(item.sourceUrl).toBe('https://www.reddit.com/r/OpenAI/comments/1k4xz9p');
     expect(item.author).toBe('user_alice');
     expect(item.publishedAt).toEqual(new Date(1746230400 * 1000));
     expect(item.interactionData).toEqual({
@@ -191,7 +191,7 @@ describe('RedditCrawler.fetch', () => {
     const [item] = await crawler.fetch();
     expect(item.interactionData?.redditSubreddit).toBe('LocalLLaMA');
     expect(item.sourceUrl).toBe(
-      'https://www.reddit.com/r/LocalLLaMA/comments/1k4xz9q/',
+      'https://www.reddit.com/r/LocalLLaMA/comments/1k4xz9q',
     );
   });
 

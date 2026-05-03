@@ -81,7 +81,7 @@ export class RedditCrawler implements Crawler {
       title: p.title,
       contentText: isSelfPost ? stripHtml(selftextHtml || p.title) : p.title,
       rawHtml: isSelfPost && selftextHtml ? selftextHtml : null,
-      sourceUrl: `https://www.reddit.com/r/${subreddit}/comments/${p.id}/`,
+      sourceUrl: `https://www.reddit.com/r/${subreddit}/comments/${p.id}`,
       author: p.author && p.author !== '[deleted]' ? p.author : null,
       publishedAt: p.created_utc ? new Date(p.created_utc * 1000) : null,
       interactionData: {
