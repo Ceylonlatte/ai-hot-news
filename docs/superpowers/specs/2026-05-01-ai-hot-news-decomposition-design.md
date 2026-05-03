@@ -241,26 +241,28 @@ model HotNews {
 
 ## 6. 子项目完整清单（27 个 SP）
 
+> **状态图例**：✅ 已交付 · 🚧 进行中 · ⏳ 待开始（未明确标注的均为 ⏳）。详情见 §11 "已完成 SP 状态追踪"。
+
 ### Phase 0：基础设施（1 SP，~3-5 天）
 
-| SP | 名称 | 关键产出 | 验收标准 |
-|----|------|---------|---------|
-| **SP-0** | Monorepo + Infra 骨架 | pnpm workspace（5 子包）· Docker Compose（PG+pgvector / Redis）· Prisma 完整 schema 骨架 · CI 流水线 · 搬瓦工部署链路（SSH + Compose pull/up） | 本地 `pnpm dev` 起 5 服务全绿；GitHub Actions 全绿；服务器 `docker compose up -d` 跑空环境健康检查通过 |
+| SP | 状态 | 名称 | 关键产出 | 验收标准 |
+|----|------|------|---------|---------|
+| **SP-0** | ✅ | Monorepo + Infra 骨架 | pnpm workspace（5 子包）· Docker Compose（PG+pgvector / Redis）· Prisma 完整 schema 骨架 · CI 流水线 · 搬瓦工部署链路（SSH + Compose pull/up） | 本地 `pnpm dev` 起 5 服务全绿；GitHub Actions 全绿；服务器 `docker compose up -d` 跑空环境健康检查通过 |
 
 ### Phase 1：第一刀端到端（1 SP，~2-3 天）
 
-| SP | 名称 | 范围 | 验收 |
-|----|------|------|------|
-| **SP-1** | RSS → 列表页端到端骨架 | BullMQ 定时 job 抓 1 个 RSS 源（如 OpenAI Blog）→ HotNews 入库（仅 sourceUrl + dedupeHash 去重）→ `GET /hot-news` 分页 API → `/news` 简陋列表页（**无 Aurora 视觉**，纯 Tailwind 默认样式） | 浏览器看到至少 10 条真实 RSS 抓取内容 |
+| SP | 状态 | 名称 | 范围 | 验收 |
+|----|------|------|------|------|
+| **SP-1** | ✅ | RSS → 列表页端到端骨架 | BullMQ 定时 job 抓 1 个 RSS 源（如 OpenAI Blog）→ HotNews 入库（仅 sourceUrl + dedupeHash 去重）→ `GET /hot-news` 分页 API → `/news` 简陋列表页（**无 Aurora 视觉**，纯 Tailwind 默认样式） | 浏览器看到至少 10 条真实 RSS 抓取内容 |
 
 **故意不做**：AI 摘要、热度计算、跨平台合并、Aurora 视觉。**目标：跑通骨架。**
 
 ### Phase 2：扩展数据源（2 SP，可并行，各 ~2 天）
 
-| SP | 名称 | 关键点 |
-|----|------|--------|
-| **SP-2** | HackerNews 抓取器 | HN Firebase API · top / ask / show · 抽象 `Crawler` 插件接口 |
-| **SP-3** | Reddit 抓取器 | Reddit OAuth · PRD 推荐 subreddit 列表 · rate limit 处理 |
+| SP | 状态 | 名称 | 关键点 |
+|----|------|------|--------|
+| **SP-2** | ✅ | HackerNews 抓取器 | HN Firebase API · top / ask / show · 抽象 `Crawler` 插件接口 |
+| **SP-3** | ⏳ | Reddit 抓取器 | Reddit OAuth · PRD 推荐 subreddit 列表 · rate limit 处理 |
 
 ### Phase 3：内容处理升级（4 SP，部分并行，各 ~2-4 天）
 
@@ -431,3 +433,30 @@ M8 = P7 完成          → 完整能力（含 Twitter）         (~第 17 周)
 | 2026-05-01 | Aurora 设计稿锁定为最终视觉 | 后续重新设计 | 设计稿完成度高，5 页面 + 9 组件已成型 |
 | 2026-05-01 | Recharts > ECharts | ECharts | 体积更小 + React 集成更顺 |
 | 2026-05-01 | 总 SP 数 27 | 26 | 新增 SP-26 分享文案生成 |
+| 2026-05-03 | SP-2 抽象 `Crawler` 接口 + `CrawlerFactory` + 重命名 BullMQ 队列 `rss-crawl → crawl` | 在 RssCrawler 上原地加 if-platform 分支 | 平台路由由工厂集中（O(N) 接入新平台）；旧队列在新 worker 启动时 `obliterate` 一次以避免遗留任务 |
+| 2026-05-03 | SP-2 `RawCrawledItem` 加可选 `interactionData?: Record<string,unknown> \| null` | 每平台一张影子表 | 字段约定 spec §4.2 标准化（HN: `hnId/score/comments/externalUrl`，Reddit/X 各加自己前缀字段），未来 SP-3/SP-22 直接复用 |
+| 2026-05-03 | SP-2 HN crawler 直读 Firebase API `https://hacker-news.firebaseio.com/v0/{topstories,askstories,showstories}.json` | 用第三方 SDK | 官方 API 稳定 + 零依赖；`p-limit` 控制 N+1 fetch 并发，`HN_CONCURRENCY=10` / `HN_FETCH_TIMEOUT_MS=15000` 可调 |
+
+---
+
+## 11. 已完成 SP 状态追踪
+
+> **维护策略**：每个 SP 完成（merge to main + smoke 验证通过）后追加一行；标注关键 commit 范围、完成日期、产出特征、对后续 SP 的契约影响。
+
+| SP | 完成日期 | Commit 范围 | 关键产出 | 对后续 SP 的契约影响 |
+|----|---------|-----------|---------|------------------|
+| **SP-0** | 2026-05-02 | `fde9829..b87e7df`（含 `Merge SP-0`） | pnpm/turbo monorepo · `apps/{web,api,worker}` + `packages/{db,types,utils}` · Docker Compose（PG + pgvector + Redis）· Prisma schema（HotNews / SourceConfig / KeywordMonitor / KeywordHit ...）· CI · VPS 部署链路 | 后续 SP 直接消费的基础。`packages/types` 是跨进程契约的源头；`packages/utils` 沉淀跨 crawler 公共逻辑 |
+| **SP-1** | 2026-05-03 | `fde9829..7e6a491^`（即 SP-2 docs 之前）·SP-1 plan: `docs/superpowers/plans/2026-05-02-sp1-rss-list-end-to-end-plan.md` | RssCrawler · CrawlScheduler（BullMQ repeat job，原队列名 `rss-crawl`）· CrawlProcessor · IngestionService（unique sourceUrl + try/catch 抑制 P2002）· `GET /hot-news` 分页 + DTO · `/news` 列表页（纯 Tailwind） | RSS 数据流端到端打通。`Crawler` 接口在 SP-2 才被抽象；SP-1 的 `IngestionService.SourceLike` 在 SP-2 改为通用 `Platform` |
+| **SP-2** | 2026-05-03 | `35da0fe..81f2c70`（13 commits + 2 docs）·spec: `2026-05-03-sp2-hackernews-crawler-design.md` ·plan: `2026-05-03-sp2-hackernews-crawler-plan.md` | `Crawler` 接口 + `CrawlerFactory`（platform → crawler 路由）· `HackerNewsCrawler`（top/ask/show, p-limit, AbortSignal.timeout）· `stripHtml` 抽到 `@ai-hot-news/utils` · `RawCrawledItem.interactionData` 字段约定 · `HotNews.interactionData` 透传 · BullMQ 队列重命名 `rss-crawl → crawl` 并 `obliterate` 老队列 · seed 加 HN top/ask/show 三条 SourceConfig（identifier 而非 url）· `/news` platform 徽章渲染（`HN`/`RSS`/`Reddit`/`X` 4 色） | **接口契约**：`Crawler.fetch(): Promise<RawCrawledItem[]>` 是后续所有平台抓取器的统一形态。**字段约定（spec §4.2）**：`interactionData` 各平台前缀字段命名固化（HN: `hnId`/Reddit: `redditId,redditSubreddit`/X: `twTweetId,twReposts`）。**SP-3/SP-22 影响**：直接 `case Platform.REDDIT/TWITTER` 加进 `CrawlerFactory.create()` switch + 在 `CrawlScheduler.platform IN [...]` 列表里加上即可，零结构改动 |
+
+### SP-2 端到端 smoke 凭据（2026-05-03）
+
+- **DB 实测**：clean baseline → boot backfill 后 `hot_news` 共 1734 行（RSS=1129、HACKERNEWS=605），`sourcePlatform` 列分布正确，`interactionData` JSON 列内容形如 `{hnId:47952185, score:2, comments:0, externalUrl:"https://github.com/..."}`，与 spec §4.2 完全一致。
+- **Idempotency 实测**：第二次重启 worker 后 backfill counts 完全不变（依赖 SP-1 的 `unique(sourceUrl)` + IngestionService P2002 try/catch 抑制；交互数据不被覆盖）。
+- **UI 实测**：`/news` p1 渲染 20 个橙色 `HN` 徽章（class `bg-orange-50 text-orange-700`）、p50 渲染 20 个蓝色 `RSS` 徽章（class `bg-blue-50 text-blue-700`），SSR HTML 直接验证通过。
+- **测试矩阵**：52/52 自动化测试绿（含 6/6 PostgreSQL integration test 验证 HN interactionData 透传 + 重复 sourceUrl 不覆盖语义）；worker/types/utils typecheck + lint 全清。
+- **已知非阻塞遗留**（不属于 SP-2 修复范围）：(a) `pnpm dev` 在本地 Node 25 + nest watch 模式下偶发 dist race condition（生产 docker prod build 不受影响）；(b) `engines.node: ">=22"` 未锁紧 specific minor，建议加 `.nvmrc`；(c) Next.js `<Html>` `/500` 静态生成在 `next build` 阶段失败（pre-SP-2 issue，不影响 dev 与 docker 运行）。三项各自单独 ticket 跟踪。
+
+### 推进路线提示（更新于 SP-2 完成）
+
+按 §6 的 Phase 2 规划，SP-3（Reddit）与 SP-2 原本是并行机会。现在 SP-2 已落地并把 `Crawler` / `CrawlerFactory` / `RawCrawledItem.interactionData` 三大契约固化，**SP-3 的实施成本被显著降低**：只需新增 `RedditCrawler implements Crawler` 类、把 `Platform.REDDIT` 加进 `CrawlerFactory.create()` 的 switch 与 `CrawlScheduler.platform IN [...]` 列表（约 1 行 + 1 行变更），即可复用 SP-2 沉淀的所有调度 / ingest / 去重 / 徽章渲染基础设施。建议下一步进入 SP-3 brainstorming，或并行启动 SP-4（去重升级）。
