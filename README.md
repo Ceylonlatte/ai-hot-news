@@ -157,32 +157,29 @@ GitHub Actions: ci.yml > build-images job
 GitHub Actions: deploy.yml (SSH 到 VPS 执行 scripts/deploy.sh)
    │
    ▼
-VPS：git pull → docker compose pull → prisma migrate deploy → up -d
+VPS：git pull → docker compose pull → prisma migrate deploy → prisma db seed → up -d → worker restart
    │
    ▼
 Smoke check：curl https://your-domain/health
 ```
 
-### 首次部署后跑一次 RSS seed
+### Source config 种子数据
 
-SP-1 引入了 RSS 源种子数据。**首次部署完成后**，到 VPS 跑一次 seed（idempotent，可重复执行）：
+种子（`packages/db/prisma/seed.ts`）由 deploy.sh 在每次部署中**自动**跑一次 — `prisma db seed` 是 idempotent 的（RSS 走 `upsert(platform_url)`，HN 走 `findFirst(platform, identifier)` + update-or-create），新增 SP（如 SP-3 Reddit、SP-22 Twitter）只需把 SourceConfig 行加进 seed.ts，下一次 push to main 即自动生效，无需手动 ssh。
+
+如需在不发版的前提下手动重跑 seed（例如调整了某个 source 的 `enabled`/`crawlInterval` 想立刻生效）：
 
 ```bash
 ssh deploy@<vps-ip>
 cd /srv/ai-hot-news
 docker compose --env-file .env -f docker/docker-compose.prod.yml \
   run --rm --entrypoint sh api -c "cd packages/db && npx prisma db seed"
+docker compose --env-file .env -f docker/docker-compose.prod.yml restart worker
 
 # 验证
 docker compose --env-file .env -f docker/docker-compose.prod.yml exec postgres \
   psql -U $POSTGRES_USER -d $POSTGRES_DB \
-  -c "SELECT name, url, enabled FROM source_configs ORDER BY name;"
-```
-
-执行后 worker 会在下一次重启时自动注册 repeatable job。如需立即触发，重启 worker 容器：
-
-```bash
-docker compose --env-file .env -f docker/docker-compose.prod.yml restart worker
+  -c "SELECT platform, name, identifier, enabled FROM source_configs ORDER BY platform, name;"
 ```
 
 之后访问 `https://<your-domain>/news` 即可看到列表页。
