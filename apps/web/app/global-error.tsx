@@ -2,8 +2,8 @@
 
 // App Router global error boundary. Without this Next.js 15.5 + standalone output
 // falls back to a Pages-Router-style /_error which transitively imports <Html>
-// from pages/_document and crashes the static generation step (issue
-// vercel/next.js#83784, #77261).
+// from pages/_document and crashes the static generation step.
+// Tracked in docs/known-issues.md → NEXTJS-83784 (links to vercel/next.js#83784, #77261).
 //
 // Aurora visual polish lands in SP-8 — keep this minimal but valid (must render
 // its own <html>/<body> because it replaces the root layout when the root

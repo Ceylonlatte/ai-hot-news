@@ -455,8 +455,24 @@ M8 = P7 完成          → 完整能力（含 Twitter）         (~第 17 周)
 - **Idempotency 实测**：第二次重启 worker 后 backfill counts 完全不变（依赖 SP-1 的 `unique(sourceUrl)` + IngestionService P2002 try/catch 抑制；交互数据不被覆盖）。
 - **UI 实测**：`/news` p1 渲染 20 个橙色 `HN` 徽章（class `bg-orange-50 text-orange-700`）、p50 渲染 20 个蓝色 `RSS` 徽章（class `bg-blue-50 text-blue-700`），SSR HTML 直接验证通过。
 - **测试矩阵**：52/52 自动化测试绿（含 6/6 PostgreSQL integration test 验证 HN interactionData 透传 + 重复 sourceUrl 不覆盖语义）；worker/types/utils typecheck + lint 全清。
-- **已知非阻塞遗留**（不属于 SP-2 修复范围）：(a) `pnpm dev` 在本地 Node 25 + nest watch 模式下偶发 dist race condition（生产 docker prod build 不受影响）；(b) `engines.node: ">=22"` 未锁紧 specific minor，建议加 `.nvmrc`；(c) Next.js `<Html>` `/500` 静态生成在 `next build` 阶段失败（pre-SP-2 issue，不影响 dev 与 docker 运行）。三项各自单独 ticket 跟踪。
+- **SP-2 收尾 session 修复的 dev/deploy 遗留**（commits `c66673d` / `cfea0b4` / `d6d6a69`）：
+  - **Auto-deploy seed**：`scripts/deploy.sh` 现在在 `prisma migrate deploy` 之后**自动**跑一次 `prisma db seed` 并 restart worker。SP-2 首次 deploy `cdc78cd` 时因为没有这一步，prod 一度只有 RSS=1129 行没有 HN — 修复后 `cfea0b4` 触发的 deploy 立即把 prod 拉到 RSS+HN 混合 1734 行。详见下方 "Onboarding 新平台 SP 的标准流程"。
+  - **`pnpm dev` race condition**：根因不是 nest watch，是 `apps/{api,worker}/nest-cli.json` 的 `deleteOutDir: true` 让 `nest start --watch --tsc` 启动时清空 dist 目录，导致 node 立即 require 失败。改为 `false` + `dev` script 改成 `tsc + nest start --watch` 形态后 cold start 干净。
+  - **`engines.node` 收紧**：从 `>=22.0.0` 收紧到 `>=22.0.0 <23.0.0`，避免 Node 25 等更新主版本误用。`.npmrc` 加 `engine-strict=true` 让本机 install 直接 fail-fast。
+  - **Next.js 15.5 `<Html>` /500 build error**：vercel/next.js#83784 的上游 bug，**只影响本机 Node 25 + standalone build**，CI 在 Node 22 上一直 green、docker prod 镜像构建一直 green。已加 `app/not-found.tsx` + `app/global-error.tsx` 作为社区推荐 workaround，等上游修复后可清理。
+
+### Onboarding 新平台 SP 的标准流程（auto-deploy seed 约定，2026-05-03 起生效）
+
+SP-2 收尾时把 `prisma db seed` 嵌进 `scripts/deploy.sh`，**新增数据源平台从此变成纯代码改动**，零手工 ssh。SP-3（Reddit）/ SP-22（Twitter） 等后续平台 SP 的接入流程：
+
+1. **`packages/db/prisma/seed.ts`**：追加新平台的 `<Platform>Candidate` 类型 + candidates 数组 + `seed<Platform>()` 函数，跟 `seedHn()` 对齐（findFirst-then-update-or-create on (platform, identifier)；如果新平台天然有 url 唯一键也可走 `upsert(platform_url)` 像 RSS 那样）。在 `main()` 里加 `await seed<Platform>()` 调用。
+2. **`apps/worker/src/crawl/crawler.factory.ts`**：在 switch 里加一个 `case Platform.<NEW>: return new <New>Crawler(...)` 分支（O(1) 改动）。
+3. **`apps/worker/src/crawl/crawl.scheduler.ts`**：把 `Platform.<NEW>` 加到 `findMany.where.platform.in [...]` 数组（1 行）。
+4. **`apps/web/app/news/_components/news-item.tsx`**：在 `PLATFORM_LABEL` + `PLATFORM_BADGE_CLASS` map 里加新平台的展示 label + tailwind class（已经 SP-2 时把 RSS/HN/REDDIT/TWITTER 4 个 badge 全占好位）。
+5. **数据库 schema**：通常**不需要改** — `interactionData` 是 JSONB 字段，按 spec §4.2 字段命名约定（`<platform>Id` / `<platform><Field>`）填进去即可。Prisma `Platform` enum 已在 SP-0 schema 里包含 `RSS / HACKERNEWS / REDDIT / TWITTER`。
+
+push 到 main 后 GitHub Actions 自动跑 CI → Build images → Deploy（含 `prisma db seed` + `restart worker`），新平台数据约 3-5 分钟后开始流入 prod。无需手工 ssh、无需手工 seed、无需手工 restart。
 
 ### 推进路线提示（更新于 SP-2 完成）
 
-按 §6 的 Phase 2 规划，SP-3（Reddit）与 SP-2 原本是并行机会。现在 SP-2 已落地并把 `Crawler` / `CrawlerFactory` / `RawCrawledItem.interactionData` 三大契约固化，**SP-3 的实施成本被显著降低**：只需新增 `RedditCrawler implements Crawler` 类、把 `Platform.REDDIT` 加进 `CrawlerFactory.create()` 的 switch 与 `CrawlScheduler.platform IN [...]` 列表（约 1 行 + 1 行变更），即可复用 SP-2 沉淀的所有调度 / ingest / 去重 / 徽章渲染基础设施。建议下一步进入 SP-3 brainstorming，或并行启动 SP-4（去重升级）。
+按 §6 的 Phase 2 规划，SP-3（Reddit）与 SP-2 原本是并行机会。现在 SP-2 已落地并把 `Crawler` / `CrawlerFactory` / `RawCrawledItem.interactionData` 三大契约 + 上面的"自动 seed"约定固化，**SP-3 的实施成本被进一步降低**：按上面"Onboarding 新平台 SP 的标准流程"5 步走即可，预计纯代码量 < 200 行，e2e 时间 < 1 天。建议下一步进入 SP-3 brainstorming，或并行启动 SP-4（去重升级）。

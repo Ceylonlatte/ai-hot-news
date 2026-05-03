@@ -2,7 +2,8 @@ import Link from 'next/link';
 
 // Custom not-found page (App Router). Without this Next.js falls back to
 // generating a Pages-Router-era /_error which imports <Html> and fails the
-// `next build` static generation step (see issue thread under Next 15.5.x).
+// `next build` static generation step.
+// Tracked in docs/known-issues.md → NEXTJS-83784 (Next 15.5.x bug).
 // Keeping the markup minimal — Aurora visual polish lands in SP-8 anyway.
 export default function NotFound() {
   return (
