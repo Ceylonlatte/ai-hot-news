@@ -2,15 +2,34 @@ import { getPrisma } from '@ai-hot-news/db';
 
 const prisma = getPrisma();
 
-const candidates: Array<{ name: string; url: string; enabled: boolean }> = [
-  { name: 'OpenAI News',          url: 'https://openai.com/news/rss.xml',     enabled: true  },
-  { name: 'Anthropic News',       url: 'https://www.anthropic.com/news/rss',  enabled: false },
-  { name: 'Google Research Blog', url: 'https://research.google/blog/rss/',   enabled: true  },
-  { name: 'Google DeepMind Blog', url: 'https://deepmind.google/blog/rss.xml', enabled: true  },
+interface RssCandidate {
+  name: string;
+  url: string;
+  enabled: boolean;
+}
+
+interface HnCandidate {
+  name: string;
+  identifier: 'top' | 'ask' | 'show';
+  enabled: boolean;
+  crawlInterval: number;
+}
+
+const rssCandidates: RssCandidate[] = [
+  { name: 'OpenAI News',           url: 'https://openai.com/news/rss.xml',     enabled: true  },
+  { name: 'Anthropic News',        url: 'https://www.anthropic.com/news/rss',  enabled: false },
+  { name: 'Google Research Blog',  url: 'https://research.google/blog/rss/',   enabled: true  },
+  { name: 'Google DeepMind Blog',  url: 'https://deepmind.google/blog/rss.xml', enabled: true  },
 ];
 
-async function main() {
-  for (const c of candidates) {
+const hnCandidates: HnCandidate[] = [
+  { name: 'HackerNews Top',  identifier: 'top',  enabled: true, crawlInterval: 900  },
+  { name: 'HackerNews Ask',  identifier: 'ask',  enabled: true, crawlInterval: 1800 },
+  { name: 'HackerNews Show', identifier: 'show', enabled: true, crawlInterval: 1800 },
+];
+
+async function seedRss() {
+  for (const c of rssCandidates) {
     await prisma.sourceConfig.upsert({
       where: { platform_url: { platform: 'RSS', url: c.url } },
       create: {
@@ -22,8 +41,42 @@ async function main() {
       },
       update: { name: c.name },
     });
-    console.log(`seeded: ${c.name} (enabled=${c.enabled})`);
+    console.log(`seeded RSS: ${c.name} (enabled=${c.enabled})`);
   }
+}
+
+async function seedHn() {
+  for (const c of hnCandidates) {
+    const existing = await prisma.sourceConfig.findFirst({
+      where: { platform: 'HACKERNEWS', identifier: c.identifier },
+    });
+    if (existing) {
+      await prisma.sourceConfig.update({
+        where: { id: existing.id },
+        data: {
+          name: c.name,
+          crawlInterval: c.crawlInterval,
+        },
+      });
+    } else {
+      await prisma.sourceConfig.create({
+        data: {
+          platform: 'HACKERNEWS',
+          name: c.name,
+          url: null,
+          identifier: c.identifier,
+          enabled: c.enabled,
+          crawlInterval: c.crawlInterval,
+        },
+      });
+    }
+    console.log(`seeded HN: ${c.name} (identifier=${c.identifier}, enabled=${c.enabled})`);
+  }
+}
+
+async function main() {
+  await seedRss();
+  await seedHn();
 }
 
 main()
