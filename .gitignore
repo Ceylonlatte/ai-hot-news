@@ -21,6 +21,7 @@ packages/db/src/generated/
 .DS_Store
 .vscode/
 .idea/
+.cursor/
 *.swp
 
 # Docker volumes (local dev)
