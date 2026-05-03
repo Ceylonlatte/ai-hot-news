@@ -262,7 +262,7 @@ model HotNews {
 | SP | 状态 | 名称 | 关键点 |
 |----|------|------|--------|
 | **SP-2** | ✅ | HackerNews 抓取器 | HN Firebase API · top / ask / show · 抽象 `Crawler` 插件接口 |
-| **SP-3** | ⏳ | Reddit 抓取器 | Reddit OAuth · PRD 推荐 subreddit 列表 · rate limit 处理 |
+| **SP-3** | ✅ | Reddit 抓取器 | Reddit 公开 `.json` 端点（无 OAuth）· 8 个 AI subreddit hot 列表 · 60min crawlInterval · 429 / 5xx 处理 |
 
 ### Phase 3：内容处理升级（4 SP，部分并行，各 ~2-4 天）
 
@@ -437,6 +437,20 @@ M8 = P7 完成          → 完整能力（含 Twitter）         (~第 17 周)
 | 2026-05-03 | SP-2 `RawCrawledItem` 加可选 `interactionData?: Record<string,unknown> \| null` | 每平台一张影子表 | 字段约定 spec §4.2 标准化（HN: `hnId/score/comments/externalUrl`，Reddit/X 各加自己前缀字段），未来 SP-3/SP-22 直接复用 |
 | 2026-05-03 | SP-2 HN crawler 直读 Firebase API `https://hacker-news.firebaseio.com/v0/{topstories,askstories,showstories}.json` | 用第三方 SDK | 官方 API 稳定 + 零依赖；`p-limit` 控制 N+1 fetch 并发，`HN_CONCURRENCY=10` / `HN_FETCH_TIMEOUT_MS=15000` 可调 |
 
+### SP-3 Reddit 抓取器（2026-05-04）
+
+1. **抓取通道改为 Reddit 公开 `.json` 端点（v1 OAuth 路线废弃）**：Reddit 2025 末上线 Responsible Builder Policy，self-service OAuth 关闭，必须人工审核且周期不确定。改走 `https://www.reddit.com/r/<sub>/hot.json`：~60 req/min/IP，本项目 8 req/h 远低于限制；零凭据管理；与 OAuth 返回字段一致。详见 SP-3 spec §0 / §5.1。
+2. **8 个 sub 全开 + hot 25**：与 PRD §7.5.2 推荐对齐；`hot` 半小时变化 ≤10 条，25 覆盖率充分；运维可手工 SQL `UPDATE source_configs SET enabled=false WHERE identifier='X'` 关掉噪音 sub，下次 deploy seed 不覆盖手工改动。
+3. **60 分钟 `crawlInterval`**：Reddit 帖半衰期 ≥6h；与 HN 30 分钟错开节奏；8 sub × 25 帖 × 0.3 新增比例 / h ≈ 60 行/h ≈ 1500 行/天，磁盘压力可控。
+4. **不抓评论原文**：`interactionData.comments` 仅记计数；评论数据真实消费者是 SP-5 AI 摘要，到时候独立 worker 按"高热度帖"按需抓更经济。
+5. **`SourceConfig.url` 优先 vs `identifier` 拼接**：标准 sub 模式 seed 极简（只填 identifier）；未来扩展形态（关键词搜索 / 多 sub 集群）零代码改动接入，crawler `resolveUrl()` 一处处理。
+6. **crawler 输出的 `sourceUrl` 不带尾斜杠**（与 `normalizeUrl()` canonical form 对齐）：原计划照搬 Reddit permalink 形如 `/r/<sub>/comments/<id>/`（尾斜杠），但 `packages/utils/src/url.ts::normalizeUrl()` 会去掉尾斜杠后入库，导致 `RedditCrawler.toRaw()` 输出 `/r/<sub>/comments/<id>/` 与库内 `/r/<sub>/comments/<id>` 不一致，集成测试 `findFirstOrThrow` 会 P2025。修法：`RedditCrawler` 直接生成无尾斜杠 URL；HN crawler 已天然无尾斜杠，规则统一。
+
+### clawfeed 学到的两个点（2026-05-03，brainstorming 阶段）
+
+1. **URL auto-detect**（feed URL 自动识别 RSS / Atom / JSON / OPML）：→ 未来 SP-24 后台管理页 UX 参考，单用户场景目前 YAGNI。
+2. **source_packs**（按主题分享 source 集合）：→ 未来 SP-24 / 多用户场景 UX 参考，单用户场景目前 YAGNI。
+
 ---
 
 ## 11. 已完成 SP 状态追踪
@@ -448,6 +462,15 @@ M8 = P7 完成          → 完整能力（含 Twitter）         (~第 17 周)
 | **SP-0** | 2026-05-02 | `fde9829..b87e7df`（含 `Merge SP-0`） | pnpm/turbo monorepo · `apps/{web,api,worker}` + `packages/{db,types,utils}` · Docker Compose（PG + pgvector + Redis）· Prisma schema（HotNews / SourceConfig / KeywordMonitor / KeywordHit ...）· CI · VPS 部署链路 | 后续 SP 直接消费的基础。`packages/types` 是跨进程契约的源头；`packages/utils` 沉淀跨 crawler 公共逻辑 |
 | **SP-1** | 2026-05-03 | `fde9829..7e6a491^`（即 SP-2 docs 之前）·SP-1 plan: `docs/superpowers/plans/2026-05-02-sp1-rss-list-end-to-end-plan.md` | RssCrawler · CrawlScheduler（BullMQ repeat job，原队列名 `rss-crawl`）· CrawlProcessor · IngestionService（unique sourceUrl + try/catch 抑制 P2002）· `GET /hot-news` 分页 + DTO · `/news` 列表页（纯 Tailwind） | RSS 数据流端到端打通。`Crawler` 接口在 SP-2 才被抽象；SP-1 的 `IngestionService.SourceLike` 在 SP-2 改为通用 `Platform` |
 | **SP-2** | 2026-05-03 | `35da0fe..81f2c70`（13 commits + 2 docs）·spec: `2026-05-03-sp2-hackernews-crawler-design.md` ·plan: `2026-05-03-sp2-hackernews-crawler-plan.md` | `Crawler` 接口 + `CrawlerFactory`（platform → crawler 路由）· `HackerNewsCrawler`（top/ask/show, p-limit, AbortSignal.timeout）· `stripHtml` 抽到 `@ai-hot-news/utils` · `RawCrawledItem.interactionData` 字段约定 · `HotNews.interactionData` 透传 · BullMQ 队列重命名 `rss-crawl → crawl` 并 `obliterate` 老队列 · seed 加 HN top/ask/show 三条 SourceConfig（identifier 而非 url）· `/news` platform 徽章渲染（`HN`/`RSS`/`Reddit`/`X` 4 色） | **接口契约**：`Crawler.fetch(): Promise<RawCrawledItem[]>` 是后续所有平台抓取器的统一形态。**字段约定（spec §4.2）**：`interactionData` 各平台前缀字段命名固化（HN: `hnId`/Reddit: `redditId,redditSubreddit`/X: `twTweetId,twReposts`）。**SP-3/SP-22 影响**：直接 `case Platform.REDDIT/TWITTER` 加进 `CrawlerFactory.create()` switch + 在 `CrawlScheduler.platform IN [...]` 列表里加上即可，零结构改动 |
+| **SP-3** | 2026-05-04 | `7994e79..afa11be`（9 commits）+ 本 docs commit ·spec: `2026-05-03-sp3-reddit-crawler-design.md`（v2 公开 `.json` 路线）·plan: `2026-05-03-sp3-reddit-crawler-plan.md` | `RedditCrawler` 走 Reddit 公开 `.json` 端点（无 OAuth），`resolveUrl()` 支持 `SourceConfig.url` 优先 / `identifier` 回退两种模式 · 8 个 AI subreddit hot 列表（LocalLLaMA / MachineLearning / artificial / OpenAI / ChatGPT / singularity / StableDiffusion / ClaudeAI），60min crawlInterval · `interactionData` 6 字段（`score / comments / externalUrl / redditId / redditSubreddit / redditUpvoteRatio`）· 显式 429 + 5xx 错误处理 · `REDDIT_USER_AGENT` 强制要求（`(by /u/<owner>)` 后缀）+ `REDDIT_FETCH_TIMEOUT_MS` 可调 · `CrawlerFactory` / `CrawlScheduler` / `IngestionService` 全部按 §11 "Onboarding 标准流程" 5 步走 · `RedditCrawler.toRaw()` 输出无尾斜杠 sourceUrl 与 `normalizeUrl()` canonical form 对齐 | **新平台扩展形态**：`SourceConfig.url` 优先 vs `identifier` 拼接的双轨模式被 `RedditCrawler.resolveUrl()` 固化，未来加关键词搜索源 / 多 sub 集群源时 seed 直接填 `url` 字段，零代码改动接入。**URL canonical form 约定**：所有 crawler 的 `toRaw().sourceUrl` 必须与 `normalizeUrl()` 输出一致（无尾斜杠、无 tracking params、hash 已剥离），否则集成测试 `findFirstOrThrow` 会 P2025；HN / Reddit 已对齐，新平台 SP 必须遵守。**Onboarding 流程验证通过**：完全按 §11 "Onboarding 新平台 SP 的标准流程" 5 步实施，零结构改动 |
+
+### SP-3 端到端 smoke 凭据（2026-05-04）
+
+- **DB 实测**：本地 backfill 后 `hot_news` 共 1927 行（RSS=1129、HACKERNEWS=610、REDDIT=188），`sourcePlatform` 列分布正确，`interactionData` JSON 列 188/188 = 100% 填充率（HN 610/610 同样 100%、RSS 0/1129 = 0%，符合各平台契约）。样本：`{score: 219, comments: 51, redditId: "1t1p098", externalUrl: "https://i.redd.it/...", redditSubreddit: "ClaudeAI", redditUpvoteRatio: 0.96}`，与 SP-3 spec §4 约定完全一致。
+- **公开 `.json` 端点 reachability 实测**：直接 `curl -A "ai-hot-news-bot/0.1 (by /u/anonymous)" 'https://www.reddit.com/r/OpenAI/hot.json?limit=5&raw_json=1'` 返回 HTTP 200 + 标准 `Listing` payload，包含 `id / title / score / num_comments` 全字段；本机 IP 未触发 429。
+- **8 个 sub 全部 backfill**：worker 启动 ~3 分钟内 8 个 `crawl-boot-cmopz800*` 任务全部 `completed`（BullMQ events stream 验证），`/news` 渲染 36 个 `bg-red-50 text-red-700` Reddit 徽章覆盖全部 8 个 subreddit（含 r/LocalLLaMA / r/MachineLearning / r/artificial / r/OpenAI / r/ChatGPT / r/singularity / r/StableDiffusion / r/ClaudeAI）。
+- **Idempotency 实测**：`pnpm db:seed` 二次跑 8 个 Reddit candidates 全走 UPDATE 路径（非 INSERT），`source_configs` REDDIT 行数恒等于 8；`IngestionService` REDDIT 路径的 first-write-wins 行为由集成测试 `does NOT overwrite interactionData on duplicate sourceUrl` 自动验证（commit `5f9bde7`）。
+- **测试矩阵**：worker 45/45 + api 3/3 + 其他全绿；含新增 13/13 `RedditCrawler` 单元测试 + 3/3 `IngestionService` REDDIT 集成测试 + 4/4 `CrawlerFactory` + 4/4 `CrawlScheduler`。`pnpm turbo run lint typecheck` 16/16 cached/clean，`pnpm turbo run build` 7/7 通过。
 
 ### SP-2 端到端 smoke 凭据（2026-05-03）
 

@@ -794,8 +794,10 @@ LIMIT 100;
 | `externalUrl` | string \| null | 原文外链（如有）；HN/Reddit link-post 用 | 抓取层映射 |
 | **HN 专属（前缀 `hn`）** | | | |
 | `hnId` | number | HN item id（用于深链 / debug） | HackerNewsCrawler |
-| **Reddit 预留（前缀 `reddit`，→ SP-3）** | | | |
-| `redditId` / `redditSubreddit` | — | — | RedditCrawler |
+| **Reddit（前缀 `reddit`，SP-3 已落地 2026-05-04）** | | | |
+| `redditId` | string | Reddit post id（不带 `t3_` 前缀，e.g. `"1k4xz9p"`）| RedditCrawler |
+| `redditSubreddit` | string | subreddit 名（不带 `r/` 前缀，e.g. `"LocalLLaMA"`）| RedditCrawler |
+| `redditUpvoteRatio` | number \| null | 0..1，社区情绪指标；冷帖（<3 votes）时 Reddit 不返回，记 `null` | RedditCrawler |
 | **Twitter 预留（前缀 `tw`，→ SP-22）** | | | |
 | `twTweetId` / `twReposts` | — | — | TwitterCrawler |
 
