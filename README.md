@@ -13,40 +13,47 @@ AI 热点信息聚合与监控平台 · [PRD V3](docs/PRD/AI%20Hot%20News%20%E7%
 
 ### 前置依赖
 
-- Node 22 (`nvm use` 或 `fnm use` 或装好后 `node --version` 显示 22.x)
-- pnpm 9 (`corepack enable && corepack prepare pnpm@9.15.0 --activate`)
-- Docker Desktop / OrbStack / Colima（任一 docker engine）
+- **Node 22 LTS**（`engine-strict=true` 锁住，Node 25/24 会被 `pnpm install` 拒绝）
+  - 推荐 `nvm install 22 && nvm use 22`（仓库根有 `.nvmrc`，`nvm use` 直接读）
+- **pnpm 9** — `corepack enable && corepack prepare pnpm@9.15.0 --activate`
+- **Docker engine** — Docker Desktop / OrbStack / Colima 任一
 
 ### 一键启动
 
 ```bash
 git clone <this-repo> ai-hot-news && cd ai-hot-news
-cp .env.example .env
 
-pnpm install                  # 安装所有 workspace 依赖
-pnpm docker:dev               # 启动 postgres (含 pgvector) + redis 容器
-pnpm db:migrate:deploy        # 应用 Prisma migration（fresh checkout 推荐）
-pnpm dev                      # turbo 并行启动 web/api/worker
+pnpm setup                    # fresh-clone：env + install + docker + migrate + seed
+pnpm start                    # 日常启动：确保 docker 起来 + turbo dev (web/api/worker)
 ```
+
+`pnpm setup` 是 idempotent 的，安全多次重跑。`pnpm start` 是 `pnpm dev` 的封装（多了 docker 健康检查 + 缺 .env 时友好提示），日常推荐用它。
 
 启动后：
 
-- Web：<http://localhost:3000>（占位首页）
-- API：<http://localhost:3001/health>（含 db/redis 状态检查）
-- 数据库：localhost:5432（pgvector 已启用）
-- Redis：localhost:6379
-- Worker：无 HTTP 端口；通过 `/tmp/worker-alive` 心跳文件健康检查
+- **Web**：<http://localhost:3000/news>（聚合列表页）
+- **API**：<http://localhost:3001/health>（含 db/redis 状态检查）
+- **DB**：`localhost:5432`（pgvector 已启用）
+- **Redis**：`localhost:6379`
+- **Worker**：无 HTTP 端口；用 `/tmp/worker-alive` 心跳文件健康检查
+
+底层脚本是 [`scripts/dev-up.sh`](scripts/dev-up.sh)，按 mode 分支：preflight (Node 22 / pnpm / Docker daemon 5s timeout fail-fast) → cp .env (only setup) → pnpm install (only setup, frozen lockfile) → docker compose up + 等 healthy → prisma generate + migrate + seed (only setup) → exec pnpm dev (only start)。
 
 ### 常用命令
 
 ```bash
+pnpm setup                    # fresh-clone 一键 bootstrap（idempotent）
+pnpm start                    # 日常启动 web/api/worker（前台）
+pnpm dev                      # 等价 turbo run dev --parallel（不预检 docker，直接起）
+pnpm dev:reset                # 清空本地 hot_news + 重 seed source_configs（交互式确认）
 pnpm lint                     # 全仓库 lint（ESLint flat config）
 pnpm typecheck                # 全仓库 TS 检查
 pnpm build                    # 全仓库构建
 pnpm test                     # 全仓库测试（Vitest）
 pnpm db:studio                # 打开 Prisma Studio（数据库 GUI）
 pnpm db:migrate:dev           # 创建新 migration（开发期）
-pnpm db:generate              # 重生成 Prisma client（一般 build/migrate 会自动跑）
+pnpm db:generate              # 重生成 Prisma client（build/migrate 会自动跑）
+pnpm db:seed                  # 手动重 seed source_configs（idempotent）
 pnpm format                   # Prettier 格式化
 pnpm docker:dev:down          # 关闭本地 pg + redis
 ```
@@ -69,8 +76,11 @@ ai-hot-news/
 ├── .github/workflows/
 │   ├── ci.yml      # lint / typecheck / build / test + 镜像推 GHCR
 │   └── deploy.yml  # main 通过后 SSH 自动部署到 VPS
-├── scripts/deploy.sh             # VPS 上执行的部署脚本
-└── docs/                         # PRD / 设计稿 / spec / plan
+├── scripts/
+│   ├── deploy.sh                 # VPS 上执行的部署脚本（GitHub Actions 调用）
+│   ├── dev-up.sh                 # 本地一键启动（pnpm setup / pnpm start 的实现）
+│   └── dev-db-reset.sh           # 本地 DB reset 工具（pnpm dev:reset）
+└── docs/                         # PRD / 设计稿 / spec / plan / known-issues
 ```
 
 ## 部署到搬瓦工 VPS
@@ -213,13 +223,17 @@ docker compose -f docker/docker-compose.dev.yml up -d
 
 ### `pnpm dev` 后 NestJS 报 "Cannot find module dist/main"
 
-`nest start --watch` 在 `tsconfig.tsbuildinfo` 与 `dist/` 不一致时偶发：
+SP-2 收尾批次已修：`apps/{api,worker}/nest-cli.json` 设 `deleteOutDir: false`，`dev` script 改成先 `tsc -p tsconfig.json` 再 `nest start --watch --tsc --preserveWatchOutput`，避免 `nest --watch` 启动时清空 dist 与 node 加载之间的 race。如果仍偶发：
 
 ```bash
-rm -rf apps/api/dist apps/api/tsconfig.tsbuildinfo
-rm -rf apps/worker/dist apps/worker/tsconfig.tsbuildinfo
-pnpm dev
+rm -rf apps/api/dist apps/api/tsconfig.tsbuildinfo \
+       apps/worker/dist apps/worker/tsconfig.tsbuildinfo
+pnpm start                    # 重新预编译 + watch
 ```
+
+### `pnpm setup` 卡在 "Checking Docker daemon"
+
+脚本对 `docker info` 设了 5 秒 timeout，所以最多卡 5 秒就会报错。如果 Docker Desktop 刚启动还没 ready，**等鲸鱼图标停止动画**再重跑 `pnpm setup`。
 
 ### Caddy 自动证书签发失败
 
@@ -232,9 +246,15 @@ pnpm dev
 - `GHCR_PULL_TOKEN` 权限不够：必须至少 `packages:read`
 - VPS 上执行 `echo $GHCR_TOKEN | docker login ghcr.io -u <user> --password-stdin` 手动验证
 
-### Node 25 / 24 警告
+### `pnpm install` 报 `ERR_PNPM_UNSUPPORTED_ENGINE`
 
-`.nvmrc` 锁定 Node 22 LTS。如本机用更新版本，建议 `nvm use` 或 `fnm use` 切到 22 接近 prod 行为。
+`.npmrc` 含 `engine-strict=true` + `package.json` 的 `engines.node` 限定 `>=22.0.0 <23.0.0`，本机 Node 不在范围内会 fail-fast。修：
+
+```bash
+nvm install 22 && nvm use 22  # 或 fnm install 22 && fnm use 22
+node --version                # 应显示 v22.x
+pnpm install
+```
 
 ## License
 
