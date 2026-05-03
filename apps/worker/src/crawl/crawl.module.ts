@@ -3,6 +3,7 @@ import IORedis from 'ioredis';
 import { Worker } from 'bullmq';
 import { IngestionService } from './ingestion.service';
 import { CrawlScheduler } from './crawl.scheduler';
+import { CrawlerFactory } from './crawler.factory';
 import {
   CRAWL_WORKER,
   REDIS_CONNECTION,
@@ -18,10 +19,14 @@ import { processCrawlJob, type CrawlJobData } from './crawl.processor';
     queueProvider,
     {
       provide: CRAWL_WORKER,
-      useFactory: (connection: IORedis, ingestion: IngestionService): Worker => {
+      useFactory: (
+        connection: IORedis,
+        ingestion: IngestionService,
+        factory: CrawlerFactory,
+      ): Worker => {
         const worker = createCrawlWorker(
           async (_jobName, jobData) =>
-            processCrawlJob(jobData as CrawlJobData, ingestion),
+            processCrawlJob(jobData as CrawlJobData, ingestion, factory),
           connection,
         );
         worker.on('failed', (job, err) => {
@@ -31,9 +36,10 @@ import { processCrawlJob, type CrawlJobData } from './crawl.processor';
         });
         return worker;
       },
-      inject: [REDIS_CONNECTION, IngestionService],
+      inject: [REDIS_CONNECTION, IngestionService, CrawlerFactory],
     },
     IngestionService,
+    CrawlerFactory,
     CrawlScheduler,
   ],
   exports: [IngestionService],

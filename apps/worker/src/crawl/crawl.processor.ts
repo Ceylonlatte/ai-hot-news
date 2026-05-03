@@ -1,7 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { getPrisma, SourceStatus } from '@ai-hot-news/db';
-import { RssCrawler } from './crawlers/rss.crawler';
-import { IngestionService } from './ingestion.service';
+import type { CrawlerFactory } from './crawler.factory';
+import type { IngestionService } from './ingestion.service';
 
 const logger = new Logger('CrawlProcessor');
 
@@ -12,6 +12,7 @@ export interface CrawlJobData {
 export async function processCrawlJob(
   data: CrawlJobData,
   ingestion: IngestionService,
+  factory: CrawlerFactory,
 ): Promise<void> {
   const prisma = getPrisma();
   const source = await prisma.sourceConfig.findUnique({ where: { id: data.sourceConfigId } });
@@ -19,22 +20,44 @@ export async function processCrawlJob(
     logger.warn(`SourceConfig ${data.sourceConfigId} not found, skipping`);
     return;
   }
-  if (source.platform !== 'RSS') {
-    logger.warn(`SourceConfig ${source.id} not RSS (platform=${source.platform}), skipping`);
+  if (!source.enabled) {
+    logger.debug(`SourceConfig ${source.id} disabled, skipping`);
     return;
   }
 
-  const crawler = new RssCrawler({ id: source.id, url: source.url });
+  let crawler;
+  try {
+    crawler = factory.create({
+      id: source.id,
+      platform: source.platform,
+      url: source.url,
+      identifier: source.identifier,
+    });
+  } catch (err) {
+    logger.error(`Unsupported platform: ${(err as Error).message}`);
+    await prisma.sourceConfig.update({
+      where: { id: source.id },
+      data: {
+        status: SourceStatus.FAILED,
+        errorMessage: (err as Error).message.slice(0, 500),
+      },
+    });
+    return;
+  }
+
   try {
     const items = await crawler.fetch();
     const result = await ingestion.ingest(items, {
       id: source.id,
-      platform: 'RSS',
+      platform: source.platform,
       url: source.url,
+      identifier: source.identifier,
       name: source.name,
     });
     logger.log(
-      `RSS fetched: source=${source.name} fetched=${result.fetched} inserted=${result.inserted} skipped=${result.skipped} failed=${result.failed}`,
+      `${source.platform} crawled: source=${source.name} ` +
+        `fetched=${result.fetched} inserted=${result.inserted} ` +
+        `skipped=${result.skipped} failed=${result.failed}`,
     );
     await prisma.sourceConfig.update({
       where: { id: source.id },
@@ -46,7 +69,7 @@ export async function processCrawlJob(
     });
   } catch (err) {
     const msg = (err as Error).message;
-    logger.error(`RSS crawl failed: source=${source.name} error=${msg}`);
+    logger.error(`${source.platform} crawl failed: source=${source.name} error=${msg}`);
     await prisma.sourceConfig.update({
       where: { id: source.id },
       data: {
@@ -54,6 +77,6 @@ export async function processCrawlJob(
         errorMessage: msg.slice(0, 500),
       },
     });
-    throw err; // BullMQ will retry per attempts/backoff
+    throw err;
   }
 }

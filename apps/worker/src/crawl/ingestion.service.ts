@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { getPrisma, Platform } from '@ai-hot-news/db';
+import { getPrisma, Prisma, type Platform } from '@ai-hot-news/db';
 import { computeDedupeHash, normalizeUrl } from '@ai-hot-news/utils';
 import type { RawCrawledItem } from '@ai-hot-news/types';
 
@@ -12,8 +12,9 @@ export interface IngestResult {
 
 interface SourceLike {
   id: string;
-  platform: 'RSS';
+  platform: Platform;
   url: string | null;
+  identifier: string | null;
   name: string;
 }
 
@@ -21,7 +22,7 @@ interface SourceLike {
 export class IngestionService {
   private readonly logger = new Logger(IngestionService.name);
 
-  async ingest(items: RawCrawledItem[], _source: SourceLike): Promise<IngestResult> {
+  async ingest(items: RawCrawledItem[], source: SourceLike): Promise<IngestResult> {
     const prisma = getPrisma();
     const result: IngestResult = {
       fetched: items.length,
@@ -44,11 +45,14 @@ export class IngestionService {
               title: raw.title,
               content: raw.contentText,
               rawHtml: raw.rawHtml,
-              sourcePlatform: Platform.RSS,
+              sourcePlatform: source.platform,
               sourceUrl,
               author: raw.author,
               publishedAt: raw.publishedAt ?? new Date(),
               dedupeHash,
+              ...(raw.interactionData != null
+                ? { interactionData: raw.interactionData as Prisma.InputJsonValue }
+                : {}),
             },
           });
           result.inserted += 1;
