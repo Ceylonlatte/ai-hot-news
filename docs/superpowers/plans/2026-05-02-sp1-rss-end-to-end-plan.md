@@ -1710,7 +1710,8 @@ Create `apps/web/lib/api.ts`:
 ```ts
 import type { HotNewsListResponseDto } from '@ai-hot-news/types';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
+const API_URL = process.env.API_URL ?? 'http://localhost:3001';
+const FETCH_TIMEOUT_MS = 10_000;
 
 export async function fetchHotNewsList(
   page: number,
@@ -1718,6 +1719,7 @@ export async function fetchHotNewsList(
 ): Promise<HotNewsListResponseDto> {
   const res = await fetch(`${API_URL}/hot-news?page=${page}&pageSize=${pageSize}`, {
     cache: 'no-store',
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
   if (!res.ok) {
     const body = await res.text().catch(() => '');
@@ -1726,6 +1728,11 @@ export async function fetchHotNewsList(
   return (await res.json()) as HotNewsListResponseDto;
 }
 ```
+
+> **Code review 追加约束**（commit `030d0c6`）：
+> - 环境变量改用无前缀的 `API_URL`（而非 `NEXT_PUBLIC_API_URL`）：`lib/api.ts` 仅被 Server Component `page.tsx` 使用，不应内联到客户端 bundle；SP-2 docker-compose 中服务端将走内网服务名（如 `http://api:3001`），此名称不应对浏览器可见。
+> - 加入 10 秒 `AbortSignal.timeout(10_000)`：防止 API 挂起导致 RSC 渲染无限阻塞。
+> - 其余 a11y / SEO / `error.tsx` 类 P2 建议留到 SP-8 Aurora 设计稿落地时一并做。
 
 - [ ] **Step 2: Create `list-header.tsx`**
 
