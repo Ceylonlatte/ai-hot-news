@@ -7,6 +7,20 @@ export interface RawCrawledItem {
   sourceUrl: string;
   author: string | null;
   publishedAt: Date | null;
+  /**
+   * Platform-specific interaction data (likes, comments, score, external URL, etc.).
+   * Forwarded by IngestionService into `HotNews.interactionData` (Json column).
+   *
+   * Cross-platform field name conventions (see SP-2 spec §4.2):
+   * - Common (any platform): `score`, `comments`, `externalUrl`
+   * - HN-specific: `hnId`
+   * - Reddit-specific (SP-3): `redditId`, `redditSubreddit`
+   * - Twitter-specific (SP-22): `twTweetId`, `twReposts`
+   *
+   * Use `null` (not `undefined`) when a platform produces no interaction data; omit
+   * when the crawler hasn't been updated to populate it.
+   */
+  interactionData?: Record<string, unknown> | null;
 }
 
 export interface HotNewsListItemDto {
