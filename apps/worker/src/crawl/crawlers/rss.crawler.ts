@@ -1,5 +1,6 @@
 import Parser from 'rss-parser';
 import { RawCrawledItem } from '@ai-hot-news/types';
+import { stripHtml } from '@ai-hot-news/utils';
 import { Crawler } from './crawler.interface';
 
 interface CustomItem {
@@ -52,13 +53,4 @@ export class RssCrawler implements Crawler {
       publishedAt: item.isoDate ? new Date(item.isoDate) : null,
     };
   }
-}
-
-function stripHtml(input: string): string {
-  return input
-    .replace(/<style[\s\S]*?<\/style>/gi, '')
-    .replace(/<script[\s\S]*?<\/script>/gi, '')
-    .replace(/<[^>]+>/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
 }
