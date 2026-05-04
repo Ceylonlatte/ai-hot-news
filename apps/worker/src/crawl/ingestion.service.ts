@@ -25,6 +25,21 @@ interface SourceLike {
   name: string;
 }
 
+// SP-4.5: RSS feeds frequently re-emit their entire backlog. Drop anything
+// older than this window (or with no publishedAt — we can't prove freshness).
+// HN/Reddit are unaffected; engagement gates handle their freshness.
+const RSS_INGEST_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+
+function isWithinIngestWindow(
+  raw: RawCrawledItem,
+  source: SourceLike,
+  now: Date,
+): boolean {
+  if (source.platform !== 'RSS') return true;
+  if (!raw.publishedAt) return false;
+  return raw.publishedAt.getTime() >= now.getTime() - RSS_INGEST_WINDOW_MS;
+}
+
 @Injectable()
 export class IngestionService {
   private readonly logger = new Logger(IngestionService.name);
@@ -41,6 +56,10 @@ export class IngestionService {
 
     for (const raw of items) {
       try {
+        if (!isWithinIngestWindow(raw, source, new Date())) {
+          result.skipped += 1;
+          continue;
+        }
         if (!raw.sourceUrl) {
           result.skipped += 1;
           continue;
