@@ -269,6 +269,7 @@ model HotNews {
 | SP | 状态 | 名称 | 依赖 |
 |----|------|------|------|
 | **SP-4** | ✅ | 内容清洗 + 多层去重 | URL 规范化 / 内容哈希 / 标题相似度（PG fts），输出 `dedupeHash` |
+| **SP-4.5** | ⏳ | RSS 时效性窗口 + 平台分区 | RSS 入库 cutoff = 7d · API `?platforms` + 后端窗口表（HN/Reddit 48h、RSS 7d）· 一次性 cleanup `< now-7d` 的历史 RSS · `crawlInterval` 30min → 1d · 前端社区/权威媒体双 tab |
 | **SP-5** | ⏳ | AI 摘要 + 标签分类 | Vercel AI SDK · 摘要 + aiTags（公司/模型/类型）· 插拔式摘要策略接口 · prompt 模板入 `packages/prompts` |
 | **SP-6** | ⏳ | 热度分计算 | PRD 6 维公式 · 时间窗参数化（默认 24h）· 入库时计算 + 定时重算（衰减） |
 | **SP-7** | ⏳ | 跨平台热点合并 | pgvector embedding 入库 · 余弦相似度查询 · 阈值聚合赋 `groupId` · 归档机制（30 天后冷表） |
@@ -455,10 +456,25 @@ M8 = P7 完成          → 完整能力（含 Twitter）         (~第 17 周)
 5. **URL 规范化 6 条新规则**：http→https 折叠、Reddit 老入口 alias（`old/np/new.reddit.com → www.reddit.com`）、Twitter host alias（`twitter.com / mobile.twitter.com / m.x.com → x.com`）、`m.` / `mobile.` 子域剥离、重复 query 合并（last-wins）、空 `?` 串剥离。**不动 www 子域**（OpenAI 裸域 vs Wikipedia 必带子域，策略不一致）。
 6. **过滤逻辑分层**：platform-specific 阈值（`checkRedditQuality` / `checkHnQuality`）放在 crawler `toRaw()` 写入 `RawCrawledItem.filterReason`；platform-agnostic 兜底（`checkUniversalQuality({ title })`）由 `IngestionService` 在清洗后调用。所有阈值集中在 `packages/utils/src/quality.ts` 的 `FILTER_REASONS` 单一事实源。
 7. **`dedupeHash` 用清洗后标题计算**：原 SP-1 用 `raw.title` 做 hash，但带 `" - OpenAI Blog"` 后缀的 RSS 与不带后缀的去重等价但 hash 不同；`IngestionService` 把 `stripTitleBoilerplate` 提到 `computeDedupeHash` 之前，跨 feed 变体也能折叠成同一 dedupeHash。
-8. **ArticleExtractor 剥离 SP-4 独立**：SP-3 spec 把 ArticleExtractor 标在 SP-4 里，但 brainstorming 时确认该子系统独立性强（独立 worker / 独立队列 / 独立 fetch 限速），独立成 SP-4.5 或 SP-5 前置更合理。SP-4 完工后 link-post 保留 `content=title, rawHtml=null` 现状作为检测哨兵。
+8. **ArticleExtractor 剥离 SP-4 独立**：SP-3 spec 把 ArticleExtractor 标在 SP-4 里，但 brainstorming 时确认该子系统独立性强（独立 worker / 独立队列 / 独立 fetch 限速），独立成 SP-4.6（接 SP-4.5 之后）或 SP-5 前置更合理。SP-4 完工后 link-post 保留 `content=title, rawHtml=null` 现状作为检测哨兵。
 9. **backfill 脚本不进 deploy.sh**：一次性脚本进自动链路浪费部署时间；多次 deploy 后报告永远 0 updated 误导运维。手工 ssh 跑一次写进 commit log 标记。Backfill 期间避免 ingest 写入（worker 可临时停），避免 P2002 lookup 与并发 INSERT 竞态——这是单 writer 假设。
 10. **P2002 collapse 必须按 publishedAt 决策**（code-review catch）：原实现「冲突时删当前迭代行」在「老行 `http://`、新行已 canonical `https://`」组合下会误删较早行。修法：P2002 时 `findFirst` 查冲突方，比 `publishedAt` 删较新者，再 retry 当前行的 update；用 `deletedRowIds: Set<string>` 跳过预取列表里已被删的 id 避免 P2025。回归测试 `Layer 1: ... OLDER wins` 锁定语义。**这一 bug 若没 review 直接上 VPS 跑 backfill，会丢历史最早期数据，影响 SP-7 跨平台热度合并的早期信号——keystone review 价值的直接证据**。
 11. **一次性 prod 脚本必须用 worker image 跑 + 包名 import + helper 封装**（部署阶段 catch，post-mortem 决策）：第一次在 prod 跑 `migrate-sp4.ts` 时连撞三个坑——(a) plan 假设 host 装了 pnpm/Node，但 VPS host 没装；(b) fallback `docker compose exec api ... npx tsx scripts/migrate-sp4.ts` 失败：api Dockerfile 没 COPY `packages/db/scripts/`，且 api 是 NestJS standalone bundle，把 `@ai-hot-news/utils` inline 了，runtime 没 `node_modules/@ai-hot-news/utils`；(c) `migrate-sp4.ts` 用 `'../src/index.js'` 相对路径 import，prod image 里只有 `dist/` 没 `src/`，必须 sed 改写。修法（已固化，详见 commit `chore(sp4): post-mortem fixes — bake one-shot scripts into the prod image`）：① 一次性脚本统一用包名 import（`'@ai-hot-news/db'` / `'@ai-hot-news/utils'`），与 `seed.ts` 对齐——dev/test 走 pnpm self-link 解析、prod 走 dist 解析，两端无歧义；② **worker image** 是一次性脚本的天然宿主（已 COPY `packages/utils/dist` + 有 `@ai-hot-news/utils` symlink），`apps/worker/Dockerfile` 加 `COPY packages/db/scripts` 让脚本随镜像走；③ `scripts/run-prod-oneshot.sh` 封装 `docker compose run`，自动从 `docker compose ps worker` 抓当前运行的 IMAGE_TAG（避免 `.env` 里 `IMAGE_TAG=latest` fallback 与 deploy.sh 用的 `:sha-<commit>` 漂移）。**SP-7 pgvector backfill / SP-19 KeywordTimeSeries 历史聚合 / 任何后续 SP 的一次性脚本必须遵守这套 pattern**：放 `packages/db/scripts/`（或 `packages/<owner>/scripts/`）、用包名 import、命令形如 `bash scripts/run-prod-oneshot.sh packages/db scripts/migrate-spX.ts`。
+
+### SP-4.5 RSS 时效性窗口 + 平台分区（2026-05-04）
+
+> 详细设计：`docs/superpowers/specs/2026-05-04-sp4-5-rss-windowing-design.md`
+
+1. **窗口由"内容产出节奏"决定，不是拉取频率**：RSS 周产出 ~10 篇 → 7d 窗口；HN/Reddit 日产出几百 → 48h 窗口。统一窗口策略不可行——SP-4 部署后实测 48h 窗口 RSS 0 条（OpenAI 上线时一次性灌入 929 条 2015 至今历史，feed 协议层无增量过滤）。
+2. **平台分 tab 而非混排**：`publishedAt desc` 排序混排会让"权威媒体 7d 旧文"全部沉到 Reddit 48h 新热点之后，"权威媒体专区"产品价值消失。前端 2 个固定 tab：社区（HN+Reddit 48h）/ 权威媒体（RSS 7d）。
+3. **RSS 拉取从 30min 降到 1d**：30min 是过度轮询（OpenAI 一周才发 7 篇）。1d 一次：OpenAI 新博客 ≤ 24h 延迟、调用量从 192 次/天 → 4 次/天。**HN/Reddit 拉取频率不动**（论坛热度衰减快、需高频）。
+4. **cutoff 在 IngestionService 而非 Crawler**：Crawler 保持"原样翻译 feed"职责单一；cutoff 是"业务策略"，集中在 ingestion 层一处管理；未来加新 RSS source 0 改 crawler。`IngestionService` 新增 `isWithinIngestWindow(raw, source, now)` 早返，`IngestResult` 新增 `skippedOutsideWindow` 计数。
+5. **API 不暴露 windowHours 给前端**：窗口大小是后端"业务策略"，前端只传 `?platforms=`。`PLATFORM_WINDOW_HOURS` 表硬编码在 `HotNewsService`。避免前端误传超大窗口（如 8760h）触发慢查询。
+6. **API 默认请求等价 `platforms=HACKERNEWS,REDDIT`**：这是首页常用 view。如果未来 RSS 重要性上升，改默认即可（一行 default value）。多平台 query 用 `OR` 列表保留平台不同窗口的可能性，不写成单 AND。
+7. **HN/Reddit 不删 DB 老数据**：HN 48h 之外 ~498 条 / Reddit 48h 之外 ~27 条无类似 RSS "OpenAI 2015" 的明显荒诞；保留 30d 内全部行作为未来"上周热门"/时间轴分析的数据基础。API 端 window 过滤已经足够把它们挡在首页之外。
+8. **物理 DELETE 历史 RSS 而非 HIDDEN 标记**：用户在 brainstorming 显式选择"清理"。trade-off 接受：1119 条全是 ≥7 天前过期内容，业务无价值；不可逆但可通过 RSS feed 重抓部分恢复（cutoff 调大时）。**这是 SP-4.5 唯一与 SP-4「保留 + HIDDEN」哲学相悖的决策——明确以"用户原话 + RSS 内容老到无业务意义"作为正当性**。
+9. **不实现 HTTP Conditional GET（YAGNI）**：能降 90% 网络流量但当前 8 MB/天 RSS 流量本就可忽略；加 `source_configs.lastModified/etag` 字段 + 改 fetch 实现 + 错误处理收益不抵成本。RSS source 数量上百再说。
+10. **SP-4.5 不动 SP-4 已交付的 quality/dedupe/cleaning**：本期只在最外层加窗口过滤（API 出口 + Ingestion 入口）+ RSS 拉取节流，SP-4 内部逻辑零改动。**模块边界清晰：cleaning 在 ingestion 中段、cutoff 在 ingestion 早段、windowing 在 API 出口——三层互不干扰**。
 
 ### clawfeed 学到的两个点（2026-05-03，brainstorming 阶段）
 
@@ -553,12 +569,12 @@ SP-2 收尾时把 `prisma db seed` 嵌进 `scripts/deploy.sh`，**新增数据�
 
 push 到 main 后 GitHub Actions 自动跑 CI → Build images → Deploy（含 `prisma db seed` + `restart worker`），新平台数据约 3-5 分钟后开始流入 prod。无需手工 ssh、无需手工 seed、无需手工 restart。
 
-### 推进路线提示（更新于 SP-4 完成）
+### 推进路线提示（更新于 SP-4.5 brainstorming 完成）
 
-按 §6 Phase 3 规划，SP-4 后的最优下一步是 **SP-5（AI 摘要 + aiTags）**。理由：
+SP-4 完成 → 实测后追加 **SP-4.5（RSS 时效性窗口 + 平台分区）** 已 brainstorming 完毕，待实施。SP-4.5 后的几条可选路径：
 
-1. SP-4 brainstorming 时把"维度 3 主题相关性过滤"明确推到了 SP-5（LLM 打 `aiTags` 后 UI 按 tag 过滤）。SP-5 落地后 `/news` 列表才会真正"只剩想看的"——SP-4 完工后的 1-2 周内非 AI 主题内容仍会出现在 VISIBLE 列表里，SP-5 是最直接的用户体验改进。
-2. SP-5 的 `aiTags` 是 SP-7 跨平台合并的输入之一（embedding + tags 双信号），SP-5 落地后能直接推 SP-7。
-3. SP-5 启动前可先并行做 **SP-4.5 ArticleExtractor**（HN/Reddit link-post 外链正文抓取），因为 SP-5 摘要 link-post 时需要外链正文（当前 link-post `content=title, rawHtml=null`）。SP-4.5 是独立 worker / 独立队列，与 SP-5 无代码冲突，可并行启动。
+1. **SP-5（AI 摘要 + aiTags）**：SP-4 brainstorming 时把"维度 3 主题相关性过滤"明确推到了 SP-5（LLM 打 `aiTags` 后 UI 按 tag 过滤）。SP-5 落地后 `/news` 列表才会真正"只剩想看的"——非 AI 主题内容（甚至 RSS 7d 窗口内的非主题文章）会自然过滤掉。
+2. **SP-4.6（ArticleExtractor）**：HN/Reddit link-post 外链正文抓取。SP-5 摘要 link-post 时需要外链正文（当前 link-post `content=title, rawHtml=null`）。SP-4.6 是独立 worker / 独立队列，与 SP-5 无代码冲突，可并行启动。
+3. **SP-7（pgvector 跨平台合并）**：依赖 SP-5 `aiTags` + embedding 双信号。SP-5 完工后可直接推。
 
-建议下一步：进 SP-4.5 brainstorming（如要先解决 SP-5 的"无料可摘"前置）或 SP-5 brainstorming（如接受 link-post 暂只摘 title）。
+建议下一步：先把 **SP-4.5 实施落地**（这次 brainstorming 已完成，可直接进 writing-plans），再决定 SP-5 vs SP-4.6 的优先级。
