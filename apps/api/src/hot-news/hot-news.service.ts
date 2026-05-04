@@ -1,13 +1,40 @@
 import { Injectable } from '@nestjs/common';
-import { getPrisma, ContentStatus } from '@ai-hot-news/db';
+import { getPrisma, ContentStatus, type Platform } from '@ai-hot-news/db';
 import type { HotNewsListResponseDto } from '@ai-hot-news/types';
+
+const PLATFORM_WINDOW_HOURS: Record<Platform, number> = {
+  TWITTER: 48, // unused for now, but typesafe for future
+  HACKERNEWS: 48,
+  REDDIT: 48,
+  RSS: 24 * 7,
+};
+
+const DEFAULT_PLATFORMS: Platform[] = ['HACKERNEWS', 'REDDIT'];
 
 @Injectable()
 export class HotNewsService {
-  async list(page: number, pageSize: number): Promise<HotNewsListResponseDto> {
+  async list(
+    page: number,
+    pageSize: number,
+    platforms?: Platform[],
+  ): Promise<HotNewsListResponseDto> {
     const prisma = getPrisma();
     const skip = (page - 1) * pageSize;
-    const where = { status: ContentStatus.VISIBLE };
+    const effectivePlatforms = platforms?.length ? platforms : DEFAULT_PLATFORMS;
+    const now = new Date();
+
+    const orClauses = effectivePlatforms.map((p) => ({
+      sourcePlatform: p,
+      publishedAt: {
+        gte: new Date(now.getTime() - PLATFORM_WINDOW_HOURS[p] * 60 * 60 * 1000),
+      },
+    }));
+
+    const where = {
+      status: ContentStatus.VISIBLE,
+      OR: orClauses,
+    };
+
     const [rows, total] = await prisma.$transaction([
       prisma.hotNews.findMany({
         where,

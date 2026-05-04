@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { HotNewsService } from './hot-news.service';
 import * as dbModule from '@ai-hot-news/db';
 
@@ -28,18 +28,24 @@ describe('HotNewsService', () => {
     service = new HotNewsService();
   });
 
-  it('passes where: { status: "VISIBLE" } to findMany by default (SP-4)', async () => {
+  it('keeps status:VISIBLE filter on findMany (SP-4 contract)', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-05-10T12:00:00Z'));
     await service.list(1, 20);
     expect(prismaMock.hotNews.findMany).toHaveBeenCalledTimes(1);
     const findManyArgs = prismaMock.hotNews.findMany.mock.calls[0]![0]!;
-    expect(findManyArgs.where).toEqual({ status: 'VISIBLE' });
+    expect(findManyArgs.where.status).toBe('VISIBLE');
+    vi.useRealTimers();
   });
 
-  it('passes where: { status: "VISIBLE" } to count by default (SP-4)', async () => {
+  it('keeps status:VISIBLE filter on count (SP-4 contract)', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-05-10T12:00:00Z'));
     await service.list(1, 20);
     expect(prismaMock.hotNews.count).toHaveBeenCalledTimes(1);
     const countArgs = prismaMock.hotNews.count.mock.calls[0]![0]!;
-    expect(countArgs.where).toEqual({ status: 'VISIBLE' });
+    expect(countArgs.where.status).toBe('VISIBLE');
+    vi.useRealTimers();
   });
 
   it('does NOT include status / filterReason in the DTO output', async () => {
@@ -60,5 +66,66 @@ describe('HotNewsService', () => {
 
     expect(result.items[0]).not.toHaveProperty('status');
     expect(result.items[0]).not.toHaveProperty('filterReason');
+  });
+
+  describe('SP-4.5 platform window filter', () => {
+    const NOW = new Date('2026-05-10T12:00:00Z');
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+      vi.setSystemTime(NOW);
+    });
+    afterEach(() => vi.useRealTimers());
+
+    it('default platforms=[HACKERNEWS,REDDIT] with 48h windows', async () => {
+      await service.list(1, 20);
+      const findManyArgs = prismaMock.hotNews.findMany.mock.calls[0]![0]!;
+      expect(findManyArgs.where.status).toBe('VISIBLE');
+      expect(findManyArgs.where.OR).toHaveLength(2);
+      const hn = findManyArgs.where.OR.find(
+        (e: { sourcePlatform: string }) => e.sourcePlatform === 'HACKERNEWS',
+      );
+      const rd = findManyArgs.where.OR.find(
+        (e: { sourcePlatform: string }) => e.sourcePlatform === 'REDDIT',
+      );
+      const expectedCutoff = new Date(NOW.getTime() - 48 * 60 * 60 * 1000);
+      expect(hn.publishedAt).toEqual({ gte: expectedCutoff });
+      expect(rd.publishedAt).toEqual({ gte: expectedCutoff });
+    });
+
+    it('platforms=[RSS] uses 7d window', async () => {
+      await service.list(1, 20, ['RSS']);
+      const findManyArgs = prismaMock.hotNews.findMany.mock.calls[0]![0]!;
+      expect(findManyArgs.where.OR).toHaveLength(1);
+      const expectedCutoff = new Date(NOW.getTime() - 7 * 24 * 60 * 60 * 1000);
+      expect(findManyArgs.where.OR[0].sourcePlatform).toBe('RSS');
+      expect(findManyArgs.where.OR[0].publishedAt).toEqual({ gte: expectedCutoff });
+    });
+
+    it('platforms=[HACKERNEWS] uses 48h window for that one platform', async () => {
+      await service.list(1, 20, ['HACKERNEWS']);
+      const findManyArgs = prismaMock.hotNews.findMany.mock.calls[0]![0]!;
+      expect(findManyArgs.where.OR).toHaveLength(1);
+      expect(findManyArgs.where.OR[0].sourcePlatform).toBe('HACKERNEWS');
+      const expectedCutoff = new Date(NOW.getTime() - 48 * 60 * 60 * 1000);
+      expect(findManyArgs.where.OR[0].publishedAt).toEqual({ gte: expectedCutoff });
+    });
+
+    it('platforms=[] (empty array) falls back to default [HACKERNEWS, REDDIT]', async () => {
+      await service.list(1, 20, []);
+      const findManyArgs = prismaMock.hotNews.findMany.mock.calls[0]![0]!;
+      expect(findManyArgs.where.OR).toHaveLength(2);
+      const platforms = findManyArgs.where.OR
+        .map((e: { sourcePlatform: string }) => e.sourcePlatform)
+        .sort();
+      expect(platforms).toEqual(['HACKERNEWS', 'REDDIT']);
+    });
+
+    it('count() receives the same where clause as findMany()', async () => {
+      await service.list(1, 20, ['RSS']);
+      const findManyWhere = prismaMock.hotNews.findMany.mock.calls[0]![0]!.where;
+      const countWhere = prismaMock.hotNews.count.mock.calls[0]![0]!.where;
+      expect(countWhere).toEqual(findManyWhere);
+    });
   });
 });
