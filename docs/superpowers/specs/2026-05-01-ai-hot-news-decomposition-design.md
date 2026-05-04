@@ -270,7 +270,7 @@ model HotNews {
 |----|------|------|------|
 | **SP-4** | ✅ | 内容清洗 + 多层去重 | URL 规范化 / 内容哈希 / 标题相似度（PG fts），输出 `dedupeHash` |
 | **SP-4.5** | ✅ | RSS 时效性窗口 + 平台分区 | RSS 入库 cutoff = 7d · API `?platforms` + 后端窗口表（HN/Reddit 48h、RSS 7d）· 一次性 cleanup `< now-7d` 的历史 RSS · `crawlInterval` 30min → 1d · 前端社区/权威媒体双 tab |
-| **SP-4.6** | ⏳ | RSS 数据源扩展 | Anthropic 换 GitHub raw 镜像并启用 · 新增 Cursor Blog / Claude Blog / Claude Code Changelog · `normalizeUrl` 加 `code.claude.com/docs/en/changelog` 精确路径白名单保留 Mintlify changelog `#X.Y.Z` 锚点 · 不动 schema / `dedupeHash` / SP-4.5 7d 入库窗口 · 7 个 RSS 源全部 `crawlInterval=86400` |
+| **SP-4.6** | ✅ | RSS 数据源扩展 | Anthropic 换 GitHub raw 镜像并启用 · 新增 Cursor Blog / Claude Blog / Claude Code Changelog · `normalizeUrl` 加 `code.claude.com/docs/en/changelog` 精确路径白名单保留 Mintlify changelog `#X.Y.Z` 锚点 · 不动 schema / `dedupeHash` / SP-4.5 7d 入库窗口 · 7 个 RSS 源全部 `crawlInterval=86400` |
 | **SP-5** | ⏳ | AI 摘要 + 标签分类 | Vercel AI SDK · 摘要 + aiTags（公司/模型/类型）· 插拔式摘要策略接口 · prompt 模板入 `packages/prompts` |
 | **SP-6** | ⏳ | 热度分计算 | PRD 6 维公式 · 时间窗参数化（默认 24h）· 入库时计算 + 定时重算（衰减） |
 | **SP-7** | ⏳ | 跨平台热点合并 | pgvector embedding 入库 · 余弦相似度查询 · 阈值聚合赋 `groupId` · 归档机制（30 天后冷表） |
@@ -601,6 +601,51 @@ M8 = P7 完成          → 完整能力（含 Twitter）         (~第 17 周)
   - RSS 24h 调度间隔下，OpenAI/Anthropic 等若发新博客最坏延迟 ≤24h。如果 dashboard 反馈"上线慢"，把 `crawlInterval` 临时 6h（21600）即可，零代码改动。
   - 9 行 RSS visible 数据较少，下一波 OpenAI/Anthropic 发新博客后会自然增长；当前 `权威媒体` tab 内容稀疏属正常。
 
+### SP-4.6 端到端 smoke 凭据（2026-05-05）
+
+- **本地测试矩阵**（commit `05fb692` push 前）：
+  - `pnpm --filter @ai-hot-news/utils test -- url.spec`：**20/20 全绿**（含 SP-4.6 4 个新 case）。
+  - `pnpm turbo run lint typecheck test`：**21/21 任务全绿**，所有 8 个测试文件 / 59 个 worker 测试 / 全部 api / db / utils 单测 PASS。Worker integration `inserts new items and dedupes repeated ingests` 等用例的 P2002 报错是**故意**触发的去重断言，非回归。
+  - `pnpm --filter @ai-hot-news/web build`：编译 + 5 静态页面生成全绿，无 typedRoutes 回归。
+  - 本地 SP-4.6 SQL fallback 在已 seed 的 dev DB 上 idempotent dry-run：`UPDATE 1 / DELETE 0 / INSERT 0 × 3` ——seed.ts 主路径与 SQL fallback 路径目标状态完全等价。
+- **Prod baseline（部署前，2026-05-05 02:36 UTC+8）**：
+  ```
+  /api/hot-news?platforms=RSS&pageSize=50  total=9
+    hosts: openai.com=6, research.google=2, deepmind.google=1
+  ```
+  无 cursor.com / claude.com / www.anthropic.com / code.claude.com 任何源——SP-4.6 前 Anthropic disabled、其他 3 个新源压根不存在。
+- **Auto-deploy 链路触发**：`git push origin main` (`05fb692`) → GitHub Actions CI → Deploy SSH → `scripts/deploy.sh "sha-05fb692..."` 自动跑：(a) `prisma migrate deploy` (no-op，schema 未改) → (b) `prisma db seed`（按 SP-4.6 改动后的 `seedRss()` apply 7 行 RSS） → (c) `docker compose up -d` → (d) `restart worker`（让 BullMQ 重新注册 enabled 源）。`/api/health` + `/api/hot-news?pageSize=1` 部署内置 smoke 双绿。
+- **Post-deploy state（2026-05-05 02:43 UTC+8，deploy 完成后约 3 分钟首轮抓取后）**：
+  ```
+  /api/hot-news?platforms=RSS&pageSize=50  total=27   (+18 vs baseline)
+    hosts: claude.com=9, openai.com=6, code.claude.com=5, cursor.com=2,
+           research.google=2, www.anthropic.com=2, deepmind.google=1
+  ```
+  7 个 distinct host 全部出现（4 个老源 + 4 个新源 — Anthropic 通过新 mirror 重新激活）。`/api/health` 返回 `uptime: 74.13s`，证明 worker 在 deploy 期间确实被 restart 过。
+- **关键不变量验证 — Mintlify changelog fragment 保留 hack**：
+  ```json
+  /api/hot-news?platforms=RSS&pageSize=50, items where sourceUrl LIKE 'https://code.claude.com%':
+  [
+    { sourceUrl: "https://code.claude.com/docs/en/changelog#2-1-126", title: "2.1.126", publishedAt: "2026-05-01" },
+    { sourceUrl: "https://code.claude.com/docs/en/changelog#2-1-123", title: "2.1.123", publishedAt: "2026-04-29" },
+    { sourceUrl: "https://code.claude.com/docs/en/changelog#2-1-122", title: "2.1.122", publishedAt: "2026-04-28" },
+    { sourceUrl: "https://code.claude.com/docs/en/changelog#2-1-120", title: "2.1.120", publishedAt: "2026-04-28" },
+    { sourceUrl: "https://code.claude.com/docs/en/changelog#2-1-121", title: "2.1.121", publishedAt: "2026-04-28" }
+  ]
+  ```
+  **5 条 changelog item 各自带不同 `#X.Y.Z` anchor，全部通过 `HotNews.sourceUrl @unique` 约束** → SP-4.6 normalizeUrl 精确路径白名单（`(code.claude.com, /docs/en/changelog)`）在 prod **完美工作**。如果 hack 失效，5 条会全部撞同一个剥 fragment 后的 `https://code.claude.com/docs/en/changelog`，最多入 1 条。这是 SP-4.6 唯一的"破例"性质改动，prod 数据是它生效的最强证据。
+- **SP-4.5 7d 入库窗口持续生效**：Cursor feed 上游有 19 条 item（追溯到 2026-02-13），但只入了 **2 条**（4-30 / 4-29）；Anthropic mirror 上游历史更长，只入了 **2 条**；Claude blog 因 7d 窗口内发文密度高入了 9 条；Mintlify changelog 上游有几十个版本，只入了 7d 内的 5 条。**SP-4.6 数据源扩展不会污染历史 — SP-4.5 cutoff 是天然防御层**。
+- **不变量回顾（与 spec §7 一致）**：
+  - `HotNews.sourceUrl @unique` 仍然 unique（5 条 changelog 各 row id 不同、sourceUrl 不同 → unique 约束 OK）
+  - `dedupeHash` 算法零变化（`computeDedupeHash` 函数体未触）
+  - SP-4.5 `RSS_INGEST_WINDOW_MS = 7d` / `PLATFORM_WINDOW_HOURS` / `/api/hot-news?platforms=` 行为零变化
+  - 其他 RSS 源（OpenAI / Google Research / Google DeepMind）prod 数据点数与 baseline 一致（6 / 2 / 1），未受影响
+  - `normalizeUrl` 在 `code.claude.com/docs/en/changelog` 之外的所有 URL 上行为零变化（其余 6 个 RSS 源、HN、Reddit 全部 sourceUrl 不带 fragment）
+- **后续观察项**：
+  - Cursor 第 3 篇文章（4-23 NAB）publishedAt 在 7d 窗口外约 2 天，下次 OpenAI/Cursor 发新博客（≤24h 拉取一次）后会上桶。无需干预。
+  - Claude Code Changelog 是发布频率最高的源（约 2-3 天一版本）；7d 窗口下稳态约 2-4 条 item。
+  - 如未来 Anthropic 修复官方 RSS（`https://www.anthropic.com/news/rss`），可考虑切回官方源，第三方 mirror 仅作 fallback。
+
 ### SP-2 端到端 smoke 凭据（2026-05-03）
 
 - **DB 实测**：clean baseline → boot backfill 后 `hot_news` 共 1734 行（RSS=1129、HACKERNEWS=605），`sourcePlatform` 列分布正确，`interactionData` JSON 列内容形如 `{hnId:47952185, score:2, comments:0, externalUrl:"https://github.com/..."}`，与 spec §4.2 完全一致。
@@ -625,13 +670,15 @@ SP-2 收尾时把 `prisma db seed` 嵌进 `scripts/deploy.sh`，**新增数据�
 
 push 到 main 后 GitHub Actions 自动跑 CI → Build images → Deploy（含 `prisma db seed` + `restart worker`），新平台数据约 3-5 分钟后开始流入 prod。无需手工 ssh、无需手工 seed、无需手工 restart。
 
-### 推进路线提示（更新于 SP-4.5 部署完成）
+### 推进路线提示（更新于 SP-4.6 部署完成）
 
-SP-4.5 已落地：commit `da31a09..c962c65` 13 个 commit 全部 push 到 main、CI/Deploy 全绿、prod 1120 行 pre-window RSS 已物理删除、`/news` 双 tab UI 已上线。Tasks 1-11 全部 ✅。下一步可选路径：
+SP-4.6 已落地：commit `5af5ffe..05fb692` 6 个 commit（2 docs + 1 feat-utils + 1 feat-db + 1 chore-sql + 1 docs-status）全部 push 到 main、CI/Deploy 全绿、prod 4 个新源全部抓到（含 Mintlify changelog fragment 保留 hack 验证 5 条不同 `#X.Y.Z` 入库）、`/api/hot-news?platforms=RSS` total 9 → 27。Tasks 1-6 全部 ✅。
+
+SP-4.6 把"SP-4.6"编号占用，原计划占用此编号的 ArticleExtractor 子项目改在 **SP-4.7** 或 **SP-5 前置**规划。下一步可选路径：
 
 1. **SP-5（AI 摘要 + aiTags）**：SP-4 brainstorming 时把"维度 3 主题相关性过滤"明确推到了 SP-5（LLM 打 `aiTags` 后 UI 按 tag 过滤）。SP-5 落地后 `/news` 列表才会真正"只剩想看的"——非 AI 主题内容（甚至 RSS 7d 窗口内的非主题文章）会自然过滤掉。
-2. **SP-4.6（ArticleExtractor）**：HN/Reddit link-post 外链正文抓取。SP-5 摘要 link-post 时需要外链正文（当前 link-post `content=title, rawHtml=null`）。SP-4.6 是独立 worker / 独立队列，与 SP-5 无代码冲突，可并行启动。
+2. **SP-4.7（原 SP-4.6 ArticleExtractor）**：HN/Reddit link-post 外链正文抓取。SP-5 摘要 link-post 时需要外链正文（当前 link-post `content=title, rawHtml=null`）。SP-4.7 是独立 worker / 独立队列，与 SP-5 无代码冲突，可并行启动。
 3. **SP-7（pgvector 跨平台合并）**：依赖 SP-5 `aiTags` + embedding 双信号。SP-5 完工后可直接推。
 4. **Web 测试基础设施 SP（YAGNI / 待触发）**：`apps/web` 至今无 vitest infra；SP-4.5 Task 7 的 fetchHotNewsList 改动只能跑 typecheck 兜底。如果 web 层后续 logic 分支变多（SP-5 摘要展示、SP-7 cluster 视图等），单独开 SP 装 vitest+jsdom+RTL 比较合适，目前先 YAGNI。
 
-建议下一步：在 **SP-5 vs SP-4.6** 之间二选一进 brainstorming（或先二者并行 brainstorming 看哪个更快收敛）。
+建议下一步：在 **SP-5 vs SP-4.7** 之间二选一进 brainstorming（或先二者并行 brainstorming 看哪个更快收敛）。
