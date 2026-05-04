@@ -206,4 +206,102 @@ describe('RedditCrawler.fetch', () => {
     expect(item.rawHtml).toBeNull();
     expect(item.contentText).toBe('Show: my local LLM benchmark');
   });
+
+  // === SP-4: filterReason on toRaw ===
+
+  it('SP-4: writes filterReason="reddit_low_ratio" when upvote_ratio < 0.5', async () => {
+    const lowRatioPost = {
+      id: 'abc',
+      title: 'Some title',
+      author: 'alice',
+      subreddit: 'OpenAI',
+      url: 'https://example.com/a',
+      permalink: '/r/OpenAI/comments/abc',
+      is_self: false,
+      selftext: '',
+      selftext_html: null,
+      created_utc: 1746230400,
+      score: 100,
+      ups: 100,
+      downs: 0,
+      num_comments: 50,
+      upvote_ratio: 0.4,
+      stickied: false,
+      over_18: false,
+    };
+    fetchMock.mockResolvedValue(jsonResponse(listingOf(lowRatioPost)));
+
+    const crawler = new RedditCrawler(
+      { id: 's1', url: null, identifier: 'OpenAI' },
+      'ai-hot-news-bot/0.1 (by /u/test)',
+    );
+    const items = await crawler.fetch();
+
+    expect(items).toHaveLength(1);
+    expect(items[0]!.filterReason).toBe('reddit_low_ratio');
+  });
+
+  it('SP-4: writes filterReason=null for high-quality post (ratio>=0.5, score>=5)', async () => {
+    const goodPost = {
+      id: 'def',
+      title: 'High quality',
+      author: 'bob',
+      subreddit: 'OpenAI',
+      url: 'https://example.com/b',
+      permalink: '/r/OpenAI/comments/def',
+      is_self: false,
+      selftext: '',
+      selftext_html: null,
+      created_utc: 1746230500,
+      score: 200,
+      ups: 200,
+      downs: 0,
+      num_comments: 30,
+      upvote_ratio: 0.95,
+      stickied: false,
+      over_18: false,
+    };
+    fetchMock.mockResolvedValue(jsonResponse(listingOf(goodPost)));
+
+    const crawler = new RedditCrawler(
+      { id: 's2', url: null, identifier: 'OpenAI' },
+      'ai-hot-news-bot/0.1 (by /u/test)',
+    );
+    const items = await crawler.fetch();
+
+    expect(items).toHaveLength(1);
+    expect(items[0]!.filterReason).toBeNull();
+  });
+
+  it('SP-4: writes filterReason="reddit_low_engagement" for cold post (score<5, comments<2)', async () => {
+    const coldPost = {
+      id: 'ghi',
+      title: 'Cold post',
+      author: 'carol',
+      subreddit: 'OpenAI',
+      url: 'https://example.com/c',
+      permalink: '/r/OpenAI/comments/ghi',
+      is_self: false,
+      selftext: '',
+      selftext_html: null,
+      created_utc: 1746230600,
+      score: 2,
+      ups: 2,
+      downs: 0,
+      num_comments: 0,
+      upvote_ratio: null,
+      stickied: false,
+      over_18: false,
+    };
+    fetchMock.mockResolvedValue(jsonResponse(listingOf(coldPost)));
+
+    const crawler = new RedditCrawler(
+      { id: 's3', url: null, identifier: 'OpenAI' },
+      'ai-hot-news-bot/0.1 (by /u/test)',
+    );
+    const items = await crawler.fetch();
+
+    expect(items).toHaveLength(1);
+    expect(items[0]!.filterReason).toBe('reddit_low_engagement');
+  });
 });

@@ -1,4 +1,4 @@
-import { stripHtml } from '@ai-hot-news/utils';
+import { stripHtml, checkRedditQuality } from '@ai-hot-news/utils';
 import type { RawCrawledItem } from '@ai-hot-news/types';
 import type { Crawler } from './crawler.interface';
 import type { RedditListingResponse, RedditPost } from './reddit.types';
@@ -77,6 +77,14 @@ export class RedditCrawler implements Crawler {
     const isSelfPost = !!p.is_self;
     const selftextHtml = (p.selftext_html ?? '').trim();
     const subreddit = subredditHint ?? p.subreddit ?? 'unknown';
+
+    // SP-4: dimension-2 quality verdict
+    const filterReason = checkRedditQuality({
+      upvote_ratio: p.upvote_ratio ?? null,
+      score: p.score ?? 0,
+      num_comments: p.num_comments ?? 0,
+    });
+
     return {
       title: p.title,
       contentText: isSelfPost ? stripHtml(selftextHtml || p.title) : p.title,
@@ -92,6 +100,7 @@ export class RedditCrawler implements Crawler {
         redditSubreddit: subreddit,
         redditUpvoteRatio: p.upvote_ratio ?? null,
       },
+      filterReason,
     };
   }
 
