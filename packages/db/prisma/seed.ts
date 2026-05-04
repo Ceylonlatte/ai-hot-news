@@ -24,10 +24,13 @@ interface RedditCandidate {
 }
 
 const rssCandidates: RssCandidate[] = [
-  { name: 'OpenAI News',           url: 'https://openai.com/news/rss.xml',     enabled: true  },
-  { name: 'Anthropic News',        url: 'https://www.anthropic.com/news/rss',  enabled: false },
-  { name: 'Google Research Blog',  url: 'https://research.google/blog/rss/',   enabled: true  },
-  { name: 'Google DeepMind Blog',  url: 'https://deepmind.google/blog/rss.xml', enabled: true  },
+  { name: 'OpenAI News',           url: 'https://openai.com/news/rss.xml',                                                                  enabled: true },
+  { name: 'Anthropic News',        url: 'https://raw.githubusercontent.com/Olshansk/rss-feeds/main/feeds/feed_anthropic_news.xml',          enabled: true },
+  { name: 'Google Research Blog',  url: 'https://research.google/blog/rss/',                                                                enabled: true },
+  { name: 'Google DeepMind Blog', url: 'https://deepmind.google/blog/rss.xml',                                                              enabled: true },
+  { name: 'Cursor Blog',           url: 'https://raw.githubusercontent.com/Olshansk/rss-feeds/main/feeds/feed_cursor.xml',                  enabled: true },
+  { name: 'Claude Blog',           url: 'https://raw.githubusercontent.com/Olshansk/rss-feeds/main/feeds/feed_claude.xml',                  enabled: true },
+  { name: 'Claude Code Changelog', url: 'https://code.claude.com/docs/en/changelog/rss.xml',                                                enabled: true },
 ];
 
 const hnCandidates: HnCandidate[] = [
@@ -49,18 +52,30 @@ const redditCandidates: RedditCandidate[] = [
 
 async function seedRss() {
   for (const c of rssCandidates) {
-    await prisma.sourceConfig.upsert({
-      where: { platform_url: { platform: 'RSS', url: c.url } },
-      create: {
-        platform: 'RSS',
-        name: c.name,
-        url: c.url,
-        enabled: c.enabled,
-        crawlInterval: 1800,
-      },
-      update: { name: c.name },
+    const existing = await prisma.sourceConfig.findFirst({
+      where: { platform: 'RSS', name: c.name },
     });
-    console.log(`seeded RSS: ${c.name} (enabled=${c.enabled})`);
+    if (existing) {
+      await prisma.sourceConfig.update({
+        where: { id: existing.id },
+        data: {
+          url: c.url,
+          enabled: c.enabled,
+          crawlInterval: 86400,
+        },
+      });
+    } else {
+      await prisma.sourceConfig.create({
+        data: {
+          platform: 'RSS',
+          name: c.name,
+          url: c.url,
+          enabled: c.enabled,
+          crawlInterval: 86400,
+        },
+      });
+    }
+    console.log(`seeded RSS: ${c.name} (enabled=${c.enabled}, url=${c.url})`);
   }
 }
 
