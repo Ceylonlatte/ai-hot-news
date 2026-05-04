@@ -269,7 +269,7 @@ model HotNews {
 | SP | 状态 | 名称 | 依赖 |
 |----|------|------|------|
 | **SP-4** | ✅ | 内容清洗 + 多层去重 | URL 规范化 / 内容哈希 / 标题相似度（PG fts），输出 `dedupeHash` |
-| **SP-4.5** | ⏳ | RSS 时效性窗口 + 平台分区 | RSS 入库 cutoff = 7d · API `?platforms` + 后端窗口表（HN/Reddit 48h、RSS 7d）· 一次性 cleanup `< now-7d` 的历史 RSS · `crawlInterval` 30min → 1d · 前端社区/权威媒体双 tab |
+| **SP-4.5** | ✅ | RSS 时效性窗口 + 平台分区 | RSS 入库 cutoff = 7d · API `?platforms` + 后端窗口表（HN/Reddit 48h、RSS 7d）· 一次性 cleanup `< now-7d` 的历史 RSS · `crawlInterval` 30min → 1d · 前端社区/权威媒体双 tab |
 | **SP-5** | ⏳ | AI 摘要 + 标签分类 | Vercel AI SDK · 摘要 + aiTags（公司/模型/类型）· 插拔式摘要策略接口 · prompt 模板入 `packages/prompts` |
 | **SP-6** | ⏳ | 热度分计算 | PRD 6 维公式 · 时间窗参数化（默认 24h）· 入库时计算 + 定时重算（衰减） |
 | **SP-7** | ⏳ | 跨平台热点合并 | pgvector embedding 入库 · 余弦相似度查询 · 阈值聚合赋 `groupId` · 归档机制（30 天后冷表） |
@@ -493,6 +493,7 @@ M8 = P7 完成          → 完整能力（含 Twitter）         (~第 17 周)
 | **SP-1** | 2026-05-03 | `fde9829..7e6a491^`（即 SP-2 docs 之前）·SP-1 plan: `docs/superpowers/plans/2026-05-02-sp1-rss-list-end-to-end-plan.md` | RssCrawler · CrawlScheduler（BullMQ repeat job，原队列名 `rss-crawl`）· CrawlProcessor · IngestionService（unique sourceUrl + try/catch 抑制 P2002）· `GET /hot-news` 分页 + DTO · `/news` 列表页（纯 Tailwind） | RSS 数据流端到端打通。`Crawler` 接口在 SP-2 才被抽象；SP-1 的 `IngestionService.SourceLike` 在 SP-2 改为通用 `Platform` |
 | **SP-2** | 2026-05-03 | `35da0fe..81f2c70`（13 commits + 2 docs）·spec: `2026-05-03-sp2-hackernews-crawler-design.md` ·plan: `2026-05-03-sp2-hackernews-crawler-plan.md` | `Crawler` 接口 + `CrawlerFactory`（platform → crawler 路由）· `HackerNewsCrawler`（top/ask/show, p-limit, AbortSignal.timeout）· `stripHtml` 抽到 `@ai-hot-news/utils` · `RawCrawledItem.interactionData` 字段约定 · `HotNews.interactionData` 透传 · BullMQ 队列重命名 `rss-crawl → crawl` 并 `obliterate` 老队列 · seed 加 HN top/ask/show 三条 SourceConfig（identifier 而非 url）· `/news` platform 徽章渲染（`HN`/`RSS`/`Reddit`/`X` 4 色） | **接口契约**：`Crawler.fetch(): Promise<RawCrawledItem[]>` 是后续所有平台抓取器的统一形态。**字段约定（spec §4.2）**：`interactionData` 各平台前缀字段命名固化（HN: `hnId`/Reddit: `redditId,redditSubreddit`/X: `twTweetId,twReposts`）。**SP-3/SP-22 影响**：直接 `case Platform.REDDIT/TWITTER` 加进 `CrawlerFactory.create()` switch + 在 `CrawlScheduler.platform IN [...]` 列表里加上即可，零结构改动 |
 | **SP-3** | 2026-05-04 | `7994e79..afa11be`（9 commits）+ 本 docs commit ·spec: `2026-05-03-sp3-reddit-crawler-design.md`（v2 公开 `.json` 路线）·plan: `2026-05-03-sp3-reddit-crawler-plan.md` | `RedditCrawler` 走 Reddit 公开 `.json` 端点（无 OAuth），`resolveUrl()` 支持 `SourceConfig.url` 优先 / `identifier` 回退两种模式 · 8 个 AI subreddit hot 列表（LocalLLaMA / MachineLearning / artificial / OpenAI / ChatGPT / singularity / StableDiffusion / ClaudeAI），60min crawlInterval · `interactionData` 6 字段（`score / comments / externalUrl / redditId / redditSubreddit / redditUpvoteRatio`）· 显式 429 + 5xx 错误处理 · `REDDIT_USER_AGENT` 强制要求（`(by /u/<owner>)` 后缀）+ `REDDIT_FETCH_TIMEOUT_MS` 可调 · `CrawlerFactory` / `CrawlScheduler` / `IngestionService` 全部按 §11 "Onboarding 标准流程" 5 步走 · `RedditCrawler.toRaw()` 输出无尾斜杠 sourceUrl 与 `normalizeUrl()` canonical form 对齐 | **新平台扩展形态**：`SourceConfig.url` 优先 vs `identifier` 拼接的双轨模式被 `RedditCrawler.resolveUrl()` 固化，未来加关键词搜索源 / 多 sub 集群源时 seed 直接填 `url` 字段，零代码改动接入。**URL canonical form 约定**：所有 crawler 的 `toRaw().sourceUrl` 必须与 `normalizeUrl()` 输出一致（无尾斜杠、无 tracking params、hash 已剥离），否则集成测试 `findFirstOrThrow` 会 P2025；HN / Reddit 已对齐，新平台 SP 必须遵守。**Onboarding 流程验证通过**：完全按 §11 "Onboarding 新平台 SP 的标准流程" 5 步实施，零结构改动 |
+| **SP-4.5** | 2026-05-04 | `da31a09..c962c65`（13 commits = 2 docs + 9 feat + 1 test + 1 robustness fix）·spec: `2026-05-04-sp4-5-rss-windowing-design.md` ·plan: `2026-05-04-sp4-5-rss-windowing-plan.md` | `IngestionService.isWithinIngestWindow()` 7d cutoff（RSS-only 平台早返、null `publishedAt`→drop、`>=` 边界）→ 进 `result.skipped`，不新增 `IngestResult` 字段 · `cleanup-rss-pre-window.ts` 一次性 `deleteMany WHERE sourcePlatform='RSS' AND publishedAt < now-7d`，dual-mode entrypoint（`require.main` + `argv[1].endsWith`）+ 集成测试（删除/HN-Reddit-不动/边界），整测试套件并发安全靠 `packages/db/vitest.config.ts: fileParallelism=false` · `sp4-5-update-rss-interval.sql` 幂等 SQL（`WHERE crawlInterval <> 86400`）· `ListHotNewsQuery.platforms?: AllowedPlatform[]` DTO 字段（`@Transform` trim+upper、`@IsIn` 校验、未知平台→400）· `HotNewsService.list(page, size, platforms?)` + `PLATFORM_WINDOW_HOURS: Record<Platform, number>`（HN=48 / Reddit=48 / RSS=168 / Twitter=48 占位 typesafe）+ `DEFAULT_PLATFORMS=['HACKERNEWS','REDDIT']`（`platforms?.length ? platforms : DEFAULT_PLATFORMS` 同时处理 `undefined` 与 `[]`）· `where = { status: 'VISIBLE', OR: [{sourcePlatform, publishedAt: {gte: now-hours*ms}}, ...] }`，`findMany` 与 `count` 共享同一 where · `HotNewsController.list()` 透传 `query.platforms` · `fetchHotNewsList(page, size, platforms?: FeedPlatform[])` Web 层 fetch + `URLSearchParams` 序列化为 `?platforms=A,B` · `apps/web/app/news/_components/feed-tabs.tsx` 服务端组件（`?tab=community\|media`，default community）· `/news/page.tsx` 用 `TAB_PLATFORMS` map 把 tab 转 `platforms[]` 传给 fetcher，EmptyState 移到 `<main>` 内（保留 tabs 始终可见）· `Pagination` 改用 Next `UrlObject` 形式（`{pathname:'/news', query:{tab,page}}`）以兼容 `typedRoutes:true`，渲染 URL 仍为 `/news?tab=...&page=...` | **API 默认行为变更（breaking）**：`GET /hot-news` 默认从「全部平台 VISIBLE」变成「HN+REDDIT 48h VISIBLE」。任何不带 `?platforms=` 的旧客户端会少看到 RSS。Web 端配套切换到 `?tab=` 协议；外部脚本如有依赖需升级。**新平台扩展点**：`PLATFORM_WINDOW_HOURS` 是 `Record<Platform, number>` exhaustive，未来加 Twitter / 任何新 Platform 必须同时填窗口；`ALLOWED_PLATFORMS`（DTO）和 `FeedPlatform`（web）是 union string，新平台需三处同步。**Ingest cutoff 契约**：RSS-only，HN/Reddit 仍依赖 SP-4 quality 维度过滤；将来若有新「snapshot 型协议」（GitHub trending、产品周报等）应该挂同款 cutoff，`isWithinIngestWindow` 是命名锚点。**一次性脚本契约（继续遵守 SP-4 §10 决策 11）**：`cleanup-rss-pre-window.ts` 用包名 import + `scripts/run-prod-oneshot.sh` 调用，prod 部署需先 stop worker 维持 single-writer。**`fileParallelism=false` 并发安全契约（新增）**：`packages/db` 集成测试共享一个 dev DB，全局性 deleteMany 测试与其他 spec 并行会冲突；新增 db-package 测试若是「全局性写」必须意识到该 fileParallelism 关闭、测试断言改 prefix-scoped 而非全局精确计数（用例 1 修过同款 flake，commit `c962c65`）。**前端 typedRoutes 兼容**：`next.config.ts: typedRoutes=true` 下任何含 `${string-union}` 的 `Link href` 必须用 `UrlObject` 形式 `{pathname, query}`，模板字符串无法静态收窄。后续 SP-? 想给 `/news` 加更多 query 参数照同款写。**RSS 拉取节流**：crawlInterval 30min→1d，最坏延迟 24h；如果运营反馈 OpenAI/Anthropic 新博客上线滞后明显，可短期调回 1800 而无需改代码（DB-driven）。**Web 测试基础设施债**（implicit）：`apps/web` 至今无 vitest infra（`test` script 是 `echo 'no tests yet (P4)'`），Task 7 的 fetchHotNewsList 改动跳过单测靠 typecheck + Task 11 prod smoke 兜底；如果未来 web 逻辑分支变多应单独开 SP 装 vitest+jsdom+RTL，目前 YAGNI。 |
 | **SP-4** | 2026-05-04 | `aa9e03a..652c981`（14 commits）·spec: `2026-05-04-sp4-content-cleaning-dedup-design.md` ·plan: `2026-05-04-sp4-content-cleaning-dedup-plan.md` | `normalizeUrl` 6 条新规则（http→https / Reddit alias / Twitter alias / m./mobile. 剥离 / 重复 query 合并 last-wins / 空 `?` 串剥离）· `stripTitleBoilerplate`（13 站点白名单 + 4 种 dash/pipe 分隔符）+ `stripContentBoilerplate`（4 种 RSS 尾部模式 + 空白/换行折叠）· `quality.ts` 三函数（`checkRedditQuality` / `checkHnQuality` / `checkUniversalQuality`）+ `FILTER_REASONS` 4 常量 · `RawCrawledItem.filterReason?: string \| null` 字段（types 包）· `HotNews.filterReason String?` 列 + Prisma migration（`20260504073513_sp4_filter_reason`，camelCase 列名）· `RedditCrawler.toRaw()` / `HackerNewsCrawler.toRaw()` 写入 `filterReason` · `IngestionService` 入库前清洗（cleanTitle/cleanContent 先于 dedupeHash 计算）+ `raw.filterReason ?? checkUniversalQuality()` 兜底 + status/filterReason 写入 + `IngestResult.hidden` 计数 · `CrawlProcessor` 日志含 `hidden=` · `HotNewsService` 默认 `WHERE status=VISIBLE` · `packages/db/scripts/migrate-sp4.ts` 一次性 backfill（Layer 1 normalize + Layer 2 quality）含按 `publishedAt` 决策的 P2002 collapse · `pnpm db:migrate-sp4` 根脚本 · `packages/db/test/setup-env.ts` 让 turbo test 自动 load `.env` | **新过滤维度契约**：dimension 1 (compliance) → drop in crawler；dimension 2 (quality) → ingest with `status='HIDDEN'` + `filterReason`；dimension 3 (topic) → defer to SP-5 LLM。**HIDDEN 数据保留契约**：SP-7 跨平台合并消费 HIDDEN 行做覆盖度信号增强；SP-5 LLM 上线后可重新判定 status；任何写入路径必须维护两条不变量「`VISIBLE & filterReason!=NULL` count=0」「`HIDDEN & filterReason=NULL` count=0」。**utils 内阈值约定**：所有 quality 阈值集中在 `packages/utils/src/quality.ts`，未来想 per-source 调整可升级到 `SourceConfig.metadata` 注入。**API 默认契约**：`GET /hot-news` 默认 `WHERE status='VISIBLE'`，不暴露 `?includeHidden=true`（YAGNI）。**清洗流水线契约**：`stripTitleBoilerplate` → `stripContentBoilerplate` → `computeDedupeHash(sourceUrl, cleanTitle)` → quality verdict → status，新 crawler 必须遵守这一前后顺序。**P2002 backfill collapse 算法**：P2002 时 findFirst 查冲突方比 `publishedAt`，删较新者并 retry 当前 update；不可在 backfill 期间并发写入（单 writer 假设）。**一次性 prod 脚本契约**（post-mortem，详见 §10 决策 11）：脚本放 `packages/db/scripts/`、用包名 import（`'@ai-hot-news/db'` / `'@ai-hot-news/utils'`）、worker Dockerfile `COPY packages/db/scripts`、运维通过 `bash scripts/run-prod-oneshot.sh packages/db scripts/<script>.ts` 调用；后续 SP-7 pgvector backfill / SP-19 KeywordTimeSeries 聚合等所有一次性脚本必须遵守。|
 
 ### SP-3 端到端 smoke 凭据（2026-05-04）
@@ -545,6 +546,60 @@ M8 = P7 完成          → 完整能力（含 Twitter）         (~第 17 周)
 - **Review 循环价值证据**：Task 12 backfill 脚本 code-review 抓到一个 **CRITICAL P2002 方向 bug**——「冲突时删当前迭代行」会在「老行 `http://`、新行已 canonical `https://`」组合下误删较早行。修法是按 `publishedAt` 决策 + `deletedRowIds: Set` 跳过预删 id，并加 `Layer 1: when older row is legacy and newer row is already canonical, OLDER wins` 回归测试。**若直接上 VPS 跑 backfill 会丢历史最早期数据，影响 SP-7 早期热度信号——keystone task 必须 review 的直接证据**。
 - **VPS API smoke**（2026-05-04 18:36 UTC+8，worker 重启后）：`curl 'https://hotnews.shinpeionline.top/api/hot-news?pageSize=50' | jq '.total'` = **2025**；同时 `SELECT COUNT(*) FROM hot_news` = **2275**（VISIBLE=2025、HIDDEN=250）。**API total = DB VISIBLE 完全对齐**，差值 250 行 HIDDEN 不对外暴露 → SP-4 §6 `HotNewsService.list()` 默认 `WHERE status='VISIBLE'` 契约在端到端验证。worker 在 backfill 后 1 分钟内 ingest 7 行新数据（2275-2268），其中 4 行被实时打 HIDDEN（250-246）、3 行 VISIBLE，说明 ingest-time quality filter 在 prod **实时生效**——`RedditCrawler` / `HackerNewsCrawler` 的 `toRaw()` 写入 `filterReason` + IngestionService 兜底 + status 写入流水线一气呵成。
 
+### SP-4.5 端到端 smoke 凭据（2026-05-04）
+
+- **本地测试矩阵**（commit `c962c65` push 前的 `pnpm turbo run lint/typecheck/test`）：
+  - lint：10/10 cached/clean。
+  - typecheck：10/10 cached/clean。
+  - test：9/9 任务全绿，含 `@ai-hot-news/worker` 59/59（含 4 个 SP-4.5 RSS 窗口用例）+ `@ai-hot-news/api` 18/18（含 4 个 SP-4.5 service 平台窗口用例 + 1 空数组回归 + 2 controller passthrough 用例）+ `@ai-hot-news/db` 9/9（含 3 cleanup-rss-pre-window 集成用例 + 6 migrate-sp4 回归）。
+  - 一处 robustness fix（commit `c962c65`）：把 cleanup-rss-pre-window 用例 #1 的 `expect(stats.deleted).toBe(1)` 放宽到 `>= 1`，避免污染 dev DB 时假阳。和 Task 2 review 里早就标记的脆弱点同款，`>= 1` + prefix-scoped remaining 行断言够强。
+- **Prod baseline（部署/cleanup 前，2026-05-04 22:13 UTC+8）**：
+  ```
+  RSS         | VISIBLE |  1129
+  HACKERNEWS  | VISIBLE |   640
+  HACKERNEWS  | HIDDEN  |   161
+  REDDIT      | VISIBLE |   290
+  REDDIT      | HIDDEN  |   130
+  total = 2350
+  RSS publishedAt 范围: 2015-12-11 → 2026-05-01 (max 已落后当下 ≥3d)
+  RSS crawlInterval (DB): 全 1800s
+  ```
+- **Prod cleanup 实测**（2026-05-04 22:32 UTC+8，commit `c962c65` 部署完成 + worker stop 后，`scripts/run-prod-oneshot.sh` 因 worker 已 stop 拿不到 image tag → 走 inline `IMAGE_TAG="sha-c962c65..." docker compose run` 等价路径）：
+  ```json
+  {
+    "cutoff": "2026-04-27T14:33:41.810Z",
+    "toDelete": 1120,
+    "deleted": 1120,
+    "remainingRss": 9
+  }
+  ```
+  1120 行（baseline 1129 + 部署期间 worker 又 ingest 了 1 行 pre-window）一次性 DELETE，仅留 9 行 ≥7d 内的 RSS。
+- **Prod SQL 实测**：`UPDATE source_configs SET "crawlInterval"=86400 WHERE platform='RSS' AND "crawlInterval"<>86400` 输出 `UPDATE 4`，覆盖 4 个 RSS 源（OpenAI / Google Research / Google DeepMind / Anthropic-disabled），二次跑期可观察 idempotent。
+- **DB 不变量实测**（worker restart 后 ~30s）：
+  ```
+  RSS         | VISIBLE |    9     ← 1129 - 1120 ✅
+  HACKERNEWS  | VISIBLE |  640     ← 不变 ✅
+  HACKERNEWS  | HIDDEN  |  164     ← 161 + 3（worker restart 后实时 ingest 增量，SP-4 quality filter 持续生效）
+  REDDIT      | VISIBLE |  294     ← 290 + 4
+  REDDIT      | HIDDEN  |  136     ← 130 + 6
+  RSS publishedAt 范围: 2026-04-28 → 2026-05-01 (全部 < 7d ✅)
+  ```
+  HN/Reddit 全部存活（哪怕 HIDDEN 也没动），cleanup 脚本「RSS-only」契约在真 prod 数据上验证；新 ingest 行的 SP-4 HIDDEN/VISIBLE 比例（13:7）与 SP-4 smoke 时的整体比例同序，说明 SP-4.5 没回归 SP-4 行为。
+- **VPS API smoke**（默认 vs RSS vs HACKERNEWS）：
+  ```
+  /api/hot-news?pageSize=50              total=399  items: HN+REDDIT, 全 < 48h ✅
+  /api/hot-news?platforms=RSS&pageSize=50 total=9   items: 全 RSS, 全 ≤ 7d ✅
+  /api/hot-news?platforms=HACKERNEWS      total=140 items: 全 HACKERNEWS ✅
+  ```
+  - **默认 = HN+REDDIT 48h** 由 `DEFAULT_PLATFORMS=['HACKERNEWS','REDDIT']` 兜底，total 399 比 SP-4 smoke 的 2025 少了 ~80% 是预期（窗口从全历史→48h）。
+  - **`?platforms=RSS` 命中所有 9 行**（DB VISIBLE RSS = 9，API total = 9，完全对齐），证明 7d 窗口 + status=VISIBLE 同时生效且无任何 HIDDEN 漏出。
+  - **单平台过滤** API total=140，`unique platforms = {'HACKERNEWS'}`，证明 platforms 参数 `IsIn` 校验 + service `OR` 子句精确路由。
+- **Worker scheduler 实测**：worker startup 日志显示 `[CrawlScheduler] Registered 14 enabled sources: 3 HACKERNEWS, 8 REDDIT, 3 RSS`（Anthropic disabled 不进队列），紧随 `Old queue 'rss-crawl' obliterated` + Liveness writer started。3 个 RSS 源以 86400s（24h）注册到 BullMQ repeat job，DB-driven 配置生效。
+- **deploy.yml 自动 smoke**：CI 25324681962 → Deploy SSH 部署 + `/api/health` + `/api/hot-news?pageSize=1` 双绿后再做的本次 SP-4.5 后端操作，整链路无 step 失败。
+- **后续观察项**（不阻塞 SP-4.5 完成，留给运营/后续 SP）：
+  - RSS 24h 调度间隔下，OpenAI/Anthropic 等若发新博客最坏延迟 ≤24h。如果 dashboard 反馈"上线慢"，把 `crawlInterval` 临时 6h（21600）即可，零代码改动。
+  - 9 行 RSS visible 数据较少，下一波 OpenAI/Anthropic 发新博客后会自然增长；当前 `权威媒体` tab 内容稀疏属正常。
+
 ### SP-2 端到端 smoke 凭据（2026-05-03）
 
 - **DB 实测**：clean baseline → boot backfill 后 `hot_news` 共 1734 行（RSS=1129、HACKERNEWS=605），`sourcePlatform` 列分布正确，`interactionData` JSON 列内容形如 `{hnId:47952185, score:2, comments:0, externalUrl:"https://github.com/..."}`，与 spec §4.2 完全一致。
@@ -569,12 +624,13 @@ SP-2 收尾时把 `prisma db seed` 嵌进 `scripts/deploy.sh`，**新增数据�
 
 push 到 main 后 GitHub Actions 自动跑 CI → Build images → Deploy（含 `prisma db seed` + `restart worker`），新平台数据约 3-5 分钟后开始流入 prod。无需手工 ssh、无需手工 seed、无需手工 restart。
 
-### 推进路线提示（更新于 SP-4.5 brainstorming 完成）
+### 推进路线提示（更新于 SP-4.5 部署完成）
 
-SP-4 完成 → 实测后追加 **SP-4.5（RSS 时效性窗口 + 平台分区）** 已 brainstorming 完毕，待实施。SP-4.5 后的几条可选路径：
+SP-4.5 已落地：commit `da31a09..c962c65` 13 个 commit 全部 push 到 main、CI/Deploy 全绿、prod 1120 行 pre-window RSS 已物理删除、`/news` 双 tab UI 已上线。Tasks 1-11 全部 ✅。下一步可选路径：
 
 1. **SP-5（AI 摘要 + aiTags）**：SP-4 brainstorming 时把"维度 3 主题相关性过滤"明确推到了 SP-5（LLM 打 `aiTags` 后 UI 按 tag 过滤）。SP-5 落地后 `/news` 列表才会真正"只剩想看的"——非 AI 主题内容（甚至 RSS 7d 窗口内的非主题文章）会自然过滤掉。
 2. **SP-4.6（ArticleExtractor）**：HN/Reddit link-post 外链正文抓取。SP-5 摘要 link-post 时需要外链正文（当前 link-post `content=title, rawHtml=null`）。SP-4.6 是独立 worker / 独立队列，与 SP-5 无代码冲突，可并行启动。
 3. **SP-7（pgvector 跨平台合并）**：依赖 SP-5 `aiTags` + embedding 双信号。SP-5 完工后可直接推。
+4. **Web 测试基础设施 SP（YAGNI / 待触发）**：`apps/web` 至今无 vitest infra；SP-4.5 Task 7 的 fetchHotNewsList 改动只能跑 typecheck 兜底。如果 web 层后续 logic 分支变多（SP-5 摘要展示、SP-7 cluster 视图等），单独开 SP 装 vitest+jsdom+RTL 比较合适，目前先 YAGNI。
 
-建议下一步：先把 **SP-4.5 实施落地**（这次 brainstorming 已完成，可直接进 writing-plans），再决定 SP-5 vs SP-4.6 的优先级。
+建议下一步：在 **SP-5 vs SP-4.6** 之间二选一进 brainstorming（或先二者并行 brainstorming 看哪个更快收敛）。
