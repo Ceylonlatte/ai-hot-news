@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { getPrisma } from '@ai-hot-news/db';
+import { getPrisma, ContentStatus } from '@ai-hot-news/db';
 import type { HotNewsListResponseDto } from '@ai-hot-news/types';
 
 @Injectable()
@@ -7,8 +7,10 @@ export class HotNewsService {
   async list(page: number, pageSize: number): Promise<HotNewsListResponseDto> {
     const prisma = getPrisma();
     const skip = (page - 1) * pageSize;
+    const where = { status: ContentStatus.VISIBLE };
     const [rows, total] = await prisma.$transaction([
       prisma.hotNews.findMany({
+        where,
         skip,
         take: pageSize,
         orderBy: { publishedAt: 'desc' },
@@ -22,7 +24,7 @@ export class HotNewsService {
           crawledAt: true,
         },
       }),
-      prisma.hotNews.count(),
+      prisma.hotNews.count({ where }),
     ]);
     return {
       items: rows.map((r) => ({
