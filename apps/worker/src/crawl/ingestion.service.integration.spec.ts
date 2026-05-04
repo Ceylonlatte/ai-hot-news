@@ -119,7 +119,13 @@ describe('IngestionService (integration)', () => {
 
       const result = await ingestion.ingest(items, HN_SOURCE);
 
-      expect(result).toEqual({ fetched: 1, inserted: 1, skipped: 0, failed: 0 });
+      expect(result).toEqual({
+        fetched: 1,
+        inserted: 1,
+        skipped: 0,
+        hidden: 0,
+        failed: 0,
+      });
 
       const row = await prisma.hotNews.findFirstOrThrow({
         where: { sourceUrl: `${HN_URL_PREFIX}44000001` },
@@ -168,7 +174,13 @@ describe('IngestionService (integration)', () => {
         HN_SOURCE,
       );
 
-      expect(result2).toEqual({ fetched: 1, inserted: 0, skipped: 1, failed: 0 });
+      expect(result2).toEqual({
+        fetched: 1,
+        inserted: 0,
+        skipped: 1,
+        hidden: 0,
+        failed: 0,
+      });
 
       const row = await prisma.hotNews.findFirstOrThrow({ where: { sourceUrl } });
       expect(row.interactionData).toMatchObject({ score: 10, comments: 1 });
@@ -218,7 +230,13 @@ describe('IngestionService (integration)', () => {
       ];
 
       const result = await ingestion.ingest(items, REDDIT_SOURCE);
-      expect(result).toEqual({ fetched: 1, inserted: 1, skipped: 0, failed: 0 });
+      expect(result).toEqual({
+        fetched: 1,
+        inserted: 1,
+        skipped: 0,
+        hidden: 0,
+        failed: 0,
+      });
 
       const row = await prisma.hotNews.findFirstOrThrow({
         where: { sourceUrl: `${REDDIT_URL_PREFIX}OpenAI/comments/1k4xz9p` },
@@ -315,7 +333,13 @@ describe('IngestionService (integration)', () => {
         REDDIT_SOURCE,
       );
 
-      expect(result2).toEqual({ fetched: 1, inserted: 0, skipped: 1, failed: 0 });
+      expect(result2).toEqual({
+        fetched: 1,
+        inserted: 0,
+        skipped: 1,
+        hidden: 0,
+        failed: 0,
+      });
 
       const row = await prisma.hotNews.findFirstOrThrow({ where: { sourceUrl } });
       expect(row.interactionData).toMatchObject({
@@ -323,6 +347,110 @@ describe('IngestionService (integration)', () => {
         comments: 1,
         redditUpvoteRatio: 0.5,
       });
+    });
+  });
+
+  describe('SP-4 quality + cleaning', () => {
+    it('honors raw.filterReason from crawler → status=HIDDEN + filterReason persisted', async () => {
+      const items: RawCrawledItem[] = [
+        {
+          title: 'Low ratio reddit post',
+          contentText: 'Body',
+          rawHtml: null,
+          sourceUrl: `${REDDIT_URL_PREFIX}OpenAI/comments/sp4_lowratio`,
+          author: 'alice',
+          publishedAt: new Date('2026-05-04T00:00:00Z'),
+          interactionData: {
+            score: 100,
+            comments: 50,
+            externalUrl: null,
+            redditId: 'sp4_lowratio',
+            redditSubreddit: 'OpenAI',
+            redditUpvoteRatio: 0.4,
+          },
+          filterReason: 'reddit_low_ratio',
+        },
+      ];
+
+      const result = await ingestion.ingest(items, REDDIT_SOURCE);
+      expect(result).toEqual({
+        fetched: 1,
+        inserted: 0,
+        skipped: 0,
+        hidden: 1,
+        failed: 0,
+      });
+
+      const row = await prisma.hotNews.findFirstOrThrow({
+        where: { sourceUrl: `${REDDIT_URL_PREFIX}OpenAI/comments/sp4_lowratio` },
+      });
+      expect(row.status).toBe('HIDDEN');
+      expect(row.filterReason).toBe('reddit_low_ratio');
+    });
+
+    it('falls back to checkUniversalQuality when crawler did not set filterReason (short title)', async () => {
+      const items: RawCrawledItem[] = [
+        {
+          title: 'abc',
+          contentText: 'body',
+          rawHtml: null,
+          sourceUrl: 'https://lab.example.com/post/sp4_short',
+          author: null,
+          publishedAt: new Date('2026-05-04T00:00:00Z'),
+        },
+      ];
+
+      const result = await ingestion.ingest(items, RSS_SOURCE);
+      expect(result.hidden).toBe(1);
+      expect(result.inserted).toBe(0);
+
+      const row = await prisma.hotNews.findFirstOrThrow({
+        where: { sourceUrl: 'https://lab.example.com/post/sp4_short' },
+      });
+      expect(row.status).toBe('HIDDEN');
+      expect(row.filterReason).toBe('title_too_short');
+    });
+
+    it('cleans the title (strips boilerplate suffix) before storing', async () => {
+      const items: RawCrawledItem[] = [
+        {
+          title: 'GPT-5 announced - OpenAI Blog',
+          contentText: 'body',
+          rawHtml: null,
+          sourceUrl: 'https://lab.example.com/post/sp4_clean',
+          author: null,
+          publishedAt: new Date('2026-05-04T00:00:00Z'),
+        },
+      ];
+
+      const result = await ingestion.ingest(items, RSS_SOURCE);
+      expect(result.inserted).toBe(1);
+
+      const row = await prisma.hotNews.findFirstOrThrow({
+        where: { sourceUrl: 'https://lab.example.com/post/sp4_clean' },
+      });
+      expect(row.title).toBe('GPT-5 announced');
+    });
+
+    it('cleans the content (strips Read more tail + collapses whitespace)', async () => {
+      const items: RawCrawledItem[] = [
+        {
+          title: 'A reasonable title',
+          contentText: 'a    b\t\tc\n\n\n\nd. Read more →',
+          rawHtml: null,
+          sourceUrl: 'https://lab.example.com/post/sp4_content',
+          author: null,
+          publishedAt: new Date('2026-05-04T00:00:00Z'),
+        },
+      ];
+
+      const result = await ingestion.ingest(items, RSS_SOURCE);
+      expect(result.inserted).toBe(1);
+
+      const row = await prisma.hotNews.findFirstOrThrow({
+        where: { sourceUrl: 'https://lab.example.com/post/sp4_content' },
+      });
+      expect(row.content).toBe('a b c\n\nd.');
     });
   });
 });

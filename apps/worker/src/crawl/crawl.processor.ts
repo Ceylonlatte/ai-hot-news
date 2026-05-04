@@ -57,7 +57,7 @@ export async function processCrawlJob(
     logger.log(
       `${source.platform} crawled: source=${source.name} ` +
         `fetched=${result.fetched} inserted=${result.inserted} ` +
-        `skipped=${result.skipped} failed=${result.failed}`,
+        `skipped=${result.skipped} hidden=${result.hidden} failed=${result.failed}`,
     );
     await prisma.sourceConfig.update({
       where: { id: source.id },

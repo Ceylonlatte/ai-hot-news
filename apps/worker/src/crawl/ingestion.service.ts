@@ -1,12 +1,19 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { getPrisma, Prisma, type Platform } from '@ai-hot-news/db';
-import { computeDedupeHash, normalizeUrl } from '@ai-hot-news/utils';
+import { getPrisma, Prisma, ContentStatus, type Platform } from '@ai-hot-news/db';
+import {
+  computeDedupeHash,
+  normalizeUrl,
+  stripTitleBoilerplate,
+  stripContentBoilerplate,
+  checkUniversalQuality,
+} from '@ai-hot-news/utils';
 import type { RawCrawledItem } from '@ai-hot-news/types';
 
 export interface IngestResult {
   fetched: number;
   inserted: number;
   skipped: number;
+  hidden: number;
   failed: number;
 }
 
@@ -28,6 +35,7 @@ export class IngestionService {
       fetched: items.length,
       inserted: 0,
       skipped: 0,
+      hidden: 0,
       failed: 0,
     };
 
@@ -38,26 +46,46 @@ export class IngestionService {
           continue;
         }
         const sourceUrl = normalizeUrl(raw.sourceUrl);
-        const dedupeHash = computeDedupeHash(sourceUrl, raw.title);
+
+        // SP-4: pre-ingest cleaning
+        const cleanTitle = stripTitleBoilerplate(raw.title);
+        const cleanContent = stripContentBoilerplate(raw.contentText);
+
+        // SP-4: dedupeHash uses cleaned title (input is more stable across feed variations)
+        const dedupeHash = computeDedupeHash(sourceUrl, cleanTitle);
+
+        // SP-4: filterReason — prefer crawler's verdict; otherwise run universal fallback
+        const finalReason =
+          raw.filterReason ?? checkUniversalQuality({ title: cleanTitle });
+
+        const status: ContentStatus = finalReason
+          ? ContentStatus.HIDDEN
+          : ContentStatus.VISIBLE;
+
         try {
           await prisma.hotNews.create({
             data: {
-              title: raw.title,
-              content: raw.contentText,
+              title: cleanTitle,
+              content: cleanContent,
               rawHtml: raw.rawHtml,
               sourcePlatform: source.platform,
               sourceUrl,
               author: raw.author,
               publishedAt: raw.publishedAt ?? new Date(),
               dedupeHash,
+              status,
+              filterReason: finalReason ?? null,
               ...(raw.interactionData != null
                 ? { interactionData: raw.interactionData as Prisma.InputJsonValue }
                 : {}),
             },
           });
-          result.inserted += 1;
+          if (status === ContentStatus.HIDDEN) {
+            result.hidden += 1;
+          } else {
+            result.inserted += 1;
+          }
         } catch (createErr) {
-          // P2002 = unique constraint violation → duplicate, skip
           if ((createErr as { code?: string }).code === 'P2002') {
             result.skipped += 1;
           } else {
@@ -65,7 +93,9 @@ export class IngestionService {
           }
         }
       } catch (err) {
-        this.logger.warn(`Ingest item failed: ${raw.sourceUrl} → ${(err as Error).message}`);
+        this.logger.warn(
+          `Ingest item failed: ${raw.sourceUrl} → ${(err as Error).message}`,
+        );
         result.failed += 1;
       }
     }
