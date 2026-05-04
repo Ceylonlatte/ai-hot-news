@@ -97,4 +97,30 @@ describe('normalizeUrl', () => {
       'https://example.com/post',
     );
   });
+
+  // === SP-4.6: anchor-indexed prefix whitelist ===
+
+  it('preserves fragment for code.claude.com/docs/en/changelog (anchor-indexed)', () => {
+    expect(normalizeUrl('https://code.claude.com/docs/en/changelog#2-1-126')).toBe(
+      'https://code.claude.com/docs/en/changelog#2-1-126',
+    );
+  });
+
+  it('strips fragment for sibling paths under code.claude.com/docs (whats-new etc.)', () => {
+    expect(normalizeUrl('https://code.claude.com/docs/en/whats-new#abc')).toBe(
+      'https://code.claude.com/docs/en/whats-new',
+    );
+    expect(normalizeUrl('https://code.claude.com/docs/en/changelog/foo#x')).toBe(
+      'https://code.claude.com/docs/en/changelog/foo',
+    );
+  });
+
+  it('still strips fragment for unrelated hosts after SP-4.6', () => {
+    expect(normalizeUrl('https://example.com/post#section-1')).toBe('https://example.com/post');
+    expect(normalizeUrl('https://cursor.com/blog/x#a')).toBe('https://cursor.com/blog/x');
+    expect(normalizeUrl('https://claude.com/blog/y#b')).toBe('https://claude.com/blog/y');
+    expect(normalizeUrl('https://www.anthropic.com/news/z#c')).toBe(
+      'https://www.anthropic.com/news/z',
+    );
+  });
 });
