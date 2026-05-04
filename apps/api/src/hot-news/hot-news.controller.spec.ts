@@ -2,6 +2,7 @@ import { Test, type TestingModule } from '@nestjs/testing';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { HotNewsController } from './hot-news.controller';
 import { HotNewsService } from './hot-news.service';
+import { ListHotNewsQuery } from './dto/list-hot-news.query';
 
 describe('HotNewsController', () => {
   let controller: HotNewsController;
@@ -34,14 +35,39 @@ describe('HotNewsController', () => {
   });
 
   it('GET /hot-news passes default pagination to the service', async () => {
-    const result = await controller.list({ page: 1, pageSize: 20 });
-    expect(serviceMock.list).toHaveBeenCalledWith(1, 20);
+    const query = new ListHotNewsQuery();
+    query.page = 1;
+    query.pageSize = 20;
+    const result = await controller.list(query);
+    expect(serviceMock.list).toHaveBeenCalledWith(1, 20, undefined);
     expect(result.total).toBe(1);
     expect(result.items[0]!.sourcePlatform).toBe('RSS');
   });
 
   it('passes custom pagination through to the service', async () => {
-    await controller.list({ page: 3, pageSize: 5 });
-    expect(serviceMock.list).toHaveBeenCalledWith(3, 5);
+    const query = new ListHotNewsQuery();
+    query.page = 3;
+    query.pageSize = 5;
+    await controller.list(query);
+    expect(serviceMock.list).toHaveBeenCalledWith(3, 5, undefined);
+  });
+
+  it('passes query.platforms to service.list', async () => {
+    const list = vi.fn().mockResolvedValue({ items: [], page: 1, pageSize: 20, total: 0 });
+    const local = new HotNewsController({ list } as unknown as HotNewsService);
+    const query = new ListHotNewsQuery();
+    query.page = 1;
+    query.pageSize = 20;
+    query.platforms = ['RSS'];
+    await local.list(query);
+    expect(list).toHaveBeenCalledWith(1, 20, ['RSS']);
+  });
+
+  it('passes undefined platforms when query omits it', async () => {
+    const list = vi.fn().mockResolvedValue({ items: [], page: 1, pageSize: 20, total: 0 });
+    const local = new HotNewsController({ list } as unknown as HotNewsService);
+    const query = new ListHotNewsQuery();
+    await local.list(query);
+    expect(list).toHaveBeenCalledWith(1, 20, undefined);
   });
 });
