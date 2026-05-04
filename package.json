@@ -25,6 +25,7 @@
     "db:migrate:deploy": "pnpm --filter @ai-hot-news/db exec prisma migrate deploy",
     "db:studio": "pnpm --filter @ai-hot-news/db exec prisma studio",
     "db:seed": "if [ -f ./.env ]; then set -a; . ./.env; set +a; fi && pnpm --filter @ai-hot-news/db exec prisma db seed",
+    "db:migrate-sp4": "if [ -f ./.env ]; then set -a; . ./.env; set +a; fi && pnpm --filter @ai-hot-news/db run migrate-sp4",
     "docker:dev": "docker compose -f docker/docker-compose.dev.yml up -d",
     "docker:dev:down": "docker compose -f docker/docker-compose.dev.yml down"
   },
