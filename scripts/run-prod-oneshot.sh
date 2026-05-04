@@ -44,13 +44,21 @@ if [ ! -f "$ENV_FILE" ]; then
   exit 1
 fi
 
-# Ask docker for the running worker's image (e.g. ghcr.io/.../worker:sha-abc123)
-# and split off the tag. Format string is portable across docker compose v2.
-RUNNING_IMAGE=$(docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps --format '{{.Image}}' worker | head -n1 || true)
+# Ask docker for the worker's image (e.g. ghcr.io/.../worker:sha-abc123) and
+# split off the tag. Format string is portable across docker compose v2.
+#
+# We use `ps -a` (not bare `ps`) on purpose: this script is documented to be
+# run AFTER stopping the worker for any hot_news-mutating one-shot (single-
+# writer assumption — see the docstring above and SP-4 §10 decision 11). With
+# bare `ps`, a stopped worker is invisible and the lookup fails. `-a` finds
+# both running and stopped containers, which is exactly what we need to read
+# the deployed image tag without first restarting the worker.
+RUNNING_IMAGE=$(docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps -a --format '{{.Image}}' worker | head -n1 || true)
 
 if [ -z "${RUNNING_IMAGE:-}" ]; then
-  echo "ERROR: no running 'worker' container found." >&2
-  echo "Hint: docker compose -f $COMPOSE_FILE --env-file $ENV_FILE ps worker" >&2
+  echo "ERROR: no 'worker' container found (running or stopped)." >&2
+  echo "Hint: docker compose -f $COMPOSE_FILE --env-file $ENV_FILE ps -a worker" >&2
+  echo "If the worker has never been started, run \`scripts/deploy.sh\` first." >&2
   exit 1
 fi
 
