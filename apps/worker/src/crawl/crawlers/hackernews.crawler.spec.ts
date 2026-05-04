@@ -165,4 +165,76 @@ describe('HackerNewsCrawler', () => {
       expect(items).toHaveLength(1);
     });
   });
+
+  describe('SP-4 filterReason', () => {
+    it('writes filterReason="hn_low_engagement" for low score + low comments', async () => {
+      fetchMock.mockImplementation(async (url: string) => {
+        if (url.endsWith('/topstories.json')) return jsonResponse([99999]);
+        if (url.endsWith('/item/99999.json'))
+          return jsonResponse({
+            id: 99999,
+            type: 'story',
+            title: 'Cold HN post',
+            by: 'alice',
+            time: 1746230400,
+            score: 2,
+            descendants: 0,
+            url: 'https://example.com/x',
+          });
+        return jsonResponse(null);
+      });
+
+      const crawler = new HackerNewsCrawler({ id: 'src1', identifier: 'top' });
+      const items = await crawler.fetch();
+
+      expect(items).toHaveLength(1);
+      expect(items[0]!.filterReason).toBe('hn_low_engagement');
+    });
+
+    it('writes filterReason=null for high-engagement HN post', async () => {
+      fetchMock.mockImplementation(async (url: string) => {
+        if (url.endsWith('/topstories.json')) return jsonResponse([99998]);
+        if (url.endsWith('/item/99998.json'))
+          return jsonResponse({
+            id: 99998,
+            type: 'story',
+            title: 'Hot HN post',
+            by: 'bob',
+            time: 1746230500,
+            score: 234,
+            descendants: 56,
+            url: 'https://openai.com/news',
+          });
+        return jsonResponse(null);
+      });
+
+      const crawler = new HackerNewsCrawler({ id: 'src1', identifier: 'top' });
+      const items = await crawler.fetch();
+
+      expect(items).toHaveLength(1);
+      expect(items[0]!.filterReason).toBeNull();
+    });
+
+    it('treats missing score / descendants as low engagement', async () => {
+      fetchMock.mockImplementation(async (url: string) => {
+        if (url.endsWith('/topstories.json')) return jsonResponse([99997]);
+        if (url.endsWith('/item/99997.json'))
+          return jsonResponse({
+            id: 99997,
+            type: 'story',
+            title: 'No engagement data',
+            by: 'carol',
+            time: 1746230600,
+            // score / descendants intentionally omitted
+          });
+        return jsonResponse(null);
+      });
+
+      const crawler = new HackerNewsCrawler({ id: 'src1', identifier: 'top' });
+      const items = await crawler.fetch();
+
+      expect(items).toHaveLength(1);
+      expect(items[0]!.filterReason).toBe('hn_low_engagement');
+    });
+  });
 });

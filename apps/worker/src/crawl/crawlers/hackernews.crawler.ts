@@ -1,5 +1,5 @@
 import pLimit from 'p-limit';
-import { stripHtml } from '@ai-hot-news/utils';
+import { stripHtml, checkHnQuality } from '@ai-hot-news/utils';
 import type { RawCrawledItem } from '@ai-hot-news/types';
 import type { Crawler } from './crawler.interface';
 import type { HnStory } from './hackernews.types';
@@ -87,6 +87,12 @@ export class HackerNewsCrawler implements Crawler {
   private toRaw(s: HnStory): RawCrawledItem {
     const isSelfPost = !s.url && !!s.text;
     const title = s.title ?? '(untitled)';
+
+    const filterReason = checkHnQuality({
+      score: s.score ?? null,
+      descendants: s.descendants ?? null,
+    });
+
     return {
       title,
       contentText: isSelfPost ? stripHtml(s.text!) : title,
@@ -100,6 +106,7 @@ export class HackerNewsCrawler implements Crawler {
         externalUrl: s.url ?? null,
         hnId: s.id,
       },
+      filterReason,
     };
   }
 
