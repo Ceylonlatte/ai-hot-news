@@ -1,4 +1,4 @@
-import { Platform, ContentStatus, getPrisma } from '../src/index.js';
+import { Platform, ContentStatus, getPrisma } from '@ai-hot-news/db';
 import {
   normalizeUrl,
   computeDedupeHash,

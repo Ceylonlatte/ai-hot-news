@@ -2361,16 +2361,27 @@ Expected: a line confirming `filterReason | text |` exists (camelCase, nullable)
 
 ```bash
 cd /srv/ai-hot-news
-pnpm db:migrate-sp4
+
+# 4a. Stop worker (single-writer assumption — see §10 decision 9 of decomposition spec).
+docker compose -f docker/docker-compose.prod.yml --env-file .env stop worker
+
+# 4b. Run the backfill via the prod-oneshot helper. The helper auto-detects
+#     the worker image tag currently serving traffic (avoids :latest drift)
+#     and runs the script inside a one-shot worker container that has
+#     packages/db/scripts/, packages/utils/dist, and the @ai-hot-news/* symlinks.
+bash scripts/run-prod-oneshot.sh packages/db scripts/migrate-sp4.ts
+
+# 4c. Restart worker.
+docker compose -f docker/docker-compose.prod.yml --env-file .env start worker
 ```
 
-(If the VPS host doesn't have pnpm/Node installed, run via the api container instead:
-
-```bash
-docker compose exec api sh -c "cd packages/db && tsx scripts/migrate-sp4.ts"
-```
-
-Pick whichever works on your VPS — the result is the same.)
+NOTE (post-mortem, post-2026-05-04 deployment): the originally-planned
+`pnpm db:migrate-sp4` requires Node/pnpm on the VPS host (we don't install
+those — host runs Docker only); the api-container fallback fails because the
+api image is a NestJS standalone bundle without `node_modules/@ai-hot-news/utils`.
+The `scripts/run-prod-oneshot.sh` helper is the canonical path going forward
+(see decomposition spec §10 SP-4 decision 11 for full rationale + the contract
+that future SP-7/SP-19 one-shot scripts must follow).
 
 Expected: exit 0; printed stats. **Save the JSON output** — it goes into the decomposition spec update in Task 16.
 

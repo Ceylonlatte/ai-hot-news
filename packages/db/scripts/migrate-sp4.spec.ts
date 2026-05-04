@@ -1,5 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
-import { getPrisma, Platform, ContentStatus } from '../src';
+import { getPrisma, Platform, ContentStatus } from '@ai-hot-news/db';
 import { runMigrateSp4 } from './migrate-sp4';
 
 const prisma = getPrisma();

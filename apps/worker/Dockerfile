@@ -41,6 +41,13 @@ COPY --from=builder /app/packages/utils/package.json packages/utils/package.json
 COPY --from=builder /app/apps/worker/dist apps/worker/dist
 COPY --from=builder /app/packages/db/dist packages/db/dist
 COPY --from=builder /app/packages/db/prisma packages/db/prisma
+# One-shot scripts (e.g. SP-4 migrate-sp4.ts, future SP-7 pgvector backfill).
+# Lives in worker image (not api) because: api is a NestJS standalone bundle
+# that inlines @ai-hot-news/utils, so its runtime has no node_modules/@ai-hot-news/utils
+# to resolve. worker has packages/utils/dist + the symlink, so `npx tsx` can
+# resolve all SP-4-shaped imports. Invoked via scripts/run-prod-oneshot.sh
+# (single-writer assumption: stop worker before running anything that mutates hot_news).
+COPY --from=builder /app/packages/db/scripts packages/db/scripts
 COPY --from=builder /app/packages/types/src packages/types/src
 COPY --from=builder /app/packages/utils/dist packages/utils/dist
 RUN pnpm install --prod --frozen-lockfile --filter @ai-hot-news/worker...
