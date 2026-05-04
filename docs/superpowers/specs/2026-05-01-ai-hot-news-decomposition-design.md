@@ -266,12 +266,12 @@ model HotNews {
 
 ### Phase 3：内容处理升级（4 SP，部分并行，各 ~2-4 天）
 
-| SP | 名称 | 依赖 |
-|----|------|------|
-| **SP-4** | 内容清洗 + 多层去重 | URL 规范化 / 内容哈希 / 标题相似度（PG fts），输出 `dedupeHash` |
-| **SP-5** | AI 摘要 + 标签分类 | Vercel AI SDK · 摘要 + aiTags（公司/模型/类型）· 插拔式摘要策略接口 · prompt 模板入 `packages/prompts` |
-| **SP-6** | 热度分计算 | PRD 6 维公式 · 时间窗参数化（默认 24h）· 入库时计算 + 定时重算（衰减） |
-| **SP-7** | 跨平台热点合并 | pgvector embedding 入库 · 余弦相似度查询 · 阈值聚合赋 `groupId` · 归档机制（30 天后冷表） |
+| SP | 状态 | 名称 | 依赖 |
+|----|------|------|------|
+| **SP-4** | ✅ | 内容清洗 + 多层去重 | URL 规范化 / 内容哈希 / 标题相似度（PG fts），输出 `dedupeHash` |
+| **SP-5** | ⏳ | AI 摘要 + 标签分类 | Vercel AI SDK · 摘要 + aiTags（公司/模型/类型）· 插拔式摘要策略接口 · prompt 模板入 `packages/prompts` |
+| **SP-6** | ⏳ | 热度分计算 | PRD 6 维公式 · 时间窗参数化（默认 24h）· 入库时计算 + 定时重算（衰减） |
+| **SP-7** | ⏳ | 跨平台热点合并 | pgvector embedding 入库 · 余弦相似度查询 · 阈值聚合赋 `groupId` · 归档机制（30 天后冷表） |
 
 ### Phase 4：Aurora 前端落地（5 SP）
 
@@ -446,6 +446,19 @@ M8 = P7 完成          → 完整能力（含 Twitter）         (~第 17 周)
 5. **`SourceConfig.url` 优先 vs `identifier` 拼接**：标准 sub 模式 seed 极简（只填 identifier）；未来扩展形态（关键词搜索 / 多 sub 集群）零代码改动接入，crawler `resolveUrl()` 一处处理。
 6. **crawler 输出的 `sourceUrl` 不带尾斜杠**（与 `normalizeUrl()` canonical form 对齐）：原计划照搬 Reddit permalink 形如 `/r/<sub>/comments/<id>/`（尾斜杠），但 `packages/utils/src/url.ts::normalizeUrl()` 会去掉尾斜杠后入库，导致 `RedditCrawler.toRaw()` 输出 `/r/<sub>/comments/<id>/` 与库内 `/r/<sub>/comments/<id>` 不一致，集成测试 `findFirstOrThrow` 会 P2025。修法：`RedditCrawler` 直接生成无尾斜杠 URL；HN crawler 已天然无尾斜杠，规则统一。
 
+### SP-4 内容清洗 + 多层去重（2026-05-04）
+
+1. **去重 vs 热点发现的硬边界**：SP-4 只折叠"物理重复"（同 URL 异形如 http→https、m.x.com→x.com），跨平台同事件保留 N 行交给 SP-7 用 pgvector 余弦软合并 + groupId。SP-4 绝不引入跨 URL 标题相似度强制 unique，避免杀掉 PRD 核心的"3 个平台同时报道"热度信号。
+2. **过滤分三个维度**：维度 1 合规/非内容 → crawler 阶段直接不入库（SP-3 沿用）；维度 2 质量低 → 入库 + `status='HIDDEN'` + `filterReason`；维度 3 主题不相关 → SP-4 不做，等 SP-5 LLM 打 `aiTags`。
+3. **维度 2 选 HIDDEN 而非不入库**：阈值的 ground truth 现在不知道，HIDDEN 留数据可一行 SQL 反转测试；SP-7 跨平台合并时 HIDDEN 行可参与 group 形成做"覆盖度信号增强"；DB 体量影响 < 0.001%（+0.5MB/年）可忽略。
+4. **维度 3 推到 SP-5 而非 SP-4 关键词层**：避免词表维护负担 + 双层冗余；SP-5 LLM 自然处理新话题；接受 SP-4 完工后约 1-2 周内列表仍有"高分非主题"内容的 trade-off。
+5. **URL 规范化 6 条新规则**：http→https 折叠、Reddit 老入口 alias（`old/np/new.reddit.com → www.reddit.com`）、Twitter host alias（`twitter.com / mobile.twitter.com / m.x.com → x.com`）、`m.` / `mobile.` 子域剥离、重复 query 合并（last-wins）、空 `?` 串剥离。**不动 www 子域**（OpenAI 裸域 vs Wikipedia 必带子域，策略不一致）。
+6. **过滤逻辑分层**：platform-specific 阈值（`checkRedditQuality` / `checkHnQuality`）放在 crawler `toRaw()` 写入 `RawCrawledItem.filterReason`；platform-agnostic 兜底（`checkUniversalQuality({ title })`）由 `IngestionService` 在清洗后调用。所有阈值集中在 `packages/utils/src/quality.ts` 的 `FILTER_REASONS` 单一事实源。
+7. **`dedupeHash` 用清洗后标题计算**：原 SP-1 用 `raw.title` 做 hash，但带 `" - OpenAI Blog"` 后缀的 RSS 与不带后缀的去重等价但 hash 不同；`IngestionService` 把 `stripTitleBoilerplate` 提到 `computeDedupeHash` 之前，跨 feed 变体也能折叠成同一 dedupeHash。
+8. **ArticleExtractor 剥离 SP-4 独立**：SP-3 spec 把 ArticleExtractor 标在 SP-4 里，但 brainstorming 时确认该子系统独立性强（独立 worker / 独立队列 / 独立 fetch 限速），独立成 SP-4.5 或 SP-5 前置更合理。SP-4 完工后 link-post 保留 `content=title, rawHtml=null` 现状作为检测哨兵。
+9. **backfill 脚本不进 deploy.sh**：一次性脚本进自动链路浪费部署时间；多次 deploy 后报告永远 0 updated 误导运维。手工 ssh 跑一次写进 commit log 标记。Backfill 期间避免 ingest 写入（worker 可临时停），避免 P2002 lookup 与并发 INSERT 竞态——这是单 writer 假设。
+10. **P2002 collapse 必须按 publishedAt 决策**（code-review catch）：原实现「冲突时删当前迭代行」在「老行 `http://`、新行已 canonical `https://`」组合下会误删较早行。修法：P2002 时 `findFirst` 查冲突方，比 `publishedAt` 删较新者，再 retry 当前行的 update；用 `deletedRowIds: Set<string>` 跳过预取列表里已被删的 id 避免 P2025。回归测试 `Layer 1: ... OLDER wins` 锁定语义。**这一 bug 若没 review 直接上 VPS 跑 backfill，会丢历史最早期数据，影响 SP-7 跨平台热度合并的早期信号——keystone review 价值的直接证据**。
+
 ### clawfeed 学到的两个点（2026-05-03，brainstorming 阶段）
 
 1. **URL auto-detect**（feed URL 自动识别 RSS / Atom / JSON / OPML）：→ 未来 SP-24 后台管理页 UX 参考，单用户场景目前 YAGNI。
@@ -463,6 +476,7 @@ M8 = P7 完成          → 完整能力（含 Twitter）         (~第 17 周)
 | **SP-1** | 2026-05-03 | `fde9829..7e6a491^`（即 SP-2 docs 之前）·SP-1 plan: `docs/superpowers/plans/2026-05-02-sp1-rss-list-end-to-end-plan.md` | RssCrawler · CrawlScheduler（BullMQ repeat job，原队列名 `rss-crawl`）· CrawlProcessor · IngestionService（unique sourceUrl + try/catch 抑制 P2002）· `GET /hot-news` 分页 + DTO · `/news` 列表页（纯 Tailwind） | RSS 数据流端到端打通。`Crawler` 接口在 SP-2 才被抽象；SP-1 的 `IngestionService.SourceLike` 在 SP-2 改为通用 `Platform` |
 | **SP-2** | 2026-05-03 | `35da0fe..81f2c70`（13 commits + 2 docs）·spec: `2026-05-03-sp2-hackernews-crawler-design.md` ·plan: `2026-05-03-sp2-hackernews-crawler-plan.md` | `Crawler` 接口 + `CrawlerFactory`（platform → crawler 路由）· `HackerNewsCrawler`（top/ask/show, p-limit, AbortSignal.timeout）· `stripHtml` 抽到 `@ai-hot-news/utils` · `RawCrawledItem.interactionData` 字段约定 · `HotNews.interactionData` 透传 · BullMQ 队列重命名 `rss-crawl → crawl` 并 `obliterate` 老队列 · seed 加 HN top/ask/show 三条 SourceConfig（identifier 而非 url）· `/news` platform 徽章渲染（`HN`/`RSS`/`Reddit`/`X` 4 色） | **接口契约**：`Crawler.fetch(): Promise<RawCrawledItem[]>` 是后续所有平台抓取器的统一形态。**字段约定（spec §4.2）**：`interactionData` 各平台前缀字段命名固化（HN: `hnId`/Reddit: `redditId,redditSubreddit`/X: `twTweetId,twReposts`）。**SP-3/SP-22 影响**：直接 `case Platform.REDDIT/TWITTER` 加进 `CrawlerFactory.create()` switch + 在 `CrawlScheduler.platform IN [...]` 列表里加上即可，零结构改动 |
 | **SP-3** | 2026-05-04 | `7994e79..afa11be`（9 commits）+ 本 docs commit ·spec: `2026-05-03-sp3-reddit-crawler-design.md`（v2 公开 `.json` 路线）·plan: `2026-05-03-sp3-reddit-crawler-plan.md` | `RedditCrawler` 走 Reddit 公开 `.json` 端点（无 OAuth），`resolveUrl()` 支持 `SourceConfig.url` 优先 / `identifier` 回退两种模式 · 8 个 AI subreddit hot 列表（LocalLLaMA / MachineLearning / artificial / OpenAI / ChatGPT / singularity / StableDiffusion / ClaudeAI），60min crawlInterval · `interactionData` 6 字段（`score / comments / externalUrl / redditId / redditSubreddit / redditUpvoteRatio`）· 显式 429 + 5xx 错误处理 · `REDDIT_USER_AGENT` 强制要求（`(by /u/<owner>)` 后缀）+ `REDDIT_FETCH_TIMEOUT_MS` 可调 · `CrawlerFactory` / `CrawlScheduler` / `IngestionService` 全部按 §11 "Onboarding 标准流程" 5 步走 · `RedditCrawler.toRaw()` 输出无尾斜杠 sourceUrl 与 `normalizeUrl()` canonical form 对齐 | **新平台扩展形态**：`SourceConfig.url` 优先 vs `identifier` 拼接的双轨模式被 `RedditCrawler.resolveUrl()` 固化，未来加关键词搜索源 / 多 sub 集群源时 seed 直接填 `url` 字段，零代码改动接入。**URL canonical form 约定**：所有 crawler 的 `toRaw().sourceUrl` 必须与 `normalizeUrl()` 输出一致（无尾斜杠、无 tracking params、hash 已剥离），否则集成测试 `findFirstOrThrow` 会 P2025；HN / Reddit 已对齐，新平台 SP 必须遵守。**Onboarding 流程验证通过**：完全按 §11 "Onboarding 新平台 SP 的标准流程" 5 步实施，零结构改动 |
+| **SP-4** | 2026-05-04 | `aa9e03a..652c981`（14 commits）·spec: `2026-05-04-sp4-content-cleaning-dedup-design.md` ·plan: `2026-05-04-sp4-content-cleaning-dedup-plan.md` | `normalizeUrl` 6 条新规则（http→https / Reddit alias / Twitter alias / m./mobile. 剥离 / 重复 query 合并 last-wins / 空 `?` 串剥离）· `stripTitleBoilerplate`（13 站点白名单 + 4 种 dash/pipe 分隔符）+ `stripContentBoilerplate`（4 种 RSS 尾部模式 + 空白/换行折叠）· `quality.ts` 三函数（`checkRedditQuality` / `checkHnQuality` / `checkUniversalQuality`）+ `FILTER_REASONS` 4 常量 · `RawCrawledItem.filterReason?: string \| null` 字段（types 包）· `HotNews.filterReason String?` 列 + Prisma migration（`20260504073513_sp4_filter_reason`，camelCase 列名）· `RedditCrawler.toRaw()` / `HackerNewsCrawler.toRaw()` 写入 `filterReason` · `IngestionService` 入库前清洗（cleanTitle/cleanContent 先于 dedupeHash 计算）+ `raw.filterReason ?? checkUniversalQuality()` 兜底 + status/filterReason 写入 + `IngestResult.hidden` 计数 · `CrawlProcessor` 日志含 `hidden=` · `HotNewsService` 默认 `WHERE status=VISIBLE` · `packages/db/scripts/migrate-sp4.ts` 一次性 backfill（Layer 1 normalize + Layer 2 quality）含按 `publishedAt` 决策的 P2002 collapse · `pnpm db:migrate-sp4` 根脚本 · `packages/db/test/setup-env.ts` 让 turbo test 自动 load `.env` | **新过滤维度契约**：dimension 1 (compliance) → drop in crawler；dimension 2 (quality) → ingest with `status='HIDDEN'` + `filterReason`；dimension 3 (topic) → defer to SP-5 LLM。**HIDDEN 数据保留契约**：SP-7 跨平台合并消费 HIDDEN 行做覆盖度信号增强；SP-5 LLM 上线后可重新判定 status；任何写入路径必须维护两条不变量「`VISIBLE & filterReason!=NULL` count=0」「`HIDDEN & filterReason=NULL` count=0」。**utils 内阈值约定**：所有 quality 阈值集中在 `packages/utils/src/quality.ts`，未来想 per-source 调整可升级到 `SourceConfig.metadata` 注入。**API 默认契约**：`GET /hot-news` 默认 `WHERE status='VISIBLE'`，不暴露 `?includeHidden=true`（YAGNI）。**清洗流水线契约**：`stripTitleBoilerplate` → `stripContentBoilerplate` → `computeDedupeHash(sourceUrl, cleanTitle)` → quality verdict → status，新 crawler 必须遵守这一前后顺序。**P2002 backfill collapse 算法**：P2002 时 findFirst 查冲突方比 `publishedAt`，删较新者并 retry 当前 update；不可在 backfill 期间并发写入（单 writer 假设）|
 
 ### SP-3 端到端 smoke 凭据（2026-05-04）
 
@@ -471,6 +485,20 @@ M8 = P7 完成          → 完整能力（含 Twitter）         (~第 17 周)
 - **8 个 sub 全部 backfill**：worker 启动 ~3 分钟内 8 个 `crawl-boot-cmopz800*` 任务全部 `completed`（BullMQ events stream 验证），`/news` 渲染 36 个 `bg-red-50 text-red-700` Reddit 徽章覆盖全部 8 个 subreddit（含 r/LocalLLaMA / r/MachineLearning / r/artificial / r/OpenAI / r/ChatGPT / r/singularity / r/StableDiffusion / r/ClaudeAI）。
 - **Idempotency 实测**：`pnpm db:seed` 二次跑 8 个 Reddit candidates 全走 UPDATE 路径（非 INSERT），`source_configs` REDDIT 行数恒等于 8；`IngestionService` REDDIT 路径的 first-write-wins 行为由集成测试 `does NOT overwrite interactionData on duplicate sourceUrl` 自动验证（commit `5f9bde7`）。
 - **测试矩阵**：worker 45/45 + api 3/3 + 其他全绿；含新增 13/13 `RedditCrawler` 单元测试 + 3/3 `IngestionService` REDDIT 集成测试 + 4/4 `CrawlerFactory` + 4/4 `CrawlScheduler`。`pnpm turbo run lint typecheck` 16/16 cached/clean，`pnpm turbo run build` 7/7 通过。
+
+### SP-4 端到端 smoke 凭据（2026-05-04）
+
+- **本地 backfill 实测**：`pnpm db:migrate-sp4` 在本地 1129 行（全 RSS）DB 上输出
+  ```json
+  { "layer1NormalizeUpdated": 0, "layer1Collapsed": 0, "layer1HashUpdated": 0, "layer2Hidden": {} }
+  ```
+  全零是预期：本地 dev 库自 SP-3 起从未跑过 reddit/HN crawl（HN 610 / Reddit 188 是 prod-only 数据），且本地 RSS 都是已 canonical `https://...` 形态、无 boilerplate 后缀、标题 ≥5 字符。Layer 2 只对 VISIBLE 行跑且需平台 metadata 触发，本地无素材；真实非零 stats 留待 VPS prod 1927 行验证。
+- **VPS prod backfill 实测**：`docker compose exec api sh -c "cd packages/db && npx tsx scripts/migrate-sp4.ts"` 输出 `<TBD-after-vps-backfill-fill-via-amend>`（部署后填充）。
+- **DB 一致性不变量实测**（本地）：`SELECT COUNT(*) FROM hot_news WHERE status='VISIBLE' AND "filterReason" IS NOT NULL` = **0**；`SELECT COUNT(*) FROM hot_news WHERE status='HIDDEN' AND "filterReason" IS NULL` = **0**。两条契约不变量在 backfill 后均成立。`HOT_NEWS` 列分布：1129 VISIBLE / 0 HIDDEN（本地仅 RSS、无低质量素材）。
+- **测试矩阵**：utils 67/67（dedupe + strip-html + url 17 + boilerplate 19 + quality 18，含 4 边界测试 + 1 P2002 方向回归）+ worker 全包 PASS（含 `IngestionService` integration 13/13 + `RedditCrawler` 16/16 + `HackerNewsCrawler` 14/14 + `CrawlerFactory` + `CrawlScheduler`）+ api 6/6（含新 `HotNewsService.spec.ts` 3/3）+ db scripts 6/6（migrate-sp4 integration 含 `OLDER wins` 回归）。`pnpm turbo run test --concurrency=1` 9/9 task 全绿；`pnpm turbo run lint typecheck` 16/16 cached/clean。
+- **Idempotency 实测**：`pnpm db:migrate-sp4` 二次跑输出全 0；`pnpm db:seed` 二次跑 SourceConfig 行数恒等于 14（不动）。
+- **Review 循环价值证据**：Task 12 backfill 脚本 code-review 抓到一个 **CRITICAL P2002 方向 bug**——「冲突时删当前迭代行」会在「老行 `http://`、新行已 canonical `https://`」组合下误删较早行。修法是按 `publishedAt` 决策 + `deletedRowIds: Set` 跳过预删 id，并加 `Layer 1: when older row is legacy and newer row is already canonical, OLDER wins` 回归测试。**若直接上 VPS 跑 backfill 会丢历史最早期数据，影响 SP-7 早期热度信号——keystone task 必须 review 的直接证据**。
+- **VPS API smoke**：`curl -s 'https://<domain>/api/hot-news?pageSize=200' | jq '[.items[].sourcePlatform] | unique'` 期望 `["HACKERNEWS","REDDIT","RSS"]`；`curl ... | jq '.total'` 期望 < `SELECT COUNT(*) FROM hot_news`（差值 = 标 HIDDEN 行数）。`<TBD-after-vps-deploy-fill-via-amend>`。
 
 ### SP-2 端到端 smoke 凭据（2026-05-03）
 
@@ -496,6 +524,12 @@ SP-2 收尾时把 `prisma db seed` 嵌进 `scripts/deploy.sh`，**新增数据�
 
 push 到 main 后 GitHub Actions 自动跑 CI → Build images → Deploy（含 `prisma db seed` + `restart worker`），新平台数据约 3-5 分钟后开始流入 prod。无需手工 ssh、无需手工 seed、无需手工 restart。
 
-### 推进路线提示（更新于 SP-2 完成）
+### 推进路线提示（更新于 SP-4 完成）
 
-按 §6 的 Phase 2 规划，SP-3（Reddit）与 SP-2 原本是并行机会。现在 SP-2 已落地并把 `Crawler` / `CrawlerFactory` / `RawCrawledItem.interactionData` 三大契约 + 上面的"自动 seed"约定固化，**SP-3 的实施成本被进一步降低**：按上面"Onboarding 新平台 SP 的标准流程"5 步走即可，预计纯代码量 < 200 行，e2e 时间 < 1 天。建议下一步进入 SP-3 brainstorming，或并行启动 SP-4（去重升级）。
+按 §6 Phase 3 规划，SP-4 后的最优下一步是 **SP-5（AI 摘要 + aiTags）**。理由：
+
+1. SP-4 brainstorming 时把"维度 3 主题相关性过滤"明确推到了 SP-5（LLM 打 `aiTags` 后 UI 按 tag 过滤）。SP-5 落地后 `/news` 列表才会真正"只剩想看的"——SP-4 完工后的 1-2 周内非 AI 主题内容仍会出现在 VISIBLE 列表里，SP-5 是最直接的用户体验改进。
+2. SP-5 的 `aiTags` 是 SP-7 跨平台合并的输入之一（embedding + tags 双信号），SP-5 落地后能直接推 SP-7。
+3. SP-5 启动前可先并行做 **SP-4.5 ArticleExtractor**（HN/Reddit link-post 外链正文抓取），因为 SP-5 摘要 link-post 时需要外链正文（当前 link-post `content=title, rawHtml=null`）。SP-4.5 是独立 worker / 独立队列，与 SP-5 无代码冲突，可并行启动。
+
+建议下一步：进 SP-4.5 brainstorming（如要先解决 SP-5 的"无料可摘"前置）或 SP-5 brainstorming（如接受 link-post 暂只摘 title）。
