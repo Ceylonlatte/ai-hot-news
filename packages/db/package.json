@@ -17,16 +17,20 @@
     "db:studio": "prisma studio",
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "migrate-sp4": "tsx scripts/migrate-sp4.ts",
     "build": "prisma generate && esbuild src/index.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist/index.js --external:@prisma/client --external:./generated && mkdir -p dist/generated && cp -R src/generated/. dist/generated/"
   },
   "prisma": { "seed": "tsx prisma/seed.ts" },
   "dependencies": {
+    "@ai-hot-news/utils": "workspace:*",
     "@prisma/client": "^6.1.0",
     "prisma": "^6.1.0",
     "tsx": "^4.19.2"
   },
   "devDependencies": {
     "esbuild": "^0.28.0",
-    "typescript": "^5.6.3"
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.5"
   }
 }

@@ -218,6 +218,9 @@ importers:
 
   packages/db:
     dependencies:
+      '@ai-hot-news/utils':
+        specifier: workspace:*
+        version: link:../utils
       '@prisma/client':
         specifier: ^6.1.0
         version: 6.19.3(prisma@6.19.3(typescript@5.9.3))(typescript@5.9.3)
@@ -234,6 +237,9 @@ importers:
       typescript:
         specifier: ^5.6.3
         version: 5.9.3
+      vitest:
+        specifier: ^2.1.5
+        version: 2.1.9(@types/node@22.19.17)(lightningcss@1.32.0)(terser@5.46.2)
 
   packages/types:
     devDependencies:
