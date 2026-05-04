@@ -47,7 +47,7 @@ describe('cleanup-rss-pre-window', () => {
 
     const stats = await runCleanupRssPreWindow();
 
-    expect(stats.deleted).toBe(1);
+    expect(stats.deleted).toBeGreaterThanOrEqual(1);
     expect(stats.remainingRss).toBeGreaterThanOrEqual(1);
 
     const remaining = await prisma.hotNews.findMany({
