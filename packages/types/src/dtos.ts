@@ -21,6 +21,18 @@ export interface RawCrawledItem {
    * when the crawler hasn't been updated to populate it.
    */
   interactionData?: Record<string, unknown> | null;
+  /**
+   * SP-4: Quality / boilerplate filter verdict. When set, IngestionService writes
+   * `HotNews.status='HIDDEN'` and persists this string to `HotNews.filterReason`.
+   *
+   * Set by the platform-specific crawler in `toRaw()` via `checkRedditQuality` /
+   * `checkHnQuality` from `@ai-hot-news/utils`. RSS crawler leaves it `undefined`
+   * and IngestionService runs `checkUniversalQuality` as a fallback.
+   *
+   * Known values (extend `FILTER_REASONS` in `quality.ts` to add more):
+   *   `reddit_low_ratio` | `reddit_low_engagement` | `hn_low_engagement` | `title_too_short`
+   */
+  filterReason?: string | null;
 }
 
 export interface HotNewsListItemDto {
