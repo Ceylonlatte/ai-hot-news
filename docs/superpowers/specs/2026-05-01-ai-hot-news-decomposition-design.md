@@ -493,12 +493,40 @@ M8 = P7 完成          → 完整能力（含 Twitter）         (~第 17 周)
   { "layer1NormalizeUpdated": 0, "layer1Collapsed": 0, "layer1HashUpdated": 0, "layer2Hidden": {} }
   ```
   全零是预期：本地 dev 库自 SP-3 起从未跑过 reddit/HN crawl（HN 610 / Reddit 188 是 prod-only 数据），且本地 RSS 都是已 canonical `https://...` 形态、无 boilerplate 后缀、标题 ≥5 字符。Layer 2 只对 VISIBLE 行跑且需平台 metadata 触发，本地无素材；真实非零 stats 留待 VPS prod 1927 行验证。
-- **VPS prod backfill 实测**：`docker compose exec api sh -c "cd packages/db && npx tsx scripts/migrate-sp4.ts"` 输出 `<TBD-after-vps-backfill-fill-via-amend>`（部署后填充）。
+- **VPS prod backfill 实测**（2026-05-04 18:35 UTC+8，commit `45afb09` 部署 ~14 min 后）：worker stop → 在 prod 一次性 worker 容器内（mount host `packages/db/scripts/migrate-sp4.ts`）跑 backfill → worker start。`pageSize=50` 上限是 SP-1 时定的 DTO 限制；script 输出：
+  ```json
+  {
+    "layer1NormalizeUpdated": 0,
+    "layer1Collapsed": 0,
+    "layer1HashUpdated": 0,
+    "layer2Hidden": {
+      "hn_low_engagement": 150,
+      "reddit_low_engagement": 81,
+      "title_too_short": 1,
+      "reddit_low_ratio": 12
+    }
+  }
+  ```
+  Layer 1 全 0 说明 SP-3 时定下的"crawler 输出与 `normalizeUrl` canonical form 对齐"契约确实在生效——历史所有 URL 都已规范，Layer 1 是空操作；这一信号反过来证明 SP-3 spec §11 "Onboarding 标准流程"对 url canonical 的要求没被任何 crawler 违反。Layer 2 命中 244 行（10.8%），分布与各平台特征一致：HN low_engagement 150 远超 Reddit（HN 信号噪声更高，新提交多沉底）；Reddit low_ratio 12 行很少（Reddit 1.0 默认 ratio 较稳定）。`title_too_short` 仅 1 行说明白名单 boilerplate 剥离没误伤合法标题。
+- **DB 不变量实测**（backfill 后立即查询）：
+  ```
+  total                  = 2268
+  VISIBLE                = 2022
+  HIDDEN                 = 246  (= 244 backfill + 2 baseline 已实时打)
+  visible_with_reason    = 0    ✅ 不变量 1
+  hidden_without_reason  = 0    ✅ 不变量 2
+  filterReason 分布：
+    hn_low_engagement    = 150
+    reddit_low_engagement= 83  (= 81 backfill + 2 baseline)
+    reddit_low_ratio     = 12
+    title_too_short      = 1
+  ```
+  Total = VISIBLE + HIDDEN（无数据丢失）。两条契约不变量在真实 prod 数据上首次验证全绿——SP-4 review M3 关注的"HIDDEN 存在时不变量是否仍成立"得到证据。
 - **DB 一致性不变量实测**（本地）：`SELECT COUNT(*) FROM hot_news WHERE status='VISIBLE' AND "filterReason" IS NOT NULL` = **0**；`SELECT COUNT(*) FROM hot_news WHERE status='HIDDEN' AND "filterReason" IS NULL` = **0**。两条契约不变量在 backfill 后均成立。`HOT_NEWS` 列分布：1129 VISIBLE / 0 HIDDEN（本地仅 RSS、无低质量素材）。
 - **测试矩阵**：utils 67/67（dedupe + strip-html + url 17 + boilerplate 19 + quality 18，含 4 边界测试 + 1 P2002 方向回归）+ worker 全包 PASS（含 `IngestionService` integration 13/13 + `RedditCrawler` 16/16 + `HackerNewsCrawler` 14/14 + `CrawlerFactory` + `CrawlScheduler`）+ api 6/6（含新 `HotNewsService.spec.ts` 3/3）+ db scripts 6/6（migrate-sp4 integration 含 `OLDER wins` 回归）。`pnpm turbo run test --concurrency=1` 9/9 task 全绿；`pnpm turbo run lint typecheck` 16/16 cached/clean。
 - **Idempotency 实测**：`pnpm db:migrate-sp4` 二次跑输出全 0；`pnpm db:seed` 二次跑 SourceConfig 行数恒等于 14（不动）。
 - **Review 循环价值证据**：Task 12 backfill 脚本 code-review 抓到一个 **CRITICAL P2002 方向 bug**——「冲突时删当前迭代行」会在「老行 `http://`、新行已 canonical `https://`」组合下误删较早行。修法是按 `publishedAt` 决策 + `deletedRowIds: Set` 跳过预删 id，并加 `Layer 1: when older row is legacy and newer row is already canonical, OLDER wins` 回归测试。**若直接上 VPS 跑 backfill 会丢历史最早期数据，影响 SP-7 早期热度信号——keystone task 必须 review 的直接证据**。
-- **VPS API smoke**：`curl -s 'https://<domain>/api/hot-news?pageSize=200' | jq '[.items[].sourcePlatform] | unique'` 期望 `["HACKERNEWS","REDDIT","RSS"]`；`curl ... | jq '.total'` 期望 < `SELECT COUNT(*) FROM hot_news`（差值 = 标 HIDDEN 行数）。`<TBD-after-vps-deploy-fill-via-amend>`。
+- **VPS API smoke**（2026-05-04 18:36 UTC+8，worker 重启后）：`curl 'https://hotnews.shinpeionline.top/api/hot-news?pageSize=50' | jq '.total'` = **2025**；同时 `SELECT COUNT(*) FROM hot_news` = **2275**（VISIBLE=2025、HIDDEN=250）。**API total = DB VISIBLE 完全对齐**，差值 250 行 HIDDEN 不对外暴露 → SP-4 §6 `HotNewsService.list()` 默认 `WHERE status='VISIBLE'` 契约在端到端验证。worker 在 backfill 后 1 分钟内 ingest 7 行新数据（2275-2268），其中 4 行被实时打 HIDDEN（250-246）、3 行 VISIBLE，说明 ingest-time quality filter 在 prod **实时生效**——`RedditCrawler` / `HackerNewsCrawler` 的 `toRaw()` 写入 `filterReason` + IngestionService 兜底 + status 写入流水线一气呵成。
 
 ### SP-2 端到端 smoke 凭据（2026-05-03）
 
