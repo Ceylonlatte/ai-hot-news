@@ -1,13 +1,16 @@
 import Link from 'next/link';
+import type { FeedTab } from './feed-tabs';
 
 export function Pagination({
   page,
   pageSize,
   total,
+  tab,
 }: {
   page: number;
   pageSize: number;
   total: number;
+  tab: FeedTab;
 }) {
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const prev = Math.max(1, page - 1);
@@ -16,21 +19,17 @@ export function Pagination({
   const baseClass = 'rounded border border-gray-300 px-3 py-1 text-sm';
   const disabledClass = 'pointer-events-none opacity-40';
 
+  const link = (p: number) => ({ pathname: '/news' as const, query: { tab, page: p } });
+
   return (
     <div className="mt-6 flex items-center justify-center gap-3 text-sm text-gray-700">
-      <Link
-        href={`/news?page=${prev}`}
-        className={`${baseClass} ${page <= 1 ? disabledClass : ''}`}
-      >
+      <Link href={link(prev)} className={`${baseClass} ${page <= 1 ? disabledClass : ''}`}>
         上一页
       </Link>
       <span>
         第 {page} / {totalPages} 页
       </span>
-      <Link
-        href={`/news?page=${next}`}
-        className={`${baseClass} ${page >= totalPages ? disabledClass : ''}`}
-      >
+      <Link href={link(next)} className={`${baseClass} ${page >= totalPages ? disabledClass : ''}`}>
         下一页
       </Link>
     </div>
