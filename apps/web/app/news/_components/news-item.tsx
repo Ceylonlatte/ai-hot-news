@@ -1,9 +1,5 @@
 import type { HotNewsListItemDto } from '@ai-hot-news/types';
-
-const TIME_FMT = new Intl.DateTimeFormat('zh-CN', {
-  dateStyle: 'short',
-  timeStyle: 'short',
-});
+import { LocalTime } from './local-time';
 
 const PLATFORM_LABEL: Record<string, string> = {
   RSS: 'RSS',
@@ -39,7 +35,7 @@ export function NewsItem({ item }: { item: HotNewsListItemDto }) {
           {label}
         </span>
         <span>·</span>
-        <span>{TIME_FMT.format(new Date(item.publishedAt))}</span>
+        <LocalTime iso={item.publishedAt} />
       </div>
     </li>
   );
