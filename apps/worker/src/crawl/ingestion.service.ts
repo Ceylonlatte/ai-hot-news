@@ -1,4 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject } from '@nestjs/common';
+import { Queue } from 'bullmq';
 import { getPrisma, Prisma, ContentStatus, type Platform } from '@ai-hot-news/db';
 import {
   computeDedupeHash,
@@ -8,6 +9,8 @@ import {
   checkUniversalQuality,
 } from '@ai-hot-news/utils';
 import type { RawCrawledItem } from '@ai-hot-news/types';
+import { SUMMARY_QUEUE } from '../summarize/summarize.queue';
+import { EXTRACT_QUEUE } from '../extract/extract.queue';
 
 export interface IngestResult {
   fetched: number;
@@ -43,6 +46,11 @@ function isWithinIngestWindow(
 @Injectable()
 export class IngestionService {
   private readonly logger = new Logger(IngestionService.name);
+
+  constructor(
+    @Inject(SUMMARY_QUEUE) private readonly summaryQueue: Queue,
+    @Inject(EXTRACT_QUEUE) private readonly extractQueue: Queue,
+  ) {}
 
   async ingest(items: RawCrawledItem[], source: SourceLike): Promise<IngestResult> {
     const prisma = getPrisma();
@@ -82,7 +90,7 @@ export class IngestionService {
           : ContentStatus.VISIBLE;
 
         try {
-          await prisma.hotNews.create({
+          const created = await prisma.hotNews.create({
             data: {
               title: cleanTitle,
               content: cleanContent,
@@ -103,6 +111,41 @@ export class IngestionService {
             result.hidden += 1;
           } else {
             result.inserted += 1;
+            await this.summaryQueue.add(
+              'summarize',
+              { hotNewsId: created.id },
+              {
+                jobId: `summarize-${created.id}`,
+                attempts: 3,
+                backoff: { type: 'exponential', delay: 30_000 },
+                removeOnComplete: { count: 100 },
+                removeOnFail: { count: 100 },
+              },
+            );
+
+            const extUrl = (raw.interactionData as { externalUrl?: string } | null)
+              ?.externalUrl;
+            const isLinkPost =
+              typeof extUrl === 'string' &&
+              /^https?:/.test(extUrl) &&
+              cleanContent === cleanTitle;
+            if (isLinkPost) {
+              await prisma.hotNews.update({
+                where: { id: created.id },
+                data: { extractStatus: 'PENDING' },
+              });
+              await this.extractQueue.add(
+                'extract',
+                { hotNewsId: created.id },
+                {
+                  jobId: `extract-${created.id}`,
+                  attempts: 3,
+                  backoff: { type: 'exponential', delay: 60_000 },
+                  removeOnComplete: { count: 100 },
+                  removeOnFail: { count: 100 },
+                },
+              );
+            }
           }
         } catch (createErr) {
           if ((createErr as { code?: string }).code === 'P2002') {
