@@ -107,8 +107,9 @@ describe('ExtractChain', () => {
       }),
     ]);
 
-    await expect(chain.extract('https://example.com')).rejects.toBeInstanceOf(
-      QuotaExceededError,
-    );
+    await expect(chain.extract('https://example.com')).rejects.toMatchObject({
+      name: 'QuotaExceededError',
+      provider: 'jina',
+    });
   });
 });

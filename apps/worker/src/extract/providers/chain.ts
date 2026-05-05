@@ -34,8 +34,8 @@ export class ExtractChain {
         }
         return { result, usedProvider: p.name };
       } catch (err) {
-        lastErr = err as Error;
         if (err instanceof PermanentFetchError) throw err;
+        lastErr = err as Error;
       }
     }
     throw lastErr ?? new TransientFetchError('All providers failed');
