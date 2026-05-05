@@ -9,6 +9,7 @@ import IORedis from 'ioredis';
 import { Queue, Worker } from 'bullmq';
 import { getPrisma } from '@ai-hot-news/db';
 import { REDIS_CONNECTION } from '../crawl/queue.provider';
+import { RedisModule } from '../redis/redis.module';
 import { SummarizeModule } from '../summarize/summarize.module';
 import { ExtractService } from './extract.service';
 import {
@@ -23,7 +24,7 @@ import { JinaProvider } from './providers/jina.provider';
 import { ExtractChain } from './providers/chain';
 
 @Module({
-  imports: [SummarizeModule],
+  imports: [RedisModule, SummarizeModule],
   providers: [
     extractQueueProvider,
     {
