@@ -1,6 +1,6 @@
 import { Module, OnModuleDestroy, OnApplicationBootstrap, Inject, Logger } from '@nestjs/common';
 import IORedis from 'ioredis';
-import { Worker } from 'bullmq';
+import { Queue, Worker } from 'bullmq';
 import { IngestionService } from './ingestion.service';
 import { CrawlScheduler } from './crawl.scheduler';
 import { CrawlerFactory } from './crawler.factory';
@@ -13,8 +13,13 @@ import {
   redisProvider,
 } from './queue.provider';
 import { processCrawlJob, type CrawlJobData } from './crawl.processor';
+import { SummarizeModule } from '../summarize/summarize.module';
+import { ExtractModule } from '../extract/extract.module';
+import { SUMMARY_QUEUE } from '../summarize/summarize.queue';
+import { EXTRACT_QUEUE } from '../extract/extract.queue';
 
 @Module({
+  imports: [SummarizeModule, ExtractModule],
   providers: [
     redisProvider,
     queueProvider,
@@ -39,7 +44,12 @@ import { processCrawlJob, type CrawlJobData } from './crawl.processor';
       },
       inject: [REDIS_CONNECTION, IngestionService, CrawlerFactory],
     },
-    IngestionService,
+    {
+      provide: IngestionService,
+      useFactory: (summaryQueue: Queue, extractQueue: Queue) =>
+        new IngestionService(summaryQueue, extractQueue),
+      inject: [SUMMARY_QUEUE, EXTRACT_QUEUE],
+    },
     CrawlerFactory,
     CrawlScheduler,
     {

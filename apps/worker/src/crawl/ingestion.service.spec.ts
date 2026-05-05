@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import type { Queue } from 'bullmq';
 import { Platform } from '@ai-hot-news/db';
 import * as dbModule from '@ai-hot-news/db';
 import { IngestionService } from './ingestion.service';
@@ -8,19 +9,24 @@ describe('IngestionService', () => {
   let prismaMock: {
     hotNews: {
       create: ReturnType<typeof vi.fn>;
+      update: ReturnType<typeof vi.fn>;
     };
   };
 
   beforeEach(() => {
     prismaMock = {
       hotNews: {
-        create: vi.fn().mockResolvedValue({}),
+        create: vi.fn().mockResolvedValue({ id: 'mock-id' }),
+        update: vi.fn().mockResolvedValue({}),
       },
     };
     vi.spyOn(dbModule, 'getPrisma').mockReturnValue(
       prismaMock as unknown as ReturnType<typeof dbModule.getPrisma>,
     );
-    service = new IngestionService();
+    service = new IngestionService(
+      { add: vi.fn().mockResolvedValue(undefined) } as unknown as Queue,
+      { add: vi.fn().mockResolvedValue(undefined) } as unknown as Queue,
+    );
   });
 
   describe('SP-4.5 RSS ingest window', () => {

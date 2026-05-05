@@ -78,6 +78,8 @@ model HotNews {
 
   status          ContentStatus @default(VISIBLE)
   filterReason    String?       // SP-4: when status=HIDDEN, names which rule fired (e.g. 'reddit_low_ratio')
+  extractStatus   String?
+  extractAttempts Int           @default(0)
   interactionData Json?
 
   hits            KeywordHit[]

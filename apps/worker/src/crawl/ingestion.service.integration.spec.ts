@@ -1,10 +1,13 @@
-import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Queue } from 'bullmq';
 import { Platform, getPrisma } from '@ai-hot-news/db';
 import type { RawCrawledItem } from '@ai-hot-news/types';
 import { IngestionService } from './ingestion.service';
 
 const prisma = getPrisma();
-const ingestion = new IngestionService();
+let ingestion: IngestionService;
+let summaryQueueAdd: ReturnType<typeof vi.fn>;
+let extractQueueAdd: ReturnType<typeof vi.fn>;
 
 const RSS_SOURCE = {
   id: 'test-src',
@@ -58,7 +61,15 @@ async function cleanup() {
 }
 
 describe('IngestionService (integration)', () => {
-  beforeEach(cleanup);
+  beforeEach(async () => {
+    summaryQueueAdd = vi.fn().mockResolvedValue(undefined);
+    extractQueueAdd = vi.fn().mockResolvedValue(undefined);
+    ingestion = new IngestionService(
+      { add: summaryQueueAdd } as unknown as Queue,
+      { add: extractQueueAdd } as unknown as Queue,
+    );
+    await cleanup();
+  });
 
   afterAll(async () => {
     await cleanup();
@@ -451,6 +462,80 @@ describe('IngestionService (integration)', () => {
         where: { sourceUrl: 'https://lab.example.com/post/sp4_content' },
       });
       expect(row.content).toBe('a b c\n\nd.');
+    });
+  });
+
+  describe('SP-4.7 enqueue contract', () => {
+    it('VISIBLE link-post (HN externalUrl present, content==title) enqueues both extract and summary, sets extractStatus=PENDING', async () => {
+      const linkPostItem: RawCrawledItem = {
+        title: 'A cool blog post',
+        contentText: 'A cool blog post',
+        rawHtml: null,
+        sourceUrl: `${HN_URL_PREFIX}sp47_linkpost`,
+        author: 'someone',
+        publishedAt: new Date('2026-05-05T00:00:00Z'),
+        filterReason: null,
+        interactionData: { externalUrl: 'https://blog.example.com/post' },
+      };
+
+      await ingestion.ingest([linkPostItem], HN_SOURCE);
+
+      expect(extractQueueAdd).toHaveBeenCalledWith(
+        'extract',
+        expect.objectContaining({ hotNewsId: expect.any(String) }),
+        expect.objectContaining({ jobId: expect.stringMatching(/^extract-/) }),
+      );
+      expect(summaryQueueAdd).toHaveBeenCalledWith(
+        'summarize',
+        expect.objectContaining({ hotNewsId: expect.any(String) }),
+        expect.objectContaining({ jobId: expect.stringMatching(/^summarize-/) }),
+      );
+
+      const row = await prisma.hotNews.findFirstOrThrow({
+        where: { sourceUrl: `${HN_URL_PREFIX}sp47_linkpost` },
+      });
+      expect(row.extractStatus).toBe('PENDING');
+    });
+
+    it('VISIBLE self-post (no externalUrl) enqueues only summary, leaves extractStatus=null', async () => {
+      const selfPostItem: RawCrawledItem = {
+        title: 'Ask HN: how do you ship features',
+        contentText: 'I have been wondering about this for a while.',
+        rawHtml: null,
+        sourceUrl: `${HN_URL_PREFIX}sp47_selfpost`,
+        author: 'someone',
+        publishedAt: new Date('2026-05-05T00:00:00Z'),
+        filterReason: null,
+        interactionData: { externalUrl: null },
+      };
+
+      await ingestion.ingest([selfPostItem], HN_SOURCE);
+
+      expect(extractQueueAdd).not.toHaveBeenCalled();
+      expect(summaryQueueAdd).toHaveBeenCalledTimes(1);
+
+      const row = await prisma.hotNews.findFirstOrThrow({
+        where: { sourceUrl: `${HN_URL_PREFIX}sp47_selfpost` },
+      });
+      expect(row.extractStatus).toBeNull();
+    });
+
+    it('HIDDEN row (filterReason set) enqueues neither queue', async () => {
+      const lowQuality: RawCrawledItem = {
+        title: 'Hidden by filter',
+        contentText: 'Hidden by filter',
+        rawHtml: null,
+        sourceUrl: `${HN_URL_PREFIX}sp47_hidden`,
+        author: null,
+        publishedAt: new Date('2026-05-05T00:00:00Z'),
+        filterReason: 'reddit_low_ratio',
+        interactionData: { externalUrl: 'https://example.com/hidden' },
+      };
+
+      await ingestion.ingest([lowQuality], HN_SOURCE);
+
+      expect(extractQueueAdd).not.toHaveBeenCalled();
+      expect(summaryQueueAdd).not.toHaveBeenCalled();
     });
   });
 });
