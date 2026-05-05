@@ -677,8 +677,42 @@ SP-4.6 已落地：commit `5af5ffe..05fb692` 6 个 commit（2 docs + 1 feat-util
 SP-4.6 把"SP-4.6"编号占用，原计划占用此编号的 ArticleExtractor 子项目改在 **SP-4.7** 或 **SP-5 前置**规划。下一步可选路径：
 
 1. **SP-5（AI 摘要 + aiTags）**：SP-4 brainstorming 时把"维度 3 主题相关性过滤"明确推到了 SP-5（LLM 打 `aiTags` 后 UI 按 tag 过滤）。SP-5 落地后 `/news` 列表才会真正"只剩想看的"——非 AI 主题内容（甚至 RSS 7d 窗口内的非主题文章）会自然过滤掉。
-2. **SP-4.7（原 SP-4.6 ArticleExtractor）**：HN/Reddit link-post 外链正文抓取。SP-5 摘要 link-post 时需要外链正文（当前 link-post `content=title, rawHtml=null`）。SP-4.7 是独立 worker / 独立队列，与 SP-5 无代码冲突，可并行启动。
+2. **SP-4.7（原 SP-4.6 ArticleExtractor）**：✅ COMPLETED 2026-05-05（详见下方专门小节）。HN/Reddit link-post 外链正文抓取已上线，prod 当前 EXTRACTED 占有效 link-post 比例 ~99%，FAILED < 1%。
 3. **SP-7（pgvector 跨平台合并）**：依赖 SP-5 `aiTags` + embedding 双信号。SP-5 完工后可直接推。
 4. **Web 测试基础设施 SP（YAGNI / 待触发）**：`apps/web` 至今无 vitest infra；SP-4.5 Task 7 的 fetchHotNewsList 改动只能跑 typecheck 兜底。如果 web 层后续 logic 分支变多（SP-5 摘要展示、SP-7 cluster 视图等），单独开 SP 装 vitest+jsdom+RTL 比较合适，目前先 YAGNI。
 
 建议下一步：在 **SP-5 vs SP-4.7** 之间二选一进 brainstorming（或先二者并行 brainstorming 看哪个更快收敛）。
+
+### 推进路线提示（更新于 SP-4.7 部署完成）
+
+SP-4.7 ArticleExtractor 已落地：
+
+- spec: `docs/superpowers/specs/2026-05-05-sp4-7-article-extractor-design.md`
+- plan: `docs/superpowers/plans/2026-05-05-sp4-7-article-extractor-plan.md`
+- main 落地 PR: [#1 feat(sp4.7): ArticleExtractor — Firecrawl + Jina chain](https://github.com/Ceylonlatte/ai-hot-news/pull/1) (squash `d3a52183`)
+- 部署热修 PR1：[#2 fix(sp4.7): hoist REDIS_CONNECTION into shared RedisModule](https://github.com/Ceylonlatte/ai-hot-news/pull/2) (squash `a06ee87c`)
+  - 抓到的 bug：SP-4.7 把 `REDIS_CONNECTION` 留在了 SP-4 的 `CrawlModule.providers`，新加的 `SummarizeModule` / `ExtractModule` 的 queue providers 找不到这个 token，prod worker 直接 `UnknownDependenciesException` crash-loop。模块各自的 spec 都用 mock 没动 Nest DI 容器，所以 unit/integration 阶段没暴露。
+  - 防回归：新增 `apps/worker/src/redis/redis.module.spec.ts` 用 `Test.createTestingModule` 真编译 `SummarizeModule + RedisModule`，强制约束「下个新模块若 inject `REDIS_CONNECTION` 但忘 `imports: [RedisModule]` 会 unit-test 阶段就红」。
+- 部署热修 PR2：[#3 fix(sp4.7): pass FIRECRAWL/JINA/EXTRACT_CONCURRENCY into worker container](https://github.com/Ceylonlatte/ai-hot-news/pull/3) (squash `9317d4a4`)
+  - 抓到的 bug：`docker-compose.prod.yml` 的 `worker.environment` 只显式列了 `DATABASE_URL/REDIS_URL/NODE_ENV`，新加的 3 个 SP-4.7 key 写在了 `.env` 里却没 `${...}` 透传，容器里全是空。导致 firecrawl provider 没 key 抛错 → fallback 到匿名 jina → jina 立刻 rate-limit → 全部 link-post 走完 3 attempts 标 FAILED。
+- prod deploy: 2026-05-05 18:21 UTC+8（PR #3 deploy run `25370807728`，sha `9317d4a4`）
+- prod wipe: 2026-05-05 17:53 UTC+8 跑 `wipe-hot-news-pre-ai.ts`，删 1650 → 0 rows
+- prod 二次 reset：fix #3 之后将 PR #2 deploy 期间残留的 536 行 `extractStatus='FAILED'`（jina 限流误标）UPDATE 回 `PENDING/extractAttempts=0`，restart worker 让 boot backstop 重新入队
+- prod smoke（部署后 ~30 分钟）：
+
+| 指标 | 值 | 阈值 |
+|---|---|---|
+| 总行数 | 811 | — |
+| `extractStatus IS NULL`（self-post / RSS） | 178 | 合理 |
+| `EXTRACTED` | 527 + 持续上升 | — |
+| `FAILED` | 7 (0.86% of link-posts) | < 10% ✓ |
+| `PENDING`（in-flight） | 99 | 收敛中 |
+| `EXTRACTED && content==title` | 0 | = 0 ✓ |
+| `VISIBLE && filterReason IS NOT NULL` | 0 | = 0 ✓ |
+| 5 行最近 EXTRACTED `clen vs tlen` | 7054/9006/14123/8226/38328 vs 11–78 | content >> title ✓ |
+
+下一步推进顺序更新为：
+
+1. **SP-5（AI 摘要 + aiTags）** —— spec/plan 已经写好（`docs/superpowers/specs/2026-05-05-sp5-ai-summary-tags-design.md`），且 SP-4.7 已经替每个新 EXTRACTED 行 `summary=null + 入 summary 队列`，SP-5 ship 后会自动消化这些 pending summary 任务，无需 backfill。
+2. **SP-7（pgvector 跨平台合并）**：依赖 SP-5 `aiTags` + embedding 双信号。SP-5 完工后可直接推。
+3. **Web 测试基础设施 SP（YAGNI / 待触发）**：保持现状。
