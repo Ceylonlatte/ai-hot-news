@@ -54,6 +54,12 @@ services:
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: ${REDIS_URL}
       NODE_ENV: production
+      # SP-4.7 ArticleExtractor: passed via .env. Compose only substitutes
+      # variables that are explicitly declared here, otherwise they end up
+      # blank inside the container even if .env has them.
+      FIRECRAWL_API_KEY: ${FIRECRAWL_API_KEY}
+      JINA_API_KEY: ${JINA_API_KEY}
+      EXTRACT_CONCURRENCY: ${EXTRACT_CONCURRENCY:-2}
     depends_on:
       postgres:
         condition: service_healthy
