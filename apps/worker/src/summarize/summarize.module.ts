@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { RedisModule } from '../redis/redis.module';
 import { SUMMARY_QUEUE, summaryQueueProvider } from './summarize.queue';
 
 /**
@@ -7,6 +8,7 @@ import { SUMMARY_QUEUE, summaryQueueProvider } from './summarize.queue';
  * OnApplicationBootstrap (boot backstop 扫 summary IS NULL 入队)。
  */
 @Module({
+  imports: [RedisModule],
   providers: [summaryQueueProvider],
   exports: [SUMMARY_QUEUE],
 })

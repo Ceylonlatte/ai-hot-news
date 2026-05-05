@@ -10,18 +10,17 @@ import {
   REDIS_CONNECTION,
   createCrawlWorker,
   queueProvider,
-  redisProvider,
 } from './queue.provider';
 import { processCrawlJob, type CrawlJobData } from './crawl.processor';
+import { RedisModule } from '../redis/redis.module';
 import { SummarizeModule } from '../summarize/summarize.module';
 import { ExtractModule } from '../extract/extract.module';
 import { SUMMARY_QUEUE } from '../summarize/summarize.queue';
 import { EXTRACT_QUEUE } from '../extract/extract.queue';
 
 @Module({
-  imports: [SummarizeModule, ExtractModule],
+  imports: [RedisModule, SummarizeModule, ExtractModule],
   providers: [
-    redisProvider,
     queueProvider,
     {
       provide: CRAWL_WORKER,
