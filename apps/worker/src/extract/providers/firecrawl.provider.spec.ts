@@ -60,6 +60,13 @@ describe('FirecrawlProvider', () => {
         }),
       }),
     );
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    expect(body).toEqual({
+      url: 'https://example.com/post',
+      formats: ['markdown', 'html'],
+      onlyMainContent: true,
+    });
   });
 
   it('throws QuotaExceededError on 402', async () => {
