@@ -8,3 +8,4 @@ export {
 export type { UserPromptInput } from './summarize.prompt';
 export { parseSummarizeResponse } from './parse';
 export type { SummarizeResult } from './parse';
+export { KEYWORDS, buildMatcher, matchesAiTopic, parseKeywords } from './keywords';

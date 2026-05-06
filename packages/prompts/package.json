@@ -13,8 +13,8 @@
   "scripts": {
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit",
-    "build": "esbuild src/index.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist/index.js",
-    "test": "vitest run"
+    "build": "node build.mjs",
+    "test": "node build.mjs --copy-only && vitest run"
   },
   "devDependencies": {
     "esbuild": "^0.28.0",
