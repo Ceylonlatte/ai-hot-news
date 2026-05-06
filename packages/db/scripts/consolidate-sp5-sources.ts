@@ -14,12 +14,12 @@ const REDDIT_OLD_SUBS = [
 ];
 
 export const REDDIT_BUNDLE_ID = 'reddit-ai-bundle-v1';
-const REDDIT_BUNDLE_URL =
+export const REDDIT_BUNDLE_URL =
   'https://www.reddit.com/r/ChatGPT+OpenAI+singularity+ArtificialInteligence+artificial+ClaudeAI+PromptEngineering+AI_Agents+vibecoding+LLMDevs+cursor+agi+LangChain/hot.json?limit=100&raw_json=1';
 
 const HN_INTERVAL_TOP = 3600;
 const HN_INTERVAL_ASK_SHOW = 14400;
-const REDDIT_INTERVAL_BUNDLE = 7200;
+export const REDDIT_INTERVAL_BUNDLE = 7200;
 
 export interface ConsolidateResult {
   reddit: { disabled: number; inserted: boolean };

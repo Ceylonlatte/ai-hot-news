@@ -1,4 +1,9 @@
 import { getPrisma } from '@ai-hot-news/db';
+import {
+  REDDIT_BUNDLE_ID,
+  REDDIT_BUNDLE_URL,
+  REDDIT_INTERVAL_BUNDLE,
+} from '../scripts/consolidate-sp5-sources';
 
 const prisma = getPrisma();
 
@@ -39,9 +44,6 @@ const hnCandidates: HnCandidate[] = [
   { name: 'HackerNews Show', identifier: 'show', enabled: true, crawlInterval: 14400 },
 ];
 
-const REDDIT_BUNDLE_URL =
-  'https://www.reddit.com/r/ChatGPT+OpenAI+singularity+ArtificialInteligence+artificial+ClaudeAI+PromptEngineering+AI_Agents+vibecoding+LLMDevs+cursor+agi+LangChain/hot.json?limit=100&raw_json=1';
-
 const redditCandidates: RedditCandidate[] = [
   { name: 'r/LocalLLaMA',       identifier: 'LocalLLaMA',       url: null, enabled: false, crawlInterval: 3600 },
   { name: 'r/MachineLearning',  identifier: 'MachineLearning',  url: null, enabled: false, crawlInterval: 3600 },
@@ -56,7 +58,7 @@ const redditCandidates: RedditCandidate[] = [
     identifier: null,
     url: REDDIT_BUNDLE_URL,
     enabled: true,
-    crawlInterval: 7200,
+    crawlInterval: REDDIT_INTERVAL_BUNDLE,
   },
 ];
 
@@ -66,11 +68,12 @@ async function seedRss() {
       where: { platform: 'RSS', name: c.name },
     });
     if (existing) {
+      // Preserve runtime fields (enabled / status) on re-run so operator
+      // overrides and crawler-set FAILED/LIMITED flags are not reverted.
       await prisma.sourceConfig.update({
         where: { id: existing.id },
         data: {
           url: c.url,
-          enabled: c.enabled,
           crawlInterval: 86400,
         },
       });
@@ -95,6 +98,8 @@ async function seedHn() {
       where: { platform: 'HACKERNEWS', identifier: c.identifier },
     });
     if (existing) {
+      // Preserve runtime fields (enabled / status) on re-run so operator
+      // overrides and crawler-set FAILED/LIMITED flags are not reverted.
       await prisma.sourceConfig.update({
         where: { id: existing.id },
         data: {
@@ -124,22 +129,27 @@ async function seedReddit() {
       ? await prisma.sourceConfig.findFirst({
           where: { platform: 'REDDIT', identifier: c.identifier },
         })
-      : await prisma.sourceConfig.findFirst({
-          where: { platform: 'REDDIT', name: c.name },
+      : await prisma.sourceConfig.findUnique({
+          where: { id: REDDIT_BUNDLE_ID },
         });
     if (existing) {
+      // Preserve runtime fields (enabled / status) on re-run so operator
+      // overrides and crawler-set FAILED/LIMITED flags are not reverted.
+      // identifier is included so a legacy bundle row with a stale identifier
+      // can be repaired by re-running seed.
       await prisma.sourceConfig.update({
         where: { id: existing.id },
         data: {
           name: c.name,
           url: c.url,
-          enabled: c.enabled,
+          identifier: c.identifier,
           crawlInterval: c.crawlInterval,
         },
       });
     } else {
       await prisma.sourceConfig.create({
         data: {
+          ...(c.identifier === null ? { id: REDDIT_BUNDLE_ID } : {}),
           platform: 'REDDIT',
           name: c.name,
           url: c.url,
