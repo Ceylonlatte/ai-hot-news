@@ -1,3 +1,5 @@
+/// <reference path="./keywords-md.d.ts" />
+
 export { TAXONOMY } from './taxonomy';
 export type { Company, Model, Category } from './taxonomy';
 export {

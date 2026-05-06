@@ -1,5 +1,3 @@
-/// <reference path="../../../../packages/prompts/src/keywords-md.d.ts" />
-
 import { Injectable, Logger, Inject } from '@nestjs/common';
 import { Queue } from 'bullmq';
 import { getPrisma, Prisma, ContentStatus, type Platform } from '@ai-hot-news/db';
