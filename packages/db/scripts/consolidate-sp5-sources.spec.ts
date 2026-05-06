@@ -106,4 +106,23 @@ describe('consolidate-sp5-sources', () => {
     const bundles = await prisma.sourceConfig.count({ where: { id: REDDIT_BUNDLE_ID } });
     expect(bundles).toBe(1);
   });
+
+  it('preserves runtime fields (enabled / status) on re-run', async () => {
+    await consolidateSp5Sources();
+
+    await prisma.sourceConfig.update({
+      where: { id: REDDIT_BUNDLE_ID },
+      data: { enabled: false, status: 'FAILED' },
+    });
+
+    const second = await consolidateSp5Sources();
+    expect(second.reddit.inserted).toBe(false);
+
+    const bundle = await prisma.sourceConfig.findUniqueOrThrow({
+      where: { id: REDDIT_BUNDLE_ID },
+    });
+    expect(bundle.enabled).toBe(false);
+    expect(bundle.status).toBe('FAILED');
+    expect(bundle.crawlInterval).toBe(7200);
+  });
 });

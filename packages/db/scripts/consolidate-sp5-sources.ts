@@ -52,15 +52,15 @@ export async function consolidateSp5Sources(): Promise<ConsolidateResult> {
     });
     redditInserted = true;
   } else {
+    // Preserve runtime fields (enabled / status) on re-run so operator-driven
+    // disables or crawler-set FAILED/LIMITED flags don't get silently reverted.
     await prisma.sourceConfig.update({
       where: { id: REDDIT_BUNDLE_ID },
       data: {
         name: 'AI Subreddit Bundle (13 subs hot)',
         identifier: null,
         url: REDDIT_BUNDLE_URL,
-        enabled: true,
         crawlInterval: REDDIT_INTERVAL_BUNDLE,
-        status: 'NORMAL',
       },
     });
   }
