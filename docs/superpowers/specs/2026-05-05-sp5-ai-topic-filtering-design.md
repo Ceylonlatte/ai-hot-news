@@ -1,28 +1,39 @@
-# SP-5 增强 — AI 主题过滤 + 基础低频抓取（Phase 1）
+# SP-5 增强 — AI 主题过滤 + Quality 阈值提升 + 基础低频抓取（Phase 1, v3.2）
 
-- **状态**：spec v3.1 final，待用户审核
+- **状态**：spec v3.2 final，待用户审核
 - **类型**：SP-5 主体的 in-PR 增强（不是独立 SP）
 - **依赖**：
-  - SP-5 主体已实现（`feat/sp5-summary-tags` 分支前 13 个 commit）
+  - SP-5 主体已实现（`feat/sp5-summary-tags` 分支前 13 个 commit + spec v3.1 commit）
   - SP-4.7 已合并（ArticleExtractor / jina chain）
   - `RedditCrawler.resolveUrl()` 已支持 `source.url` 透传（SP-3 预留）
 - **不依赖**：SP-4.5（互不影响）
 - **本文件**：`docs/superpowers/specs/2026-05-05-sp5-ai-topic-filtering-design.md`
-- **预计工作量**：~2 小时（keywords.md parser + AI strategy + IngestionService 加 1 行 + Reddit seed + 频率调整迁移脚本 + 测试）
+- **预计工作量**：~3 小时（keywords.md parser + L0-skip 1 处改动 + quality 阈值提升 + Reddit seed + 频率调整迁移脚本 + wipe 脚本 + 测试）
+
+## v3.2 关键变更（vs v3.1）
+
+| 项 | v3.1 | **v3.2** | 理由 |
+|---|---|---|---|
+| 过滤层 | L3a（extract 前）+ L3b（summary 前）| **L0-skip（ingest 入口）** | 更早过滤；不入库 vs 入 HIDDEN |
+| 不通过的处理 | INSERT status=HIDDEN | **`result.skipped++` 不入库** | HIDDEN 是死数据（无 score-update + API 不查 + KeywordMonitor 限定 AI 主题）|
+| HN quality 阈值 | score>=5 OR desc>=2 | **score>=20 OR desc>=5** | 减 HN VISIBLE -50% |
+| SummarizeAiOnlyStrategy | 新建 | **不需要**（保留 V1 SummarizeAllVisibleStrategy）| L0 已确保 hot_news 全是 AI |
+| Prod 部署 | 跑 consolidate 脚本 | **+ 跑 wipe-hot-news-pre-sp5 脚本** | 干净状态启动新逻辑 |
 
 ## Phase 1 / Phase 2 架构定位
 
-本 SP 仅做 Phase 1（基础低频抓 + AI 主题过滤）。Phase 2 留给未来 SP：
+本 SP 仅做 Phase 1（基础低频抓 + L0 AI 主题过滤）。Phase 2 留给未来 SP：
 
 | 阶段 | 范围 | 抓取频率 | 关键词来源 |
 |---|---|---|---|
-| **Phase 1（本 SP）** | 基础低频全貌抓取 + L3 双层 keywords 过滤 | HN Top 60min / Ask&Show 4h / Reddit 2h | 仓库根 `keywords.md`（17 词，开发者维护）|
+| **Phase 1（本 SP）** | 基础低频全貌抓取 + L0 keywords 过滤（不入库非 AI）+ HN quality 阈值提升 | HN Top 60min / Ask&Show 4h / Reddit 2h | 仓库根 `keywords.md`（17 词，开发者维护）|
 | **Phase 2（未来 SP-7+）** | 用户订阅词 + 热点驱动高频源 | 临时高频 source（10min interval, 48h 自动 disable）| `KeywordMonitor` 表 + 自动检测（24h 内某词出现>10 次自动开启）|
 
 Phase 2 的实现路径（已在当前架构内预留）：
 - `source_configs` 表是 DB 驱动的，加/减/调频不需要改代码
 - 未来 KeywordMonitor 上线时，可用同样架构动态加 high-frequency source
 - 用户订阅词可聚合为 `subscribed-keywords.md`，prompts 包做 union（零架构改动）
+- Phase 2 KeywordMonitor 的关键词限定在"出现在 AI 主题语境中的词"（如 "GPT-6" / "Sam Altman" / "Sora 2"），不支持脱离 AI 语境的关键词（如 "Cricket"），与产品定位一致
 
 ---
 
@@ -42,64 +53,74 @@ SP-5 主体本地 SMOKE 跑通后，发现两个独立但相关的痛点：
 加上 SP-4.7 jina extract 完成后会 reset summary=NULL 重入摘要队列：
 - 实际 LLM 调用 ≈ 390 + ~250 (jina 完成 re-summary) ≈ **~640/天**
 
-### 0.2 三个独立的成本问题
+### 0.2 四个独立的成本问题
 
-| 成本类型 | 当前/天 | 痛点级别 | Phase 1 解法 |
+| 成本类型 | 当前/天 | 痛点级别 | v3.2 解法 |
 |---|---|---|---|
-| jina API 调用 | ~301 | 🔴 高（jina 限流 + 成本压力）| L3a 过滤 |
-| LLM 调用（OpenRouter / DeepSeek-V3.2）| ~640 | 🟡 中（~$0.45/月，可承受但浪费 65%）| L3b 过滤 |
-| Reddit HTTP 请求 | 192 | 🟢 低（无成本，但效率低）| 8 sub→1 bundle + 1h→3h |
+| **hot_news 表行数** | ~385 visible + ~325 hidden ≈ ~710 | 🟡 中（DB 占用 + UI 展示太多）| **L0-skip + quality 阈值提升**（VISIBLE 减 51%，HIDDEN 减至 0）|
+| jina API 调用 | ~301 | 🔴 高（jina 限流 + 成本压力）| L0 已过滤入库，jina 自然 -62% |
+| LLM 调用（OpenRouter / DeepSeek-V3.2）| ~640 | 🟡 中（~$0.45/月，可承受但浪费 65%）| L0 已过滤入库，LLM 自然 -53% |
+| Reddit HTTP 请求 | 24 | 🟢 低（无成本，但效率低）| 8 sub→1 bundle + 1h→2h |
 | HN HTTP 请求（Firebase）| ~50,000 | 🟢 零（HN 官方免费 + 无限流）| 频率降低（Top 15min→60min, Ask&Show 30min→4h）|
 
-> 注：Phase 1 频率调整对 hot_news 入库行数影响较小（dedupe 已工作），主要是减 HTTP 流量和减 worker 自身负载。
+> 注：v3.2 把所有过滤集中到 L0（ingest 入口），下游 jina/LLM/UI 自然减压。
 
-### 0.3 关键洞察：jina 痛点不是 "HN 抓多" 而是 "extract 不分主题"
+### 0.3 关键洞察 1：HIDDEN 是死数据
 
-`IngestionService` 当前逻辑（SP-4.7 实现）：
-```
-所有 VISIBLE 的 link-post → 触发 jina extract
-```
+调研当前代码（`apps/worker/src/crawl/ingestion.service.ts:151`）：
+- dedupe 冲突（P2002）只 `result.skipped += 1`，**不 update 已存在行**
+- `apps/api/src/hot-news/hot-news.service.ts:34` 硬编码 `status: ContentStatus.VISIBLE`，**HIDDEN 永远不到前端**
+- 没有定时任务扫 HIDDEN 重评估、没有手动 re-promote
 
-不论是 AI 主题还是非 AI 主题，只要是 link-post 就调 jina。HN 96.4% 是 link-post + 70% 非 AI = **大量 jina 调用花在抓非 AI 内容的正文**。
+意味着：HN 帖子第一次抓到 score=2 → HIDDEN，5 小时后冲到 score=50 → P2002 skip → **永远是 HIDDEN**，UI 永远看不到。HIDDEN = 占空间的死数据。
 
-### 0.4 KeywordMonitor 未来需求
+### 0.4 关键洞察 2：jina 痛点不是 "HN 抓多" 而是 "extract 不分主题"
 
-PRD 设计了 `KeywordMonitor` 表（已 schema），用户可订阅**任意关键字**（不限本 spec 的 keywords.md）。这要求 hot_news 表保留**全量 VISIBLE 数据基础**，否则用户订阅"Sam Altman"但抓取层已经过滤掉非 keywords.md 词，永远命中不了。
+`IngestionService` 当前逻辑（SP-4.7 实现）：所有 VISIBLE link-post → 触发 jina extract，不分主题。HN 96.4% 是 link-post + 70% 非 AI = **大量 jina 调用花在抓非 AI 内容的正文**。
 
-### 0.5 解决方案：双层 keywords 过滤 + 基础抓取低频化（保留全量数据）
+### 0.5 KeywordMonitor 未来需求（限定 AI 主题）
+
+PRD 设计了 `KeywordMonitor` 表（已 schema），用户可订阅关键字。**v3.2 决策：限定 AI 主题范围**。
+
+理由：用户在 AI 资讯产品订阅的关键词 99% 落在 keywords.md 命中范围内：
+- "GPT-6" / "Sora 2" → 出现在 OpenAI/LLM 语境，命中
+- "Sam Altman" / "Dario Amodei" → 出现在 OpenAI/Anthropic 语境，命中
+- "Claude 4.5" / "Cursor 1.0" → 已在 keywords.md
+- "Cricket" → 不命中（也不是 AI 资讯产品的用例）
+
+### 0.6 解决方案：L0-skip + Quality 阈值提升 + 基础抓取低频化
 
 ```
 ┌────────────────────────────────────────────────────────────┐
-│ HN Firebase 全量 (~215/天 visible, Top 60min/Ask&Show 4h)   │
-│   → KeywordMonitor 数据基础                                 │
-│ Reddit 13 sub bundle (~145/天 visible, 2h interval)         │
-│   → KeywordMonitor 同样                                     │
-│ RSS 7 厂商 (~10/天, 24h)                                    │
+│ HN Firebase ~250 候选/天 (Top 60min/Ask&Show 4h)            │
+│ Reddit 13 sub bundle ~145 候选/天 (2h interval)             │
+│ RSS 7 厂商 ~10 候选/天 (24h, 不变)                          │
 └────────────────────────────────────────────────────────────┘
                        ↓
 ┌────────────────────────────────────────────────────────────┐
-│ IngestionService.ingest()                                   │
-│  ├─ insert hot_news (status=VISIBLE) ← 全量数据保留          │
-│  ├─ SummaryQueue.add() (无条件 enqueue)                      │
-│  └─ if isLinkPost AND matchesAiTopic(title+content) ← L3a   │
-│       └─ ExtractQueue.add() (jina extract)                  │
-│         非 AI link-post 直接跳过 extract，jina 减压 73%       │
+│ IngestionService.ingest() — L0-skip 入口过滤                │
+│  ├─ time window check                                       │
+│  ├─ sourceUrl check                                         │
+│  ├─ Quality check (HN score>=20 OR desc>=5)                 │
+│  │    └─ fail: result.skippedQuality++, 不入库              │
+│  ├─ L0: matchesAiTopic(title + content[:500])               │
+│  │    └─ fail: result.skippedNonAi++, 不入库                │
+│  └─ pass:                                                   │
+│       ├─ INSERT hot_news (status=VISIBLE)                   │
+│       ├─ SummaryQueue.add()                                 │
+│       └─ if isLinkPost: ExtractQueue.add()                  │
 └────────────────────────────────────────────────────────────┘
                        ↓
 ┌────────────────────────────────────────────────────────────┐
-│ SummarizeService.run()                                      │
-│  ├─ strategy.shouldSummarize(row)                           │
-│  │    ├─ status != VISIBLE → skip                          │
-│  │    ├─ matchesAiTopic(title) → allow                     │
-│  │    ├─ matchesAiTopic(content[:500]) → allow             │
-│  │    └─ else → skip:not_ai_topic ← L3b                    │
-│  └─ if allow → callLlm + write summary                      │
+│ SummarizeService.run() — 沿用 V1 SummarizeAllVisibleStrategy │
+│  ├─ status != VISIBLE → skip                                │
+│  └─ status == VISIBLE → callLlm + write summary             │
+│   (hot_news 表已全是 AI 主题 + 通过 quality, 无需再过滤)    │
 └────────────────────────────────────────────────────────────┘
 
-L3a (extract 前过滤)：解决 jina 痛点（~55% 减压）
-L3b (summary 前过滤)：解决 LLM 痛点（~62% 减压）
-两层用同一份 keywords.md，逻辑一致
-基础低频抓取：减 HTTP 流量 ~75%（HN）+ ~50%（Reddit），不影响入库总量
+L0-skip：一处过滤，下游 jina/LLM/DB/UI 全部受益
+Quality 阈值提升：HN VISIBLE 减 50%（保留高热度内容）
+基础低频抓取：减 HTTP 流量 ~75%（HN）+ ~50%（Reddit）
 ```
 
 ---
@@ -108,13 +129,18 @@ L3b (summary 前过滤)：解决 LLM 痛点（~62% 减压）
 
 | 优化点 | 本 PR | 后续 SP | 理由 |
 |---|---|---|---|
-| L3a：extract enqueue 前用 keywords 过滤 | ✅ | – | 解决 jina 痛点（用户主诉求）|
-| L3b：summary 调 LLM 前用 keywords 过滤 | ✅ | – | 减 LLM 成本 ~60% |
-| Reddit 13 sub bundle（`seed.ts` 改）| ✅ | – | 零代码改动（SP-3 已预留 `source.url` 透传），HTTP 减 87.5% |
-| `keywords.md` AI 词表 | ✅ | – | L3a/L3b 共同依赖 |
-| **基础抓取频率降低（HN Top 15min→60min, Ask&Show 30min→4h, Reddit 1h→2h）** | ✅ | – | HTTP 减 75%，对入库节奏影响极小（dedupe 已工作 + 几乎零错过率）|
-| HN Algolia crawler 替换 Firebase | ❌ | 暂不需要 | KeywordMonitor 需全量数据，且 Firebase 无成本无限流 |
+| **L0-skip：ingest 入口用 keywords 过滤，非 AI 不入库** | ✅ | – | 一处过滤，下游 jina/LLM/DB/UI 全部受益 |
+| **HN quality 阈值提升（score>=20 OR desc>=5）** | ✅ | – | 减 HN VISIBLE 50%，过滤低热度噪音 |
+| **IngestResult 扩展 by-reason 计数（skippedQuality / skippedNonAi / skippedDedupe）** | ✅ | – | 替代 HIDDEN 表的调试用途 |
+| **wipe-hot-news-pre-sp5.ts 一次性脚本** | ✅ | – | 干净状态启动新逻辑，避免新旧数据混杂 |
+| Reddit 13 sub bundle（`seed.ts` 改）| ✅ | – | 零代码改动（SP-3 已预留 `source.url` 透传），HTTP 减 50% + sub 多样性提升 |
+| `keywords.md` AI 词表 | ✅ | – | L0 唯一依赖 |
+| 基础抓取频率降低（HN Top 15min→60min, Ask&Show 30min→4h, Reddit 1h→2h）| ✅ | – | HTTP 减 75%，几乎零错过率 |
+| L3a / L3b（extract / summary 前过滤）| ❌ | – | 被 L0-skip 取代（L0 过滤入库，下游自然不需要再过滤）|
+| `SummarizeAiOnlyStrategy` | ❌ | – | 同上，保留 V1 `SummarizeAllVisibleStrategy` |
+| HN Algolia crawler 替换 Firebase | ❌ | 暂不需要 | KeywordMonitor 限定 AI 主题，Firebase 已够用 |
 | LLM 自判断（兜底捕获 keywords 漏网）| ❌ | 视上线后实测决定 | 当前成本已足够低，先观察 keywords 命中率 |
+| score-update 复活机制（HN 第二次抓到 score 涨了，能升级状态）| ❌ | 独立优化 SP | 当前 PR scope 控制；策略 C 兼容（被 skip 的帖子第二次抓到分数已高，自然以 VISIBLE 入库）|
 | KeywordMonitor + 按需高频源 | ❌ | Phase 2（未来 SP-7+）| 等用户订阅功能上线后做；当前架构已支持动态加 source |
 
 ---
@@ -131,27 +157,33 @@ RSS 7 feed ────────────────┘    ├─→ Summ
                                 └─→ if isLinkPost: ExtractQueue (全部调 jina)
 ```
 
-**改造后**：
+**改造后 v3.2**：
 ```
 HN Firebase (500/60min, 频率降低) ─┐
-Reddit 13 sub bundle (100/2h) ─────┼─→ IngestionService → 所有 VISIBLE 行：
-RSS 7 feed (24h, 不变) ─────────────┘    ├─→ SummaryQueue (无条件入队)
-                                       └─→ if isLinkPost AND matchesAiTopic():
-                                           └─→ ExtractQueue (仅 AI link-post 调 jina)
-                                               ↑ L3a 过滤点（jina 减压）
+Reddit 13 sub bundle (100/2h) ─────┼─→ IngestionService.ingest():
+RSS 7 feed (24h, 不变) ─────────────┘    ├─ time window check
+                                          ├─ sourceUrl check
+                                          ├─ Quality check (HN score>=20 OR desc>=5)
+                                          │   └─ fail → result.skippedQuality++, 不入库
+                                          ├─ L0: matchesAiTopic(title + content[:500])
+                                          │   └─ fail → result.skippedNonAi++, 不入库
+                                          └─ pass:
+                                              ├─ INSERT hot_news (status=VISIBLE)
+                                              ├─ SummaryQueue.add()
+                                              └─ if isLinkPost: ExtractQueue.add()
+                                                  ↑ 下游全部是 AI + 高质量内容
 
-SummaryQueue → SummarizeService:
-  ├─ strategy.shouldSummarize() (检查 keywords)
-  ├─ skip:not_ai_topic → 不调 LLM, summary=NULL
-  └─ allow → callLlm
-                ↑ L3b 过滤点（LLM 减压）
+SummaryQueue → SummarizeService（沿用 V1 SummarizeAllVisibleStrategy）:
+  ├─ status != VISIBLE → skip
+  └─ status == VISIBLE → callLlm + write summary
+                ↑ 不需要再过滤 keywords，hot_news 表已全是 AI 主题
 ```
 
 ### 2.2 文件改动清单
 
 ```
 新增（仓库根）：
-  keywords.md                                            (人工编辑词表，用户已创建)
+  keywords.md                                            ✓ 已 commit (73797ed)
 
 新增（packages/prompts）：
   packages/prompts/build.mjs                             (build 时 copy keywords.md + esbuild)
@@ -159,27 +191,31 @@ SummaryQueue → SummarizeService:
   packages/prompts/src/keywords.spec.ts                  (单测：parser + matcher)
   packages/prompts/.gitignore                            (忽略 src/keywords.md auto-copy)
 
-新增（worker）：
-  apps/worker/src/summarize/strategies/summarize-ai-only.strategy.ts
-  apps/worker/src/summarize/strategies/summarize-ai-only.strategy.spec.ts
-
 新增（db）：
   packages/db/scripts/consolidate-sp5-sources.ts         (一次性 prod 迁移：Reddit bundle + HN 频率)
   packages/db/scripts/consolidate-sp5-sources.spec.ts    (幂等性测试)
+  packages/db/scripts/wipe-hot-news-pre-sp5.ts           ⭐ v3.2：清空 hot_news 表
+  packages/db/scripts/wipe-hot-news-pre-sp5.spec.ts      ⭐ v3.2：测试
 
 修改：
+  packages/utils/src/quality.ts                          ⭐ HN_LOW_SCORE 5→20, HN_LOW_DESCENDANTS 2→5
+  packages/utils/src/quality.spec.ts                     ⭐ 更新 HN cases
   packages/prompts/package.json                          (build 改为 node build.mjs)
   packages/prompts/src/index.ts                          (+exports keywords / matchesAiTopic)
-  apps/worker/src/crawl/ingestion.service.ts             (extract enqueue 前加 matchesAiTopic 检查)
-  apps/worker/src/crawl/ingestion.service.spec.ts        (+L3a 测试 case)
-  apps/worker/src/summarize/strategies/strategy.interface.ts  (StrategyRowInput +title +content)
-  apps/worker/src/summarize/summarize.service.ts         (传 title/content 给 strategy)
-  apps/worker/src/summarize/summarize.service.spec.ts    (+1 case: skip:not_ai_topic)
-  apps/worker/src/summarize/summarize.module.ts          (替换 strategy)
+  apps/worker/src/crawl/ingestion.service.ts             ⭐ L0-skip 过滤 + IngestResult by-reason 计数
+  apps/worker/src/crawl/ingestion.service.spec.ts        ⭐ +L0 + quality 阈值 cases
   packages/db/prisma/seed.ts                             (Reddit bundle source + HN 频率调整)
+
+不再需要（vs v3.1 计划）：
+  ❌ apps/worker/src/summarize/strategies/summarize-ai-only.strategy.ts（保留 V1 strategy 即可）
+  ❌ apps/worker/src/summarize/strategies/summarize-ai-only.strategy.spec.ts
+  ❌ apps/worker/src/summarize/strategies/strategy.interface.ts 的 +title +content 扩展
+  ❌ apps/worker/src/summarize/summarize.service.ts 的 strategy 输入改动
+  ❌ apps/worker/src/summarize/summarize.service.spec.ts 的 skip:not_ai_topic case
+  ❌ apps/worker/src/summarize/summarize.module.ts 的 strategy 替换
 ```
 
-文件改动总计：**8 新增 + 8 修改 = 16 个文件**（vs HN Algolia 方案需要 22 个文件）。
+文件改动总计：**9 新增 + 7 修改 = 16 个文件**（数量同 v3.1，但实现路径更简单：summarize 模块零改动）。
 
 ---
 
@@ -349,185 +385,266 @@ src/keywords.md  # auto-copied from repo root at build time
 
 ---
 
-## 4. L3a：IngestionService extract enqueue 前过滤
+## 4. L0-skip：IngestionService 入口过滤
 
 ### 4.1 当前代码
 
-`apps/worker/src/crawl/ingestion.service.ts` 现状（SP-4.7 实现）：
+`apps/worker/src/crawl/ingestion.service.ts` 现状（SP-4 + SP-4.7 实现）：
 
 ```typescript
-if (status === ContentStatus.HIDDEN) {
-  result.hidden += 1;
-} else {
-  result.inserted += 1;
-  await this.summaryQueue.add('summarize', { hotNewsId: created.id }, ...);
-  
-  const extUrl = (raw.interactionData as { externalUrl?: string } | null)?.externalUrl;
-  const isLinkPost = typeof extUrl === 'string' &&
-    /^https?:/.test(extUrl) &&
-    cleanContent === cleanTitle;
-  
-  if (isLinkPost) {
-    await prisma.hotNews.update({
-      where: { id: created.id },
-      data: { extractStatus: 'PENDING' },
-    });
-    await this.extractQueue.add('extract', { hotNewsId: created.id }, ...);
+const cleanTitle = stripTitleBoilerplate(raw.title);
+const cleanContent = stripContentBoilerplate(raw.contentText);
+const dedupeHash = computeDedupeHash(sourceUrl, cleanTitle);
+
+const finalReason = raw.filterReason ?? checkUniversalQuality({ title: cleanTitle });
+const status: ContentStatus = finalReason ? ContentStatus.HIDDEN : ContentStatus.VISIBLE;
+
+try {
+  const created = await prisma.hotNews.create({ data: { ..., status, filterReason: finalReason ?? null } });
+  if (status === ContentStatus.HIDDEN) {
+    result.hidden += 1;
+  } else {
+    result.inserted += 1;
+    await this.summaryQueue.add('summarize', { hotNewsId: created.id }, ...);
+    if (isLinkPost) {
+      await this.extractQueue.add('extract', { hotNewsId: created.id }, ...);
+    }
+  }
+} catch (createErr) {
+  if ((createErr as { code?: string }).code === 'P2002') result.skipped += 1;
+}
+```
+
+### 4.2 改造（L0-skip + by-reason 计数）
+
+**关键：改 `IngestResult` 接口加 by-reason 计数；改 ingest() 把 quality fail / non-AI 都改为 `skipped++` 不入库（不再 INSERT HIDDEN 行）**。
+
+```typescript
+// 1. 接口扩展
+export interface IngestResult {
+  fetched: number;
+  inserted: number;
+  skipped: number;            // 总 skip（向后兼容）
+  skippedQuality: number;     // ⭐ 新增
+  skippedNonAi: number;       // ⭐ 新增
+  skippedDedupe: number;      // ⭐ 新增（P2002）
+  hidden: number;             // 保留字段（v3.2 始终为 0，方便逐步淘汰）
+  failed: number;
+}
+
+// 2. ingest() 主循环改造
+import { matchesAiTopic } from '@ai-hot-news/prompts';
+import { FILTER_REASONS } from '@ai-hot-news/utils';
+
+for (const raw of items) {
+  try {
+    if (!isWithinIngestWindow(raw, source, new Date())) {
+      result.skipped += 1;
+      continue;
+    }
+    if (!raw.sourceUrl) {
+      result.skipped += 1;
+      continue;
+    }
+    const sourceUrl = normalizeUrl(raw.sourceUrl);
+    const cleanTitle = stripTitleBoilerplate(raw.title);
+    const cleanContent = stripContentBoilerplate(raw.contentText);
+    const dedupeHash = computeDedupeHash(sourceUrl, cleanTitle);
+
+    // Quality check
+    const qualityReason = raw.filterReason ?? checkUniversalQuality({ title: cleanTitle });
+    if (qualityReason) {
+      result.skipped += 1;
+      result.skippedQuality += 1;
+      continue;  // ⭐ v3.2: 不入库（v3.1 是 INSERT status=HIDDEN）
+    }
+
+    // L0: AI topic check (matches title or content[:500])
+    const probe = `${cleanTitle}\n${cleanContent.slice(0, 500)}`;
+    if (!matchesAiTopic(probe)) {
+      result.skipped += 1;
+      result.skippedNonAi += 1;
+      continue;  // ⭐ v3.2: 不入库
+    }
+
+    // 走到这里都是 AI + 通过 quality, 必然 VISIBLE
+    try {
+      const created = await prisma.hotNews.create({
+        data: {
+          title: cleanTitle,
+          content: cleanContent,
+          rawHtml: raw.rawHtml,
+          sourcePlatform: source.platform,
+          sourceUrl,
+          author: raw.author,
+          publishedAt: raw.publishedAt ?? new Date(),
+          dedupeHash,
+          status: ContentStatus.VISIBLE,  // ⭐ 总是 VISIBLE
+          filterReason: null,              // ⭐ 总是 null
+          ...(raw.interactionData != null
+            ? { interactionData: raw.interactionData as Prisma.InputJsonValue }
+            : {}),
+        },
+      });
+      result.inserted += 1;
+      await this.summaryQueue.add('summarize', { hotNewsId: created.id }, { ... });
+
+      const extUrl = (raw.interactionData as { externalUrl?: string } | null)?.externalUrl;
+      const isLinkPost = typeof extUrl === 'string' &&
+        /^https?:/.test(extUrl) &&
+        cleanContent === cleanTitle;
+      if (isLinkPost) {
+        await prisma.hotNews.update({ where: { id: created.id }, data: { extractStatus: 'PENDING' } });
+        await this.extractQueue.add('extract', { hotNewsId: created.id }, { ... });
+      }
+    } catch (createErr) {
+      if ((createErr as { code?: string }).code === 'P2002') {
+        result.skipped += 1;
+        result.skippedDedupe += 1;
+      } else {
+        throw createErr;
+      }
+    }
+  } catch (err) {
+    this.logger.warn(`Ingest item failed: ${raw.sourceUrl} → ${(err as Error).message}`);
+    result.failed += 1;
   }
 }
+
+// 3. ingest() 末尾的日志（每个 source 一行）
+this.logger.log(
+  `[Ingest] ${source.platform} ${source.name}: ` +
+  `fetched=${result.fetched} inserted=${result.inserted} ` +
+  `skipped=${result.skipped} (quality=${result.skippedQuality} ` +
+  `nonAi=${result.skippedNonAi} dedupe=${result.skippedDedupe}) ` +
+  `failed=${result.failed}`
+);
 ```
 
-### 4.2 改造（加 1 个条件）
+### 4.3 quality.ts 阈值提升
+
+`packages/utils/src/quality.ts`：
 
 ```typescript
-import { matchesAiTopic } from '@ai-hot-news/prompts';
-
-// ... 同上 isLinkPost 计算 ...
-
-// L3a: 仅 AI 主题的 link-post 才触发 jina extract
-const isAiTopic = matchesAiTopic(`${cleanTitle}\n${cleanContent.slice(0, 500)}`);
-
-if (isLinkPost && isAiTopic) {
-  await prisma.hotNews.update({
-    where: { id: created.id },
-    data: { extractStatus: 'PENDING' },
-  });
-  await this.extractQueue.add('extract', { hotNewsId: created.id }, ...);
-}
-// 非 AI link-post：extractStatus 保持 null，不调 jina
+const HN_LOW_SCORE = 20;       // 5 → 20
+const HN_LOW_DESCENDANTS = 5;  // 2 → 5
+// Reddit/RSS/Universal 阈值不变
 ```
 
-### 4.3 副作用
+> 选择 `score>=20 OR desc>=5`（OR 关系）：保留高分热门帖，但也允许评论热但分数不高的讨论帖（Ask HN 常见）。
 
-| 场景 | 当前行为 | 改造后 |
+### 4.4 副作用
+
+| 场景 | 当前行为 (v3.1) | v3.2 改造后 |
 |---|---|---|
-| AI 主题 link-post | extract → reset summary=NULL → re-summarize | ✅ 不变 |
-| 非 AI link-post | extract → reset summary=NULL → re-summarize → L3b skip | ⏩ 跳过 extract，跳过 re-summary（节省 jina + 节省 LLM） |
-| Self-post (HN Ask/Show, Reddit) | summary 直接走 LLM 或被 L3b 过滤 | ✅ 不变 |
-| Reddit AI sub 全是 self-post 占多数 | 影响小 | ✅ 不变 |
+| AI + quality OK | INSERT VISIBLE → SummaryQueue + ExtractQueue | ✅ 不变 |
+| 非 AI（任何 quality）| INSERT HIDDEN（占空间）| ⏩ skipped++, **不入库** |
+| AI + quality fail | INSERT HIDDEN（占空间）| ⏩ skipped++, **不入库** |
+| dedupe 冲突 (P2002) | result.skipped++ | result.skipped++ + result.skippedDedupe++ |
+| RSS（100% AI + 无 quality 检查）| INSERT VISIBLE | ✅ 不变 |
 
-### 4.4 数字推演
+### 4.5 数字推演
 
-#### 4.4.1 频率调整后的入库估算（dedupe 后）
+#### 4.5.1 频率调整后的"候选数"（dedupe 后未过滤前）
 
-频率调整对入库行数影响小（dedupe 已工作），主要影响 HTTP 流量。
+| 源 | 当前 interval | Phase 1 interval | 候选数/天 |
+|---|---|---|---|
+| HN Top | 15min | **60min** | ~210 (-5%, 几乎零错过) |
+| HN Ask | 30min | **4h** | ~25 (略减) |
+| HN Show | 30min | **4h** | ~18 (略减) |
+| Reddit bundle (13 sub) | 1h | **2h** | ~145 |
+| RSS 7 厂商 | 24h | 24h | ~10 |
+| **合计候选** | – | – | **~408** |
 
-| 源 | 当前 interval | Phase 1 interval | 当前入库/天 | Phase 1 入库/天 |
-|---|---|---|---|---|
-| HN Top | 15min | **60min** | ~180 | ~175 (-3%, 几乎零错过) |
-| HN Ask | 30min | **4h** | ~25 | ~22 (-12%) |
-| HN Show | 30min | **4h** | ~20 | ~18 (-10%) |
-| Reddit bundle (13 sub) | 1h | **2h** | ~150 | ~145 (-3%) |
-| RSS 7 厂商 | 24h | 24h | ~10 | ~10 |
-| **合计** | – | – | **~385** | **~370** (-4%) |
+#### 4.5.2 L0-skip + 新 quality 阈值后的最终入库
 
-#### 4.4.2 L3a + L3b 过滤后
+每条候选两个独立属性：是否 AI 主题、是否通过 quality。
 
 ```
-HN Firebase 入库：       ~215 visible/天 (175 top + 22 ask + 18 show)
-  ├─ link-post: ~206 (96%)
-  │    ├─ 命中 keywords (~30%): ~62 → extract → re-summary
-  │    └─ 未命中 (~70%): ~144 → 跳过 extract，跳过 re-summary
-  └─ self-post: ~9
-       └─ 走 SummaryQueue → L3b 检查 → 部分命中走 LLM
+HN Top 候选 ~210/天:
+  ├─ AI (~30%) + quality OK (~50%): ~32 → INSERT VISIBLE ⭐
+  ├─ AI + quality fail: ~32 → skippedQuality
+  ├─ non-AI + quality OK: ~73 → skippedNonAi
+  └─ non-AI + quality fail: ~73 → skippedQuality (qualityReason 优先)
 
-Reddit bundle 入库：     ~145 visible/天
-  ├─ link-post: ~78 (54%)
-  │    ├─ 命中 keywords (~95%): ~74 → extract → re-summary
-  │    └─ 未命中 (~5%): ~4 → 跳过 extract
-  └─ self-post: ~67
-       └─ L3b 检查 → 大部分命中走 LLM
+HN Ask 候选 ~25/天: 通过率约 ~40% (AI + quality)
+  → ~10 → INSERT VISIBLE
 
-RSS：~10 visible/天 (100% AI, 0 link-post)
+HN Show 候选 ~18/天: 通过率约 ~40%
+  → ~7 → INSERT VISIBLE
 
-合计：
-  jina extract：~62 + 74 ≈ 136/天  （vs 当前 ~301，减 ~55%）
-  LLM 调用：    ~245/天             （vs 当前 ~640，减 ~62%）
-  HTTP/天：     ~12,379             （vs 当前 ~50,224，减 ~75%）
+Reddit bundle 候选 ~145/天:
+  ├─ AI (~95%) + quality OK (~95%): ~131 → INSERT VISIBLE
+  └─ rest: ~14 → skipped
+
+RSS 候选 ~10/天: 100% AI + 100% pass quality
+  → ~10 → INSERT VISIBLE
+
+合计 INSERT (=DB 行数 = VISIBLE):
+  ~32 + 10 + 7 + 131 + 10 = ~190/天
+
+合计 skipped:
+  ~408 - 190 = ~218/天
+  ├─ skippedQuality: ~178 (主要是 HN 低热度)
+  ├─ skippedNonAi:    ~73 (主要是 HN 高热度但非 AI)
+  └─ skippedDedupe:   动态（视抓取重复率）
 ```
 
-#### 4.4.3 综合对比（当前 vs Phase 1）
+#### 4.5.3 下游影响
 
-| 指标 | 当前/天 | Phase 1/天 | 减压 |
+```
+INSERT/天: ~190 → 全部 enqueue SummaryQueue
+  └─ SummarizeAllVisibleStrategy → 全部 callLlm
+       → LLM 调用 (initial) = ~190
+
+ExtractQueue 触发 = link-post 子集:
+  HN VISIBLE link-post: ~32 + 10 + 7 ≈ ~49 × 96% ≈ ~47
+  Reddit VISIBLE link-post: ~131 × 54% ≈ ~71
+  RSS link-post: 0
+  → jina 调用 = ~47 + 71 = ~118
+
+Extract 完成后 reset summary=NULL → re-summarize:
+  → LLM 调用 (re-summary) = ~118
+
+合计:
+  jina extract: ~118/天 (vs 当前 ~301，减 ~61%)
+  LLM 调用: ~190 + 118 = ~308/天 (vs 当前 ~640，减 ~52%)
+```
+
+#### 4.5.4 综合对比（当前 vs v3.2）
+
+| 指标 | 当前/天 | **v3.2/天** | 减压 |
 |---|---|---|---|
 | HN HTTP 请求 | ~50,000 | ~12,360 | **-75%** |
 | Reddit HTTP 请求 | ~24 | ~12 | **-50%** |
-| hot_news 入库行数 | ~385 | ~370 | -4% |
-| jina extract 调用 | ~301 | ~136 | **-55%** |
-| LLM 调用 | ~640 | ~245 | **-62%** |
-| 月 LLM 成本（OpenRouter DS-v3.2）| ~$0.45 | ~$0.17 | **-62%** |
+| **hot_news 表入库行数（=VISIBLE）** | ~385 + ~325 hidden ≈ ~710 | **~190** | **-73%** ⭐ |
+| jina extract 调用 | ~301 | ~118 | **-61%** |
+| LLM 调用 | ~640 | ~308 | **-52%** |
+| 月 LLM 成本（OpenRouter DS-v3.2）| ~$0.45 | ~$0.21 | **-53%** |
 
 ---
 
-## 5. L3b：SummarizeAiOnlyStrategy
+## 5. SummarizeService（保持 V1，不需要 strategy 切换）
 
-### 5.1 接口扩展
+v3.2 不再需要 `SummarizeAiOnlyStrategy`，因为 L0-skip 已确保 hot_news 表全是 AI 主题。
 
-`apps/worker/src/summarize/strategies/strategy.interface.ts`：
-
-```typescript
-export interface StrategyRowInput {
-  id: string;
-  sourcePlatform: 'TWITTER' | 'RSS' | 'HACKERNEWS' | 'REDDIT';
-  publishedAt: Date;
-  status: 'VISIBLE' | 'HIDDEN' | 'PENDING';
-  interactionData: Record<string, unknown> | null;
-  heatScore: number;
-  title: string;        // ← 新增
-  content: string;      // ← 新增
-}
-```
-
-### 5.2 新策略实现
+直接保留 SP-5 主体的 V1 strategy：
 
 ```typescript
-// apps/worker/src/summarize/strategies/summarize-ai-only.strategy.ts
-
-import { matchesAiTopic } from '@ai-hot-news/prompts';
-import type { SummarizationStrategy, StrategyVerdict, StrategyRowInput } from './strategy.interface';
-
-const CONTENT_PROBE_CHARS = 500;
-
-export class SummarizeAiOnlyStrategy implements SummarizationStrategy {
-  shouldSummarize(row: StrategyRowInput): StrategyVerdict {
-    if (row.status !== 'VISIBLE') return `skip:status_${row.status}`;
-    
-    if (matchesAiTopic(row.title)) return 'allow';
-    
-    const contentSnippet = (row.content ?? '').slice(0, CONTENT_PROBE_CHARS);
-    if (matchesAiTopic(contentSnippet)) return 'allow';
-    
-    return 'skip:not_ai_topic';
-  }
-}
+// apps/worker/src/summarize/summarize.module.ts
+useFactory: (): SummarizationStrategy => new SummarizeAllVisibleStrategy(),
 ```
 
-### 5.3 SummarizeService 适配
+`SummarizeAllVisibleStrategy.shouldSummarize(row)`：
+- `row.status === 'VISIBLE'` → `'allow'`
+- 其他 → `skip:status_*`
 
-`summarize.service.ts` 的 `findUnique` 已 select `title` + `content`（用于 LLM input），无需新增 column。把它们传给 strategy：
+由于 v3.2 中所有 hot_news 行都是 VISIBLE，strategy 实际就是 100% allow，正确反映了"已在 ingest 阶段过滤"的事实。
 
-```typescript
-const verdict = this.strategy.shouldSummarize({
-  id: row.id,
-  sourcePlatform: row.sourcePlatform as ...,
-  publishedAt: row.publishedAt,
-  status: row.status as ...,
-  interactionData: row.interactionData as ...,
-  heatScore: row.heatScore,
-  title: row.title,        // ← 新增
-  content: row.content,    // ← 新增
-});
-```
-
-### 5.4 Module 切换
-
-`summarize.module.ts` 的 `STRATEGY_TOKEN` 工厂改为新策略：
-
-```typescript
-useFactory: (): SummarizationStrategy => new SummarizeAiOnlyStrategy(),
-```
-
-`SummarizeAllVisibleStrategy` 文件保留，便于一行回滚。
+**好处**：
+- 零 summarize 模块改动 → PR diff 更小
+- 一行 useFactory 回滚（如果未来切回 hidden 模式）
+- 单一过滤层，逻辑简单
 
 ---
 
@@ -696,22 +813,65 @@ export async function consolidateSp5Sources(): Promise<ConsolidateResult> {
 }
 ```
 
-### 7.3 调用方式
+### 7.3 `wipe-hot-news-pre-sp5.ts` ⭐ v3.2 新增
 
-参照 SP-4.5 `wipe-hot-news-pre-ai.ts` 的 dual-mode entrypoint：
+位置：`packages/db/scripts/wipe-hot-news-pre-sp5.ts`。一次性清空 `hot_news` 表，让新 L0-skip + quality 阈值的逻辑从干净状态开始。
 
-```bash
-# Prod 运行：
-docker exec ai-hot-news-worker node /app/packages/db/scripts/consolidate-sp5-sources.js
+```typescript
+import { getPrisma } from '@ai-hot-news/db';
+
+export interface WipeResult {
+  before: number;
+  deleted: number;
+  after: number;
+}
+
+export async function runWipe(): Promise<WipeResult> {
+  const prisma = getPrisma();
+  const before = await prisma.hotNews.count();
+  console.log(`[wipe-pre-sp5] Before: ${before} rows`);
+
+  const result = await prisma.hotNews.deleteMany({});
+  const after = await prisma.hotNews.count();
+  console.log(`[wipe-pre-sp5] Deleted ${result.count} rows, after: ${after}`);
+
+  return { before, deleted: result.count, after };
+}
+
+async function main(): Promise<void> {
+  const stats = await runWipe();
+  console.log(JSON.stringify(stats, null, 2));
+}
+
+const isMainEntry = typeof require !== 'undefined' && require.main === module;
+const isTsxEntry = process.argv[1]?.endsWith('wipe-hot-news-pre-sp5.ts');
+
+if (isMainEntry || isTsxEntry) {
+  main()
+    .then(() => process.exit(0))
+    .catch((err) => {
+      console.error(err);
+      process.exit(1);
+    });
+}
 ```
 
-### 7.4 SCHEDULER 配合
+> 实现完全参照 SP-4.5 的 `wipe-hot-news-pre-ai.ts`。语义改为"在 SP-5 v3.2 上线前清空"。
+
+### 7.4 调用方式
+
+```bash
+# Prod 运行（顺序：先清空，再调整 source_configs，最后重启 worker）：
+docker exec ai-hot-news-worker node /app/packages/db/scripts/wipe-hot-news-pre-sp5.js
+docker exec ai-hot-news-worker node /app/packages/db/scripts/consolidate-sp5-sources.js
+docker restart ai-hot-news-worker  # 触发 BullMQ obliterate + 按新 interval 重排
+```
+
+### 7.5 SCHEDULER 配合
 
 `CrawlScheduler` 在每次 schedule 时读取 `source_configs.crawlInterval`，所以**改频率立即生效**，无需重启 worker。
 
-但如果 BullMQ 已经基于旧 interval 排好了 repeatable job，需要 obliterate + 重新创建。SP-4.7 已实现 `Old queue obliterated` 自动清理（启动时）。所以 prod 部署流程：
-1. 跑 `consolidate-sp5-sources.ts` 改 DB
-2. 重启 worker（docker restart）→ 触发 obliterate → 按新 interval 重新排队
+但如果 BullMQ 已经基于旧 interval 排好了 repeatable job，需要 obliterate + 重新创建。SP-4.7 已实现 `Old queue obliterated` 自动清理（启动时）。所以 prod 部署流程必须 docker restart worker。
 
 ---
 
@@ -720,39 +880,49 @@ docker exec ai-hot-news-worker node /app/packages/db/scripts/consolidate-sp5-sou
 ### 8.1 部署顺序
 
 1. 合并 PR 到 `main` → CI 触发 docker build + push
-2. AI-stage 自动部署 → 等待 worker 健康
-3. SSH 进 prod 跑一次性脚本：`docker exec ai-hot-news-worker node /app/packages/db/scripts/consolidate-sp5-sources.js`
-4. 手动确认 prod source_configs：
+2. AI-stage 自动部署 → 等待 worker 健康；用 ai-stage 数据 SMOKE 验证 L0-skip 行为正确
+3. SSH 进 prod 按顺序跑一次性脚本：
+   ```bash
+   docker exec ai-hot-news-worker node /app/packages/db/scripts/wipe-hot-news-pre-sp5.js
+   docker exec ai-hot-news-worker node /app/packages/db/scripts/consolidate-sp5-sources.js
+   docker restart ai-hot-news-worker
+   ```
+4. 手动确认 prod 状态：
+   - `SELECT COUNT(*) FROM hot_news` = 0（wipe 成功）
    - 旧 Reddit 8 sub `enabled=false`
    - 新 bundle `id='reddit-ai-bundle-v1'` 存在且 `crawlInterval=7200`
    - HN Top `crawlInterval=3600` / HN Ask&Show `crawlInterval=14400`
-5. Worker 重启自动 pickup 新 source 与新 interval（启动日志可见 `Old queue obliterated`）
+5. Worker 重启日志可见：
+   - `Old queue obliterated`（BullMQ 清旧 repeatable jobs）
+   - `[CrawlScheduler] schedule HACKERNEWS top interval=3600`（新频率生效）
 
 ### 8.2 SMOKE 验证
 
 部署后 30min 观察：
 
-| 验证项 | 期望日志 |
+| 验证项 | 期望日志/数据 |
 |---|---|
-| L3a 工作 | IngestionService 不再为非 AI link-post enqueue extract（计数对比） |
-| L3b 工作 | `hotNewsId=... → skip:not_ai_topic` 与 `→ done` 共存 |
+| L0-skip 工作 | `[Ingest] HN top: fetched=500 inserted=N skipped=M (quality=Q nonAi=A dedupe=D)`，且 `inserted ≪ fetched` |
 | Reddit bundle | `[CrawlProcessor] REDDIT crawl ok: source=AI Subreddit Bundle (13 subs hot) items=80-100` |
 | HN Top 频率新 | 启动后 `[CrawlScheduler] schedule HACKERNEWS top interval=3600` 日志（vs 当前 900）|
 | HN Ask&Show 频率新 | 启动后 `[CrawlScheduler] schedule HACKERNEWS ask|show interval=14400` 日志（vs 当前 1800）|
-| jina 调用减少 | 部署后 24h 内 ExtractService 调用数比之前减 ~55% |
-| LLM 调用减少 | 部署后 24h 内 SummarizeService `→ done` 数比之前减 ~62% |
-| HN HTTP 减少 | 看 worker 出口 HTTP 计数（如有 metrics）减 ~75% |
+| `hot_news` 表纯净 | `SELECT COUNT(*) FROM hot_news WHERE status='HIDDEN'` 应该 = 0 |
+| `hot_news` 表全是 AI | `SELECT title FROM hot_news ORDER BY createdAt DESC LIMIT 20` 肉眼检查全是 AI 主题 |
+| jina 调用减少 | 部署后 24h 内 ExtractService 调用数比之前减 ~61% |
+| LLM 调用减少 | 部署后 24h 内 SummarizeService `→ done` 数比之前减 ~52% |
 
 ### 8.3 回滚预案
 
 | 回滚情形 | 操作 | 预估时间 |
 |---|---|---|
-| L3a/L3b 误杀真 AI 内容 | 编辑 `keywords.md` 加词 → `pnpm --filter @ai-hot-news/prompts build` → docker rebuild → redeploy；或临时回退到 `SummarizeAllVisibleStrategy`（1 行改 + 重启）+ 注释 IngestionService 的 `&& isAiTopic` | 5-10min |
-| 频率太低导致错过重要内容 | `UPDATE source_configs SET crawlInterval=900 WHERE platform='HACKERNEWS' AND identifier='top';`（其他源同理）→ 重启 worker | 1min |
-| Reddit bundle 限流（429） | `UPDATE source_configs SET enabled=true WHERE identifier IN (8 旧 sub) AND platform='REDDIT'; UPDATE source_configs SET enabled=false WHERE id='reddit-ai-bundle-v1';` | 1min |
-| 整体回滚 | `git revert <merge-commit>` → CI 重新 deploy | 30min |
+| L0 误杀真 AI 内容 | 编辑 `keywords.md` 加词 → `pnpm --filter @ai-hot-news/prompts build` → docker rebuild → redeploy | 5-10min |
+| Quality 阈值过严，错过中等热度 AI 内容 | `git revert` quality.ts 改动 OR 手工改回 HN_LOW_SCORE=5 → docker rebuild → redeploy | 5-10min |
+| 频率太低导致错过重要内容 | `UPDATE source_configs SET crawlInterval=900 WHERE platform='HACKERNEWS' AND identifier='top';` → 重启 worker | 1min |
+| Reddit bundle 限流（429） | `UPDATE source_configs SET enabled=true WHERE identifier IN (...) AND platform='REDDIT'; UPDATE source_configs SET enabled=false WHERE id='reddit-ai-bundle-v1';` | 1min |
+| wipe 后想恢复历史数据 | **不可逆**。wipe 前请先 `pg_dump --table=hot_news` 备份（部署 SOP 必须步骤）| – |
+| 整体回滚（除 wipe 外）| `git revert <merge-commit>` → CI 重新 deploy；wipe 后的数据无法找回 | 30min |
 
-DB 中已 SKIP 的行不会自动重摘要。如需重新摘要，手工 `UPDATE hot_news SET summary=NULL, "extractStatus"=NULL WHERE summary IS NULL AND <过滤条件>` 触发 boot backstop。
+> ⚠️ **wipe 前必须备份**：`pg_dump --table=hot_news ai_hot_news > /backups/hot_news_pre_sp5_$(date +%Y%m%d).sql`（建议放进部署 runbook）。
 
 ---
 
@@ -760,10 +930,11 @@ DB 中已 SKIP 的行不会自动重摘要。如需重新摘要，手工 `UPDATE
 
 | 测试文件 | 覆盖场景 |
 |---|---|
-| `packages/prompts/src/keywords.spec.ts` | parseKeywords 兼容三种格式 / 注释 / 空行 / 列表前缀 / 内联逗号 / dedupe 大小写不敏感 / buildMatcher word-boundary / 转义字符（`GPT-4o`）/ matchesAiTopic 命中 / 不命中 / 空字符串 |
-| `apps/worker/src/summarize/strategies/summarize-ai-only.strategy.spec.ts` | 6 类 verdict：VISIBLE+title 命中 / VISIBLE+content 命中 / VISIBLE 无命中 → skip:not_ai_topic / HIDDEN → skip:status_HIDDEN / PENDING → skip:status_PENDING / 空 content 不崩 / content 超 500 时只检查前 500 |
-| `apps/worker/src/summarize/summarize.service.spec.ts`（已有，扩展）| +1 case：strategy 返回 not_ai_topic → 不调用 LLM、不写 summary、不写 aiTags |
-| `apps/worker/src/crawl/ingestion.service.spec.ts`（已有，扩展）| +case：AI link-post → enqueue extract / 非 AI link-post → 不 enqueue extract / Self-post 不受影响 / Reddit AI sub link-post（命中）/ HN 非 AI link-post（不命中）|
+| `packages/prompts/src/keywords.spec.ts` | parseKeywords 兼容三种格式（单行逗号 / 每行一词 / markdown 列表）/ 注释 / 空行 / 列表前缀 / 内联逗号 / dedupe 大小写不敏感 / buildMatcher word-boundary / 转义字符（`GPT-4o`）/ matchesAiTopic 命中 / 不命中 / 空字符串 |
+| `packages/utils/src/quality.spec.ts`（已有，扩展）| HN: score=20 通过 / score=19 + descendants=4 fail / descendants=5 通过 / score=100 通过 |
+| `apps/worker/src/crawl/ingestion.service.spec.ts`（已有，扩展）| L0-skip 行为：AI + quality OK → INSERT VISIBLE / quality fail → skipped++ + skippedQuality++ 不入库 / non-AI → skipped++ + skippedNonAi++ 不入库 / dedupe → skippedDedupe++ / IngestResult 字段正确 |
+| `apps/worker/src/crawl/ingestion.service.integration.spec.ts`（已有，扩展）| 真 PG: AI 主题 HN 帖子（score>=20）入库 / non-AI HN 帖子不入库 / Reddit AI sub 帖子入库 / 已存在 dedupeHash 触发 P2002 |
+| `packages/db/scripts/wipe-hot-news-pre-sp5.spec.ts` | 真 PG: 插入 N 行 → 跑 runWipe → COUNT=0 / 空表跑 runWipe 不报错 / 返回 `{before, deleted, after}` 字段正确 |
 | `packages/db/scripts/consolidate-sp5-sources.spec.ts` | 幂等性（运行两次结果一致）/ 8 旧 sub 全部 enabled=false / 新 bundle 创建（crawlInterval=7200）/ HN Top crawlInterval=3600 / HN Ask&Show crawlInterval=14400 |
 
 ---
@@ -775,42 +946,48 @@ DB 中已 SKIP 的行不会自动重摘要。如需重新摘要，手工 `UPDATE
 - [ ] `matchesAiTopic("Show HN: I built an AI Agent")` → `true`
 - [ ] `matchesAiTopic("Cricket India vs Pakistan score")` → `false`
 - [ ] `matchesAiTopic("Spain on the map")` → `false`（word boundary 防止 "AI" 嵌入误匹配 "Spain"）
-- [ ] `SummarizeAiOnlyStrategy` 6 类 verdict 测试全过
-- [ ] `IngestionService` 测试覆盖 AI / 非 AI link-post 分支
-- [ ] `consolidate-sp5-sources.ts` 幂等性测试通过（含 Reddit + HN 频率调整）
+- [ ] HN quality 阈值变更后单测全过（`score>=20 OR descendants>=5`）
+- [ ] `IngestionService` 测试覆盖 L0-skip 三种 skip 原因（quality / nonAi / dedupe），且 IngestResult 字段计数正确
+- [ ] `wipe-hot-news-pre-sp5.spec.ts` 通过（删行 + 空表 + 返回值）
+- [ ] `consolidate-sp5-sources.spec.ts` 幂等性测试通过（含 Reddit + HN 频率调整）
 - [ ] HN `crawlInterval` 调整后 BullMQ obliterate 重排成功（启动日志可见 `Old queue obliterated`）
 - [ ] CI 全绿
-- [ ] 本地 dev SMOKE：跑 30min 后能看到 Reddit bundle 抓取成功，日志中有 `→ skip:not_ai_topic` 与 `→ done` 共存，extractQueue 入队数明显少于 inserted 数
+- [ ] 本地 dev SMOKE：跑 30min 后能看到 Reddit bundle 抓取成功，日志中有 `inserted=N skipped=M (quality=... nonAi=... dedupe=...)` 形式，且 `hot_news` 表 `SELECT COUNT(*) WHERE status='HIDDEN'` = 0
 - [ ] Prod SMOKE：部署 24h 后
-  - HN HTTP 请求数下降 ~75%（频率调整效果）
+  - `hot_news` 表新增行数比当前减少 ~73%（~190/天 vs 当前 ~710/天，含历史 HIDDEN）
+  - `hot_news` 表 `status` 全为 VISIBLE
+  - HN HTTP 请求数下降 ~75%
   - Reddit HTTP 请求数下降 ~50%
-  - jina 调用量比当前实测下降 ~55%
-  - LLM 调用量比当前实测下降 ~62%
-  - hot_news 表新增行数比当前略降 ~4%（KeywordMonitor 数据基础保持完整，HN/Reddit 抓全量不变）
+  - jina 调用量下降 ~61%
+  - LLM 调用量下降 ~52%
+  - 月 LLM 成本从 ~$0.45 降到 ~$0.21
 
 ---
 
 ## 11. 与 SP-5 主体的协同
 
-本 PR 在 SP-5 主体的 13 个 commit 之上新增 commits：
+本 PR 在 SP-5 主体的 13 个 commit + 已 commit 的 spec v3.1 (73797ed) 之上新增 commits：
 
 ```
 13 主体 commit (已存在)
-  ↓
-+ docs(sp5): AI topic filtering + Phase 1 frequency design spec v3.1 + keywords.md
-+ feat(sp5): keywords.md parser + matcher + build.mjs
-+ feat(sp5): SummarizeAiOnlyStrategy + tests + module wire
-+ feat(sp5): IngestionService extract enqueue 前过滤 (L3a)
-+ feat(sp5): Reddit bundle source + HN frequency调整 + consolidate-sp5-sources script
-+ docs(sp5): update SP-5 plan with topic filtering & frequency tasks
+  + 73797ed docs(sp5): spec v3.1 + keywords.md (✓ 已 commit, v3.2 升级中)
+    ↓
++ docs(sp5): pivot to v3.2 — L0-skip + quality threshold + wipe + remove L3a/L3b
++ feat(sp5): keywords.md parser + matcher + build.mjs (packages/prompts)
++ feat(sp5): IngestionService L0-skip + IngestResult by-reason counters
++ feat(sp5): HN quality threshold bump (score>=20 OR desc>=5)
++ feat(sp5): wipe-hot-news-pre-sp5 + consolidate-sp5-sources scripts
++ feat(sp5): Reddit bundle seed + HN frequency seed update
++ docs(sp5): update SP-5 plan with v3.2 tasks
 ```
 
 合并到 `main` 后 SP-5 整体上线，prod 第一天即享：
+- **hot_news 表入库行数减压 ~73%**（~710 → ~190/天，UI 也跟着减）
 - HN HTTP 减压 ~75%（频率调整：Top 15min→60min, Ask&Show 30min→4h）
 - Reddit HTTP 减压 ~50%（频率调整：1h→2h；同时 8 sub → 1 个 13-sub bundle）
-- jina 调用减压 ~55%（解决用户主诉求）
-- LLM 调用减压 ~62%
-- KeywordMonitor 数据基础保持完整（HN 全量抓不变）
-- 几乎零错过率（Phase 1 入库仅减 4%，主要是 Ask&Show 的低活跃帖）
+- jina 调用减压 ~61%（L0-skip 直接拦截非 AI link-post）
+- LLM 调用减压 ~52%
+- 月 LLM 成本：~$0.45 → ~$0.21
+- `hot_news` 表语义干净（全 VISIBLE，全 AI 主题）
 
-未来 Phase 2（SP-7+）即可接入：用户订阅词 + 热点检测 + 按需高频源（基于当前 source_configs 动态架构，零成本扩展）
+未来 Phase 2（SP-7+）即可接入：用户订阅词 + 热点检测 + 按需高频源；当前架构已支持 source_configs 动态加 source，零成本扩展。
