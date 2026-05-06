@@ -39,9 +39,9 @@ const REDDIT_SOURCE = {
 
 function makeItem(n: number): RawCrawledItem {
   return {
-    title: `Item ${n}`,
-    contentText: `body ${n}`,
-    rawHtml: `<p>body ${n}</p>`,
+    title: `OpenAI launches GPT-5 update ${n}`,
+    contentText: `OpenAI launches GPT-5 update ${n}`,
+    rawHtml: `<p>OpenAI launches GPT-5 update ${n}</p>`,
     sourceUrl: `https://lab.example.com/post/${n}?utm_source=rss`,
     author: 'Alice',
     publishedAt: new Date('2026-05-01T08:00:00.000Z'),
@@ -113,8 +113,8 @@ describe('IngestionService (integration)', () => {
     it('inserts HN items with sourcePlatform=HACKERNEWS and interactionData', async () => {
       const items: RawCrawledItem[] = [
         {
-          title: 'GPT-5 announced',
-          contentText: 'GPT-5 announced',
+          title: 'OpenAI launches GPT-5',
+          contentText: 'OpenAI launches GPT-5',
           rawHtml: null,
           sourceUrl: `${HN_URL_PREFIX}44000001`,
           author: 'alice',
@@ -134,6 +134,9 @@ describe('IngestionService (integration)', () => {
         fetched: 1,
         inserted: 1,
         skipped: 0,
+        skippedQuality: 0,
+        skippedNonAi: 0,
+        skippedDedupe: 0,
         hidden: 0,
         failed: 0,
       });
@@ -142,7 +145,7 @@ describe('IngestionService (integration)', () => {
         where: { sourceUrl: `${HN_URL_PREFIX}44000001` },
       });
       expect(row.sourcePlatform).toBe(Platform.HACKERNEWS);
-      expect(row.title).toBe('GPT-5 announced');
+      expect(row.title).toBe('OpenAI launches GPT-5');
       expect(row.rawHtml).toBeNull();
       expect(row.interactionData).toMatchObject({
         score: 234,
@@ -158,8 +161,8 @@ describe('IngestionService (integration)', () => {
       await ingestion.ingest(
         [
           {
-            title: 'First insert',
-            contentText: 'First insert',
+            title: 'OpenAI releases a new LLM',
+            contentText: 'OpenAI releases a new LLM',
             rawHtml: null,
             sourceUrl,
             author: 'bob',
@@ -173,8 +176,8 @@ describe('IngestionService (integration)', () => {
       const result2 = await ingestion.ingest(
         [
           {
-            title: 'First insert',
-            contentText: 'First insert',
+            title: 'OpenAI releases a new LLM',
+            contentText: 'OpenAI releases a new LLM',
             rawHtml: null,
             sourceUrl,
             author: 'bob',
@@ -189,6 +192,9 @@ describe('IngestionService (integration)', () => {
         fetched: 1,
         inserted: 0,
         skipped: 1,
+        skippedQuality: 0,
+        skippedNonAi: 0,
+        skippedDedupe: 1,
         hidden: 0,
         failed: 0,
       });
@@ -203,8 +209,8 @@ describe('IngestionService (integration)', () => {
       await ingestion.ingest(
         [
           {
-            title: 'No interaction data',
-            contentText: 'No interaction data',
+            title: 'OpenAI releases a new LLM',
+            contentText: 'OpenAI releases a new LLM',
             rawHtml: null,
             sourceUrl,
             author: 'carol',
@@ -217,14 +223,63 @@ describe('IngestionService (integration)', () => {
       const row = await prisma.hotNews.findFirstOrThrow({ where: { sourceUrl } });
       expect(row.interactionData).toBeNull();
     });
+
+    it('skips non-AI HN rows before insert', async () => {
+      const sourceUrl = `${HN_URL_PREFIX}44000901`;
+
+      const result = await ingestion.ingest(
+        [
+          {
+            title: 'Cricket India vs Pakistan score',
+            contentText: 'Cricket India vs Pakistan score',
+            rawHtml: null,
+            sourceUrl,
+            author: 'sports',
+            publishedAt: new Date('2026-05-03T00:00:00Z'),
+            interactionData: { score: 100, comments: 40, externalUrl: null, hnId: 44000901 },
+          },
+        ],
+        HN_SOURCE,
+      );
+
+      expect(result.inserted).toBe(0);
+      expect(result.skipped).toBe(1);
+      expect(result.skippedNonAi).toBe(1);
+      expect(await prisma.hotNews.findUnique({ where: { sourceUrl } })).toBeNull();
+    });
+
+    it('skips low-quality HN rows before insert even when AI-related', async () => {
+      const sourceUrl = `${HN_URL_PREFIX}44000902`;
+
+      const result = await ingestion.ingest(
+        [
+          {
+            title: 'OpenAI releases a small LLM update',
+            contentText: 'OpenAI releases a small LLM update',
+            rawHtml: null,
+            sourceUrl,
+            author: 'alice',
+            publishedAt: new Date('2026-05-03T00:00:00Z'),
+            filterReason: 'hn_low_engagement',
+            interactionData: { score: 2, comments: 0, externalUrl: null, hnId: 44000902 },
+          },
+        ],
+        HN_SOURCE,
+      );
+
+      expect(result.inserted).toBe(0);
+      expect(result.skipped).toBe(1);
+      expect(result.skippedQuality).toBe(1);
+      expect(await prisma.hotNews.findUnique({ where: { sourceUrl } })).toBeNull();
+    });
   });
 
   describe('REDDIT platform', () => {
     it('inserts a REDDIT item with full interactionData (6 fields)', async () => {
       const items: RawCrawledItem[] = [
         {
-          title: 'GPT-5 announced',
-          contentText: 'GPT-5 announced',
+          title: 'OpenAI launches GPT-5',
+          contentText: 'OpenAI launches GPT-5',
           rawHtml: null,
           sourceUrl: `${REDDIT_URL_PREFIX}OpenAI/comments/1k4xz9p`,
           author: 'user_alice',
@@ -245,6 +300,9 @@ describe('IngestionService (integration)', () => {
         fetched: 1,
         inserted: 1,
         skipped: 0,
+        skippedQuality: 0,
+        skippedNonAi: 0,
+        skippedDedupe: 0,
         hidden: 0,
         failed: 0,
       });
@@ -253,7 +311,7 @@ describe('IngestionService (integration)', () => {
         where: { sourceUrl: `${REDDIT_URL_PREFIX}OpenAI/comments/1k4xz9p` },
       });
       expect(row.sourcePlatform).toBe(Platform.REDDIT);
-      expect(row.title).toBe('GPT-5 announced');
+      expect(row.title).toBe('OpenAI launches GPT-5');
       expect(row.author).toBe('user_alice');
       expect(row.interactionData).toMatchObject({
         score: 1234,
@@ -270,8 +328,8 @@ describe('IngestionService (integration)', () => {
       await ingestion.ingest(
         [
           {
-            title: 'Cold post',
-            contentText: 'Cold post',
+            title: 'OpenAI launches GPT-5',
+            contentText: 'OpenAI launches GPT-5',
             rawHtml: null,
             sourceUrl,
             author: null,
@@ -303,8 +361,8 @@ describe('IngestionService (integration)', () => {
       await ingestion.ingest(
         [
           {
-            title: 'First insert',
-            contentText: 'First insert',
+            title: 'OpenAI releases a new LLM',
+            contentText: 'OpenAI releases a new LLM',
             rawHtml: null,
             sourceUrl,
             author: 'user_first',
@@ -325,8 +383,8 @@ describe('IngestionService (integration)', () => {
       const result2 = await ingestion.ingest(
         [
           {
-            title: 'Second insert',
-            contentText: 'Second insert',
+            title: 'OpenAI releases a new LLM',
+            contentText: 'OpenAI releases a new LLM',
             rawHtml: null,
             sourceUrl,
             author: 'user_second',
@@ -348,6 +406,9 @@ describe('IngestionService (integration)', () => {
         fetched: 1,
         inserted: 0,
         skipped: 1,
+        skippedQuality: 0,
+        skippedNonAi: 0,
+        skippedDedupe: 1,
         hidden: 0,
         failed: 0,
       });
@@ -362,11 +423,11 @@ describe('IngestionService (integration)', () => {
   });
 
   describe('SP-4 quality + cleaning', () => {
-    it('honors raw.filterReason from crawler → status=HIDDEN + filterReason persisted', async () => {
+    it('honors raw.filterReason from crawler → skipped as quality, no row written', async () => {
       const items: RawCrawledItem[] = [
         {
-          title: 'Low ratio reddit post',
-          contentText: 'Body',
+          title: 'OpenAI releases a new LLM',
+          contentText: 'OpenAI releases a new LLM',
           rawHtml: null,
           sourceUrl: `${REDDIT_URL_PREFIX}OpenAI/comments/sp4_lowratio`,
           author: 'alice',
@@ -387,19 +448,21 @@ describe('IngestionService (integration)', () => {
       expect(result).toEqual({
         fetched: 1,
         inserted: 0,
-        skipped: 0,
-        hidden: 1,
+        skipped: 1,
+        skippedQuality: 1,
+        skippedNonAi: 0,
+        skippedDedupe: 0,
+        hidden: 0,
         failed: 0,
       });
 
-      const row = await prisma.hotNews.findFirstOrThrow({
+      const row = await prisma.hotNews.findUnique({
         where: { sourceUrl: `${REDDIT_URL_PREFIX}OpenAI/comments/sp4_lowratio` },
       });
-      expect(row.status).toBe('HIDDEN');
-      expect(row.filterReason).toBe('reddit_low_ratio');
+      expect(row).toBeNull();
     });
 
-    it('falls back to checkUniversalQuality when crawler did not set filterReason (short title)', async () => {
+    it('falls back to checkUniversalQuality when crawler did not set filterReason (short title) → skipped as quality', async () => {
       const items: RawCrawledItem[] = [
         {
           title: 'abc',
@@ -412,21 +475,22 @@ describe('IngestionService (integration)', () => {
       ];
 
       const result = await ingestion.ingest(items, RSS_SOURCE);
-      expect(result.hidden).toBe(1);
       expect(result.inserted).toBe(0);
+      expect(result.skipped).toBe(1);
+      expect(result.skippedQuality).toBe(1);
+      expect(result.hidden).toBe(0);
 
-      const row = await prisma.hotNews.findFirstOrThrow({
+      const row = await prisma.hotNews.findUnique({
         where: { sourceUrl: 'https://lab.example.com/post/sp4_short' },
       });
-      expect(row.status).toBe('HIDDEN');
-      expect(row.filterReason).toBe('title_too_short');
+      expect(row).toBeNull();
     });
 
     it('cleans the title (strips boilerplate suffix) before storing', async () => {
       const items: RawCrawledItem[] = [
         {
-          title: 'GPT-5 announced - OpenAI Blog',
-          contentText: 'body',
+          title: 'OpenAI launches GPT-5 - OpenAI Blog',
+          contentText: 'OpenAI launches GPT-5',
           rawHtml: null,
           sourceUrl: 'https://lab.example.com/post/sp4_clean',
           author: null,
@@ -440,14 +504,14 @@ describe('IngestionService (integration)', () => {
       const row = await prisma.hotNews.findFirstOrThrow({
         where: { sourceUrl: 'https://lab.example.com/post/sp4_clean' },
       });
-      expect(row.title).toBe('GPT-5 announced');
+      expect(row.title).toBe('OpenAI launches GPT-5');
     });
 
     it('cleans the content (strips Read more tail + collapses whitespace)', async () => {
       const items: RawCrawledItem[] = [
         {
-          title: 'A reasonable title',
-          contentText: 'a    b\t\tc\n\n\n\nd. Read more →',
+          title: 'OpenAI launches GPT-5',
+          contentText: 'OpenAI    LLM\t\tagent\n\n\n\nrelease. Read more →',
           rawHtml: null,
           sourceUrl: 'https://lab.example.com/post/sp4_content',
           author: null,
@@ -461,15 +525,15 @@ describe('IngestionService (integration)', () => {
       const row = await prisma.hotNews.findFirstOrThrow({
         where: { sourceUrl: 'https://lab.example.com/post/sp4_content' },
       });
-      expect(row.content).toBe('a b c\n\nd.');
+      expect(row.content).toBe('OpenAI LLM agent\n\nrelease.');
     });
   });
 
   describe('SP-4.7 enqueue contract', () => {
     it('VISIBLE link-post (HN externalUrl present, content==title) enqueues both extract and summary, sets extractStatus=PENDING', async () => {
       const linkPostItem: RawCrawledItem = {
-        title: 'A cool blog post',
-        contentText: 'A cool blog post',
+        title: 'OpenAI launches GPT-5',
+        contentText: 'OpenAI launches GPT-5',
         rawHtml: null,
         sourceUrl: `${HN_URL_PREFIX}sp47_linkpost`,
         author: 'someone',
@@ -499,8 +563,8 @@ describe('IngestionService (integration)', () => {
 
     it('VISIBLE self-post (no externalUrl) enqueues only summary, leaves extractStatus=null', async () => {
       const selfPostItem: RawCrawledItem = {
-        title: 'Ask HN: how do you ship features',
-        contentText: 'I have been wondering about this for a while.',
+        title: 'Ask HN: how do you ship LLM agents',
+        contentText: 'I have been wondering how teams ship LLM agents reliably.',
         rawHtml: null,
         sourceUrl: `${HN_URL_PREFIX}sp47_selfpost`,
         author: 'someone',
@@ -520,10 +584,10 @@ describe('IngestionService (integration)', () => {
       expect(row.extractStatus).toBeNull();
     });
 
-    it('HIDDEN row (filterReason set) enqueues neither queue', async () => {
+    it('row skipped by filterReason enqueues neither queue', async () => {
       const lowQuality: RawCrawledItem = {
-        title: 'Hidden by filter',
-        contentText: 'Hidden by filter',
+        title: 'OpenAI launches GPT-5',
+        contentText: 'OpenAI launches GPT-5',
         rawHtml: null,
         sourceUrl: `${HN_URL_PREFIX}sp47_hidden`,
         author: null,
