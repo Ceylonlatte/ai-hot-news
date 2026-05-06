@@ -26,7 +26,6 @@ await build({
   target: 'node22',
   format: 'cjs',
   outfile: 'dist/index.js',
-  external: ['*'],
   loader: { '.md': 'text' },
 });
 
