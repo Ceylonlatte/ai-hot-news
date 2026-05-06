@@ -1,22 +1,24 @@
 import { copyFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { argv, cwd, exit } from 'node:process';
+import { log, error } from 'node:console';
 import { build } from 'esbuild';
 
-const packageRoot = process.cwd();
+const packageRoot = cwd();
 const repoRoot = resolve(packageRoot, '../..');
 const srcKeywords = resolve(repoRoot, 'keywords.md');
 const dstKeywords = resolve(packageRoot, 'src/keywords.md');
 
 if (!existsSync(srcKeywords)) {
-  console.error(`ERROR: ${srcKeywords} not found. Create it before building.`);
-  process.exit(1);
+  error(`ERROR: ${srcKeywords} not found. Create it before building.`);
+  exit(1);
 }
 
 copyFileSync(srcKeywords, dstKeywords);
-console.log(`Copied ${srcKeywords} -> ${dstKeywords}`);
+log(`Copied ${srcKeywords} -> ${dstKeywords}`);
 
-if (process.argv.includes('--copy-only')) {
-  process.exit(0);
+if (argv.includes('--copy-only')) {
+  exit(0);
 }
 
 await build({
@@ -29,4 +31,4 @@ await build({
   loader: { '.md': 'text' },
 });
 
-console.log('Build OK');
+log('Build OK');
