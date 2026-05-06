@@ -17,7 +17,7 @@ interface HnCandidate {
 
 interface RedditCandidate {
   name: string;
-  identifier: string;
+  identifier: string | null;
   url: string | null;
   enabled: boolean;
   crawlInterval: number;
@@ -34,20 +34,30 @@ const rssCandidates: RssCandidate[] = [
 ];
 
 const hnCandidates: HnCandidate[] = [
-  { name: 'HackerNews Top',  identifier: 'top',  enabled: true, crawlInterval: 900  },
-  { name: 'HackerNews Ask',  identifier: 'ask',  enabled: true, crawlInterval: 1800 },
-  { name: 'HackerNews Show', identifier: 'show', enabled: true, crawlInterval: 1800 },
+  { name: 'HackerNews Top',  identifier: 'top',  enabled: true, crawlInterval: 3600  },
+  { name: 'HackerNews Ask',  identifier: 'ask',  enabled: true, crawlInterval: 14400 },
+  { name: 'HackerNews Show', identifier: 'show', enabled: true, crawlInterval: 14400 },
 ];
 
+const REDDIT_BUNDLE_URL =
+  'https://www.reddit.com/r/ChatGPT+OpenAI+singularity+ArtificialInteligence+artificial+ClaudeAI+PromptEngineering+AI_Agents+vibecoding+LLMDevs+cursor+agi+LangChain/hot.json?limit=100&raw_json=1';
+
 const redditCandidates: RedditCandidate[] = [
-  { name: 'r/LocalLLaMA',       identifier: 'LocalLLaMA',       url: null, enabled: true, crawlInterval: 3600 },
-  { name: 'r/MachineLearning',  identifier: 'MachineLearning',  url: null, enabled: true, crawlInterval: 3600 },
-  { name: 'r/artificial',       identifier: 'artificial',       url: null, enabled: true, crawlInterval: 3600 },
-  { name: 'r/OpenAI',           identifier: 'OpenAI',           url: null, enabled: true, crawlInterval: 3600 },
-  { name: 'r/ChatGPT',          identifier: 'ChatGPT',          url: null, enabled: true, crawlInterval: 3600 },
-  { name: 'r/singularity',      identifier: 'singularity',      url: null, enabled: true, crawlInterval: 3600 },
-  { name: 'r/StableDiffusion',  identifier: 'StableDiffusion',  url: null, enabled: true, crawlInterval: 3600 },
-  { name: 'r/ClaudeAI',         identifier: 'ClaudeAI',         url: null, enabled: true, crawlInterval: 3600 },
+  { name: 'r/LocalLLaMA',       identifier: 'LocalLLaMA',       url: null, enabled: false, crawlInterval: 3600 },
+  { name: 'r/MachineLearning',  identifier: 'MachineLearning',  url: null, enabled: false, crawlInterval: 3600 },
+  { name: 'r/artificial',       identifier: 'artificial',       url: null, enabled: false, crawlInterval: 3600 },
+  { name: 'r/OpenAI',           identifier: 'OpenAI',           url: null, enabled: false, crawlInterval: 3600 },
+  { name: 'r/ChatGPT',          identifier: 'ChatGPT',          url: null, enabled: false, crawlInterval: 3600 },
+  { name: 'r/singularity',      identifier: 'singularity',      url: null, enabled: false, crawlInterval: 3600 },
+  { name: 'r/StableDiffusion',  identifier: 'StableDiffusion',  url: null, enabled: false, crawlInterval: 3600 },
+  { name: 'r/ClaudeAI',         identifier: 'ClaudeAI',         url: null, enabled: false, crawlInterval: 3600 },
+  {
+    name: 'AI Subreddit Bundle (13 subs hot)',
+    identifier: null,
+    url: REDDIT_BUNDLE_URL,
+    enabled: true,
+    crawlInterval: 7200,
+  },
 ];
 
 async function seedRss() {
@@ -110,15 +120,20 @@ async function seedHn() {
 
 async function seedReddit() {
   for (const c of redditCandidates) {
-    const existing = await prisma.sourceConfig.findFirst({
-      where: { platform: 'REDDIT', identifier: c.identifier },
-    });
+    const existing = c.identifier
+      ? await prisma.sourceConfig.findFirst({
+          where: { platform: 'REDDIT', identifier: c.identifier },
+        })
+      : await prisma.sourceConfig.findFirst({
+          where: { platform: 'REDDIT', name: c.name },
+        });
     if (existing) {
       await prisma.sourceConfig.update({
         where: { id: existing.id },
         data: {
           name: c.name,
           url: c.url,
+          enabled: c.enabled,
           crawlInterval: c.crawlInterval,
         },
       });
