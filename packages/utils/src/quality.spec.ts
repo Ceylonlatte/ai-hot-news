@@ -69,15 +69,16 @@ describe('checkRedditQuality', () => {
 });
 
 describe('checkHnQuality', () => {
-  it('returns HN_LOW_ENGAGEMENT when score<5 AND descendants<2', () => {
-    expect(checkHnQuality({ score: 3, descendants: 0 })).toBe('hn_low_engagement');
+  it('returns HN_LOW_ENGAGEMENT when score<20 AND descendants<5', () => {
+    expect(checkHnQuality({ score: 19, descendants: 4 })).toBe('hn_low_engagement');
   });
 
-  it('returns null when score>=5', () => {
-    expect(checkHnQuality({ score: 10, descendants: 0 })).toBeNull();
+  it('returns null when score>=20', () => {
+    expect(checkHnQuality({ score: 20, descendants: 0 })).toBeNull();
+    expect(checkHnQuality({ score: 100, descendants: 0 })).toBeNull();
   });
 
-  it('returns null when descendants>=2 (high engagement saves it)', () => {
+  it('returns null when descendants>=5 (discussion saves it)', () => {
     expect(checkHnQuality({ score: 3, descendants: 5 })).toBeNull();
   });
 
@@ -85,9 +86,9 @@ describe('checkHnQuality', () => {
     expect(checkHnQuality({ score: null, descendants: null })).toBe('hn_low_engagement');
   });
 
-  it('returns null at the exact engagement boundaries (score=5 OR descendants=2)', () => {
-    expect(checkHnQuality({ score: 5, descendants: 0 })).toBeNull();
-    expect(checkHnQuality({ score: 4, descendants: 2 })).toBeNull();
+  it('returns null at the exact engagement boundaries (score=20 OR descendants=5)', () => {
+    expect(checkHnQuality({ score: 20, descendants: 0 })).toBeNull();
+    expect(checkHnQuality({ score: 19, descendants: 5 })).toBeNull();
   });
 });
 
