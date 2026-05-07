@@ -67,6 +67,22 @@ export class SummarizeModule
   ) {}
 
   async onApplicationBootstrap(): Promise<void> {
+    // SP-5 v3.3 fix: BullMQ deduplicates queue.add(jobId) by checking the
+    // `bull:<queue>:<jobId>` hash key. With removeOnFail: { count: 100 } we
+    // keep the last 100 failed jobs around — including their hashes — and
+    // any future re-queue with the same jobId silently no-ops. After ops
+    // events that mass-clear `summary` to NULL (prompt version bumps,
+    // backfills, prod env-key recovery), boot backstop must clear stale
+    // failed history first; otherwise rows whose previous attempts went
+    // through a transient infra failure stay stuck forever even though the
+    // underlying issue is fixed.
+    const cleanedFailed = await this.queue.clean(0, 0, 'failed');
+    if (cleanedFailed.length > 0) {
+      this.logger.log(
+        `Boot backstop: cleared ${cleanedFailed.length} stale failed jobs before re-queue`,
+      );
+    }
+
     const orphans = await getPrisma().hotNews.findMany({
       where: { status: 'VISIBLE', summary: null },
       select: { id: true },

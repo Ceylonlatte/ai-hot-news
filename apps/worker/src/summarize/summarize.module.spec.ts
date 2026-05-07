@@ -12,11 +12,14 @@ vi.mock('@ai-hot-news/db', () => ({
 import { SummarizeModule } from './summarize.module';
 
 describe('SummarizeModule.onApplicationBootstrap (boot backstop)', () => {
-  let queue: { add: ReturnType<typeof vi.fn> };
+  let queue: { add: ReturnType<typeof vi.fn>; clean: ReturnType<typeof vi.fn> };
   let worker: { close: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
-    queue = { add: vi.fn().mockResolvedValue(undefined) };
+    queue = {
+      add: vi.fn().mockResolvedValue(undefined),
+      clean: vi.fn().mockResolvedValue([]),
+    };
     worker = { close: vi.fn().mockResolvedValue(undefined) };
     mockPrisma.hotNews.findMany.mockReset();
   });
@@ -60,6 +63,28 @@ describe('SummarizeModule.onApplicationBootstrap (boot backstop)', () => {
       { hotNewsId: 'c' },
       expect.objectContaining({ jobId: 'summarize-c' }),
     );
+  });
+
+  it('clears stale failed jobs BEFORE re-queueing (SP-5 v3.3 regression: BullMQ jobId dedupe)', async () => {
+    queue.clean.mockResolvedValue(['summarize-stale-1', 'summarize-stale-2']);
+    mockPrisma.hotNews.findMany.mockResolvedValue([{ id: 'fresh' }]);
+    const m = new SummarizeModule(queue as unknown as Queue, worker as unknown as Worker);
+
+    await m.onApplicationBootstrap();
+
+    expect(queue.clean).toHaveBeenCalledWith(0, 0, 'failed');
+    const cleanCallOrder = queue.clean.mock.invocationCallOrder[0]!;
+    const firstAddCallOrder = queue.add.mock.invocationCallOrder[0]!;
+    expect(cleanCallOrder).toBeLessThan(firstAddCallOrder);
+  });
+
+  it('still works when no failed jobs exist (clean returns empty)', async () => {
+    queue.clean.mockResolvedValue([]);
+    mockPrisma.hotNews.findMany.mockResolvedValue([{ id: 'a' }]);
+    const m = new SummarizeModule(queue as unknown as Queue, worker as unknown as Worker);
+
+    await expect(m.onApplicationBootstrap()).resolves.toBeUndefined();
+    expect(queue.add).toHaveBeenCalledTimes(1);
   });
 
   it('closes worker on module destroy', async () => {
