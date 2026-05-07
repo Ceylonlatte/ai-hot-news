@@ -145,4 +145,49 @@ describe('ExtractService', () => {
     await service.run('missing');
     expect(chain.extract).not.toHaveBeenCalled();
   });
+
+  it('marks FAILED + does NOT overwrite content when extractor returns an anti-bot block page (SP-4.7 v1.1)', async () => {
+    mockPrisma.hotNews.findUnique.mockResolvedValue(baseRow);
+    chain.extract.mockResolvedValue({
+      result: {
+        contentText:
+          "You've been blocked by network security.\n\nTo continue, log in to your Reddit account or use your developer token",
+        rawHtml: '<html>...</html>',
+        title: 'A',
+      },
+      usedProvider: 'firecrawl',
+    });
+
+    await service.run('hn-1');
+
+    expect(mockPrisma.hotNews.update).toHaveBeenCalledWith({
+      where: { id: 'hn-1' },
+      data: { extractStatus: 'FAILED', extractAttempts: 1 },
+    });
+    const updateCall = mockPrisma.hotNews.update.mock.calls[0]![0]!;
+    expect(updateCall.data).not.toHaveProperty('content');
+    expect(updateCall.data).not.toHaveProperty('rawHtml');
+    expect(updateCall.data).not.toHaveProperty('summary');
+    expect(summaryQueue.add).not.toHaveBeenCalled();
+  });
+
+  it('marks FAILED on Cloudflare challenge page (Just a moment...)', async () => {
+    mockPrisma.hotNews.findUnique.mockResolvedValue(baseRow);
+    chain.extract.mockResolvedValue({
+      result: {
+        contentText: 'Just a moment... Checking your browser before accessing the site.',
+        rawHtml: '',
+        title: 'A',
+      },
+      usedProvider: 'jina',
+    });
+
+    await service.run('hn-1');
+
+    expect(mockPrisma.hotNews.update).toHaveBeenCalledWith({
+      where: { id: 'hn-1' },
+      data: { extractStatus: 'FAILED', extractAttempts: 1 },
+    });
+    expect(summaryQueue.add).not.toHaveBeenCalled();
+  });
 });

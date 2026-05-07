@@ -1,6 +1,7 @@
 import { Injectable, Logger, Inject } from '@nestjs/common';
 import { Queue } from 'bullmq';
 import { getPrisma } from '@ai-hot-news/db';
+import { detectAntiBotPage } from '@ai-hot-news/utils';
 import { ExtractChain } from './providers/chain';
 import { PermanentFetchError } from './providers/provider.interface';
 import { SUMMARY_QUEUE } from '../summarize/summarize.queue';
@@ -52,6 +53,24 @@ export class ExtractService {
         .replace(/\n{3,}/g, '\n\n')
         .trim()
         .slice(0, MAX_CONTENT_CHARS);
+
+      // SP-4.7 v1.1: detect anti-bot / login-wall pages that providers
+      // happily return as "successful" extractions. Treat as PERMANENT
+      // failure: keep the original content (== title sentinel) so SP-5
+      // falls back to a title-only summary instead of summarizing the
+      // block notice. See packages/utils/src/antibot.ts for signatures.
+      const antibot = detectAntiBotPage(cleanText);
+      if (antibot.isAntiBot) {
+        const attempts = row.extractAttempts + 1;
+        await prisma.hotNews.update({
+          where: { id: hotNewsId },
+          data: { extractStatus: 'FAILED', extractAttempts: attempts },
+        });
+        this.logger.warn(
+          `Anti-bot/blocked page detected for ${url} via ${usedProvider} (matched: ${antibot.reason}, ${cleanText.length} chars), marking FAILED to preserve title-only summary path`,
+        );
+        return;
+      }
 
       await prisma.hotNews.update({
         where: { id: hotNewsId },
