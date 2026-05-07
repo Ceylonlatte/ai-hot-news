@@ -17,26 +17,30 @@
 
 ### 1.2 关键约束
 
-| 维度 | 决策 |
-|---|---|
-| **使用场景** | 个人自用工具（单用户，不考虑商业化、不考虑多租户） |
-| **拆解策略** | 纵切端到端 + 横向扩展（先用 1 条 RSS 跑通骨架，再逐项扩展能力） |
-| **视觉设计** | Aurora HTML 设计稿锁定为最终视觉；P4 阶段对应落地 |
-| **预算** | AI 摘要月成本预算待定。SP-5 提供"插拔式摘要策略" — 一个 NestJS Provider 接口 / Strategy Pattern，可注入不同实现（默认全量、按热度阈值跳过、按平台白名单、按聚合事件 group 只跑一次等），便于成本明确后切换 |
-| **部署目标** | 搬瓦工 VPS + Docker Compose（5 容器：web / api / worker / postgres / redis） |
+
+| 维度       | 决策                                                                                                                                |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| **使用场景** | 个人自用工具（单用户，不考虑商业化、不考虑多租户）                                                                                                         |
+| **拆解策略** | 纵切端到端 + 横向扩展（先用 1 条 RSS 跑通骨架，再逐项扩展能力）                                                                                             |
+| **视觉设计** | Aurora HTML 设计稿锁定为最终视觉；P4 阶段对应落地                                                                                                  |
+| **预算**   | AI 摘要月成本预算待定。SP-5 提供"插拔式摘要策略" — 一个 NestJS Provider 接口 / Strategy Pattern，可注入不同实现（默认全量、按热度阈值跳过、按平台白名单、按聚合事件 group 只跑一次等），便于成本明确后切换 |
+| **部署目标** | 搬瓦工 VPS + Docker Compose（5 容器：web / api / worker / postgres / redis）                                                              |
+
 
 ### 1.3 与原 PRD 的偏离记录（已与用户对齐）
 
-| 项目 | PRD 建议 | 本设计采用 | 理由 |
-|---|---|---|---|
-| 后端框架 | NestJS | NestJS（保留）| 用户偏好 |
-| 前端框架 | Next.js | Next.js 15 + App Router | 一致 |
-| ORM | Prisma | Prisma（保留）| 用户偏好 |
-| 队列 | BullMQ | BullMQ + Redis（保留）| 用户偏好 |
-| 数据库 | PostgreSQL | PostgreSQL + **pgvector**（P0 即引入）| 跨平台合并需要语义相似度 |
-| 用户体系 | 完整用户 + 权限 | 单用户极简（环境变量 admin），User 表预留 | 个人自用 |
-| AI 标签 | 单一 `tags[]` 字段 | 拆为 `aiTags[]` + `matchedKeywords[]` | 语义不同，便于扩展 |
-| AI 摘要策略 | 未明确 | 插拔式摘要策略接口（默认全量、可配阈值限流） | 控制成本不确定 |
+
+| 项目      | PRD 建议         | 本设计采用                               | 理由           |
+| ------- | -------------- | ----------------------------------- | ------------ |
+| 后端框架    | NestJS         | NestJS（保留）                          | 用户偏好         |
+| 前端框架    | Next.js        | Next.js 15 + App Router             | 一致           |
+| ORM     | Prisma         | Prisma（保留）                          | 用户偏好         |
+| 队列      | BullMQ         | BullMQ + Redis（保留）                  | 用户偏好         |
+| 数据库     | PostgreSQL     | PostgreSQL + **pgvector**（P0 即引入）   | 跨平台合并需要语义相似度 |
+| 用户体系    | 完整用户 + 权限      | 单用户极简（环境变量 admin），User 表预留          | 个人自用         |
+| AI 标签   | 单一 `tags[]` 字段 | 拆为 `aiTags[]` + `matchedKeywords[]` | 语义不同，便于扩展    |
+| AI 摘要策略 | 未明确            | 插拔式摘要策略接口（默认全量、可配阈值限流）              | 控制成本不确定      |
+
 
 ---
 
@@ -104,17 +108,19 @@ ai-hot-news/
 
 ### 2.3 完整技术栈
 
-| 层 | 技术 | 备注 |
-|---|---|---|
-| 前端 | Next.js 15 (App Router) + Tailwind CSS + shadcn/ui + TanStack Query + Zustand | 与 Aurora 设计风格匹配 |
-| 后端 API | NestJS + Prisma + class-validator | REST，OpenAPI 文档自动生成 |
-| Worker | NestJS standalone application + BullMQ | 独立进程，与 API 共享 Prisma client |
-| 数据库 | PostgreSQL 16 + pgvector | 向量检索做跨平台合并 |
-| 队列 / 缓存 | Redis 7 | BullMQ 队列后端 + 业务缓存 |
-| AI | Vercel AI SDK（provider 抽象，OpenAI / Claude / Gemini 可切换） | 含插拔式摘要策略 |
-| 认证 | NestJS JWT + 配置文件 admin 账号 | User 表预留多账号扩展 |
-| 部署 | 搬瓦工 VPS + Docker Compose + Caddy/Nginx 反代 + Let's Encrypt | 单机部署 |
-| CI/CD | GitHub Actions（lint/typecheck/build + SSH 部署） | 主分支自动部署 |
+
+| 层       | 技术                                                                            | 备注                          |
+| ------- | ----------------------------------------------------------------------------- | --------------------------- |
+| 前端      | Next.js 15 (App Router) + Tailwind CSS + shadcn/ui + TanStack Query + Zustand | 与 Aurora 设计风格匹配             |
+| 后端 API  | NestJS + Prisma + class-validator                                             | REST，OpenAPI 文档自动生成         |
+| Worker  | NestJS standalone application + BullMQ                                        | 独立进程，与 API 共享 Prisma client |
+| 数据库     | PostgreSQL 16 + pgvector                                                      | 向量检索做跨平台合并                  |
+| 队列 / 缓存 | Redis 7                                                                       | BullMQ 队列后端 + 业务缓存          |
+| AI      | Vercel AI SDK（provider 抽象，OpenAI / Claude / Gemini 可切换）                       | 含插拔式摘要策略                    |
+| 认证      | NestJS JWT + 配置文件 admin 账号                                                    | User 表预留多账号扩展               |
+| 部署      | 搬瓦工 VPS + Docker Compose + Caddy/Nginx 反代 + Let's Encrypt                     | 单机部署                        |
+| CI/CD   | GitHub Actions（lint/typecheck/build + SSH 部署）                                 | 主分支自动部署                     |
+
 
 ---
 
@@ -124,16 +130,18 @@ P0 阶段就要落地完整 schema 骨架，避免后续频繁迁移。详细字
 
 ### 3.1 核心模型清单
 
-| 模型 | 启用阶段 | 说明 |
-|---|---|---|
-| `HotNews` | P0 落表，P1 写入 | 热点主表，含 embedding / dedupeHash / groupId |
-| `SourceConfig` | P0 落表，P1 写入 | 数据源配置（RSS URL、HN topic、Reddit subreddit 等） |
-| `User` | P0 占位，P5 启用 | 单用户场景下只有 admin 一行；预留多用户 |
-| `KeywordMonitor` | P0 占位，P5 启用 | 用户监控关键词配置 |
-| `KeywordHit` | P0 占位，P5 启用 | HotNews ↔ KeywordMonitor 中间表 |
-| `Notification` | P0 占位，P5 启用 | 通知记录 |
-| `KeywordTimeSeries` | P0 占位，P6 启用 | 时序聚合（按小时/天） |
-| `DailyReport` | P0 占位，P6 启用 | AI 日报内容 |
+
+| 模型                  | 启用阶段        | 说明                                         |
+| ------------------- | ----------- | ------------------------------------------ |
+| `HotNews`           | P0 落表，P1 写入 | 热点主表，含 embedding / dedupeHash / groupId    |
+| `SourceConfig`      | P0 落表，P1 写入 | 数据源配置（RSS URL、HN topic、Reddit subreddit 等） |
+| `User`              | P0 占位，P5 启用 | 单用户场景下只有 admin 一行；预留多用户                    |
+| `KeywordMonitor`    | P0 占位，P5 启用 | 用户监控关键词配置                                  |
+| `KeywordHit`        | P0 占位，P5 启用 | HotNews ↔ KeywordMonitor 中间表               |
+| `Notification`      | P0 占位，P5 启用 | 通知记录                                       |
+| `KeywordTimeSeries` | P0 占位，P6 启用 | 时序聚合（按小时/天）                                |
+| `DailyReport`       | P0 占位，P6 启用 | AI 日报内容                                    |
+
 
 ### 3.2 HotNews 关键字段（最重要，必须 P0 完整）
 
@@ -176,12 +184,14 @@ model HotNews {
 
 ### 3.3 已解决的设计争议
 
-| # | 争议 | 决策 |
-|---|------|------|
-| 1 | aiTags 与 matchedKeywords 是否合并？ | **拆开**。aiTags 由 AI 生成，matchedKeywords 由命中检测写入 |
-| 2 | 是否 P0 引入 pgvector？ | **是**。P3 跨平台合并需要，提前建表免迁移 |
-| 3 | 是否保存原始 HTML？ | **是**。`rawHtml` 字段，便于后续重生成摘要 |
-| 4 | URL 去重 vs 内容去重？ | **双层**：`sourceUrl` 唯一索引 + `dedupeHash`（规范化 URL + 标题哈希）唯一索引 |
+
+| #   | 争议                             | 决策                                                         |
+| --- | ------------------------------ | ---------------------------------------------------------- |
+| 1   | aiTags 与 matchedKeywords 是否合并？ | **拆开**。aiTags 由 AI 生成，matchedKeywords 由命中检测写入              |
+| 2   | 是否 P0 引入 pgvector？             | **是**。P3 跨平台合并需要，提前建表免迁移                                   |
+| 3   | 是否保存原始 HTML？                   | **是**。`rawHtml` 字段，便于后续重生成摘要                               |
+| 4   | URL 去重 vs 内容去重？                | **双层**：`sourceUrl` 唯一索引 + `dedupeHash`（规范化 URL + 标题哈希）唯一索引 |
+
 
 ---
 
@@ -189,14 +199,16 @@ model HotNews {
 
 ### 4.1 页面清单（5 个页面 + 1 个详情）
 
-| 页面 | 路由 | 核心模块 |
-|---|---|---|
-| Dashboard 首页 | `/` | 4 统计卡 / 热度榜单 / 增速最快 / 信源分布 / 我的提醒 / 24h 热度波形（HeatCurve） |
-| Hot Feed 热点流 | `/feed` | 三层 Filter（时间/平台/类型）+ 双列卡片网格 |
-| Detail 详情 | `/feed/[id]` | AI 摘要分析（4 维：影响级别/社区情绪/跨平台/时效性）+ 关联标签 + 相关热点 + 热度趋势 + 互动数据 + 来源分布 |
-| Keyword Radar 监控 | `/radar` | 雷达图 SVG（极坐标 + 扫描线）+ 关键词列表 + 选中详情 + 新增模态框 |
-| Trends 趋势 | `/trends` | 公司声量排名 + 多系列折线（模型讨论热度）+ 增速最快卡片网格 |
-| Vault 内容库 | `/vault` | 搜索框 + 推荐标签 + 序号结果列表 |
+
+| 页面               | 路由           | 核心模块                                                             |
+| ---------------- | ------------ | ---------------------------------------------------------------- |
+| Dashboard 首页     | `/`          | 4 统计卡 / 热度榜单 / 增速最快 / 信源分布 / 我的提醒 / 24h 热度波形（HeatCurve）          |
+| Hot Feed 热点流     | `/feed`      | 三层 Filter（时间/平台/类型）+ 双列卡片网格                                      |
+| Detail 详情        | `/feed/[id]` | AI 摘要分析（4 维：影响级别/社区情绪/跨平台/时效性）+ 关联标签 + 相关热点 + 热度趋势 + 互动数据 + 来源分布 |
+| Keyword Radar 监控 | `/radar`     | 雷达图 SVG（极坐标 + 扫描线）+ 关键词列表 + 选中详情 + 新增模态框                         |
+| Trends 趋势        | `/trends`    | 公司声量排名 + 多系列折线（模型讨论热度）+ 增速最快卡片网格                                 |
+| Vault 内容库        | `/vault`     | 搜索框 + 推荐标签 + 序号结果列表                                              |
+
 
 ### 4.2 9 个核心可复用组件（packages/ui）
 
@@ -222,20 +234,22 @@ model HotNews {
 
 ## 5. PRD 评审：12 个缺口的处理方式
 
-| # | 缺口 | 严重度 | 处理方式 | 解决阶段 |
-|---|------|------|------|------|
-| 1 | AI 摘要成本控制策略缺失 | 🔴 高 | spec 里写"插拔式摘要策略"接口（默认全量、可配阈值限流） | P3 / SP-5 |
-| 2 | 跨平台热点合并的相似度方案未定 | 🔴 高 | pgvector + OpenAI `text-embedding-3-small` + 余弦相似度（阈值 0.85，阈值在 P3 spec 中调优） | P3 / SP-7 |
-| 3 | 热度公式时间窗未定义 | 🟡 中 | 默认 24h，参数化可配 | P3 / SP-6 spec |
-| 4 | 抓取频率 vs 监控频率未区分 | 🟡 中 | 监控频率 ≥ 抓取频率，否则前端给出提示 | P5 / SP-14 spec |
-| 5 | URL 去重 vs 内容去重策略不明 | 🟡 中 | 双层：sourceUrl + dedupeHash 唯一索引 | P0（已确定） |
-| 6 | aiTags vs matchedKeywords 未区分 | 🔴 高 | schema 拆开 | P0（已确定） |
-| 7 | 过期/归档机制未定 | 🟡 中 | 30 天后归档到冷表（archived_hot_news），保持主表性能 | P3 / SP-7 spec |
-| 8 | 抓取失败的重试 + 告警机制 | 🟡 中 | BullMQ 默认重试（3 次指数退避）+ 失败 job 写 SourceConfig.status；告警邮件等 P5 邮件后再做 | P0 + P5 |
-| 9 | 关键词同义词/排除词的实现方式 | 🟡 中 | 同义词 OR 匹配；排除词命中后置过滤 | P5 / SP-16 spec |
-| 10 | Aurora 是否锁定 | 🟢 低 | **已锁定** | — |
-| 11 | 原始内容存储格式 | 🟡 中 | content（plain text）+ rawHtml（原文）双存 | P0（已确定） |
-| 12 | V0.1"基础关键词匹配" vs V0.2"用户关键词监控" 是否同物 | 🟡 中 | **不同**：V0.1 不做，V0.2（P5）实现用户自定义关键词，两者不重叠 | — |
+
+| #   | 缺口                                  | 严重度  | 处理方式                                                                        | 解决阶段            |
+| --- | ----------------------------------- | ---- | --------------------------------------------------------------------------- | --------------- |
+| 1   | AI 摘要成本控制策略缺失                       | 🔴 高 | spec 里写"插拔式摘要策略"接口（默认全量、可配阈值限流）                                             | P3 / SP-5       |
+| 2   | 跨平台热点合并的相似度方案未定                     | 🔴 高 | pgvector + OpenAI `text-embedding-3-small` + 余弦相似度（阈值 0.85，阈值在 P3 spec 中调优） | P3 / SP-7       |
+| 3   | 热度公式时间窗未定义                          | 🟡 中 | 默认 24h，参数化可配                                                                | P3 / SP-6 spec  |
+| 4   | 抓取频率 vs 监控频率未区分                     | 🟡 中 | 监控频率 ≥ 抓取频率，否则前端给出提示                                                        | P5 / SP-14 spec |
+| 5   | URL 去重 vs 内容去重策略不明                  | 🟡 中 | 双层：sourceUrl + dedupeHash 唯一索引                                              | P0（已确定）         |
+| 6   | aiTags vs matchedKeywords 未区分       | 🔴 高 | schema 拆开                                                                   | P0（已确定）         |
+| 7   | 过期/归档机制未定                           | 🟡 中 | 30 天后归档到冷表（archived_hot_news），保持主表性能                                        | P3 / SP-7 spec  |
+| 8   | 抓取失败的重试 + 告警机制                      | 🟡 中 | BullMQ 默认重试（3 次指数退避）+ 失败 job 写 SourceConfig.status；告警邮件等 P5 邮件后再做           | P0 + P5         |
+| 9   | 关键词同义词/排除词的实现方式                     | 🟡 中 | 同义词 OR 匹配；排除词命中后置过滤                                                         | P5 / SP-16 spec |
+| 10  | Aurora 是否锁定                         | 🟢 低 | **已锁定**                                                                     | —               |
+| 11  | 原始内容存储格式                            | 🟡 中 | content（plain text）+ rawHtml（原文）双存                                          | P0（已确定）         |
+| 12  | V0.1"基础关键词匹配" vs V0.2"用户关键词监控" 是否同物 | 🟡 中 | **不同**：V0.1 不做，V0.2（P5）实现用户自定义关键词，两者不重叠                                     | —               |
+
 
 ---
 
@@ -245,75 +259,91 @@ model HotNews {
 
 ### Phase 0：基础设施（1 SP，~3-5 天）
 
-| SP | 状态 | 名称 | 关键产出 | 验收标准 |
-|----|------|------|---------|---------|
-| **SP-0** | ✅ | Monorepo + Infra 骨架 | pnpm workspace（5 子包）· Docker Compose（PG+pgvector / Redis）· Prisma 完整 schema 骨架 · CI 流水线 · 搬瓦工部署链路（SSH + Compose pull/up） | 本地 `pnpm dev` 起 5 服务全绿；GitHub Actions 全绿；服务器 `docker compose up -d` 跑空环境健康检查通过 |
+
+| SP       | 状态  | 名称                  | 关键产出                                                                                                                     | 验收标准                                                                           |
+| -------- | --- | ------------------- | ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------ |
+| **SP-0** | ✅   | Monorepo + Infra 骨架 | pnpm workspace（5 子包）· Docker Compose（PG+pgvector / Redis）· Prisma 完整 schema 骨架 · CI 流水线 · 搬瓦工部署链路（SSH + Compose pull/up） | 本地 `pnpm dev` 起 5 服务全绿；GitHub Actions 全绿；服务器 `docker compose up -d` 跑空环境健康检查通过 |
+
 
 ### Phase 1：第一刀端到端（1 SP，~2-3 天）
 
-| SP | 状态 | 名称 | 范围 | 验收 |
-|----|------|------|------|------|
-| **SP-1** | ✅ | RSS → 列表页端到端骨架 | BullMQ 定时 job 抓 1 个 RSS 源（如 OpenAI Blog）→ HotNews 入库（仅 sourceUrl + dedupeHash 去重）→ `GET /hot-news` 分页 API → `/news` 简陋列表页（**无 Aurora 视觉**，纯 Tailwind 默认样式） | 浏览器看到至少 10 条真实 RSS 抓取内容 |
+
+| SP       | 状态  | 名称             | 范围                                                                                                                                                         | 验收                      |
+| -------- | --- | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
+| **SP-1** | ✅   | RSS → 列表页端到端骨架 | BullMQ 定时 job 抓 1 个 RSS 源（如 OpenAI Blog）→ HotNews 入库（仅 sourceUrl + dedupeHash 去重）→ `GET /hot-news` 分页 API → `/news` 简陋列表页（**无 Aurora 视觉**，纯 Tailwind 默认样式） | 浏览器看到至少 10 条真实 RSS 抓取内容 |
+
 
 **故意不做**：AI 摘要、热度计算、跨平台合并、Aurora 视觉。**目标：跑通骨架。**
 
 ### Phase 2：扩展数据源（2 SP，可并行，各 ~2 天）
 
-| SP | 状态 | 名称 | 关键点 |
-|----|------|------|--------|
-| **SP-2** | ✅ | HackerNews 抓取器 | HN Firebase API · top / ask / show · 抽象 `Crawler` 插件接口 |
-| **SP-3** | ✅ | Reddit 抓取器 | Reddit 公开 `.json` 端点（无 OAuth）· 8 个 AI subreddit hot 列表 · 60min crawlInterval · 429 / 5xx 处理 |
+
+| SP       | 状态  | 名称             | 关键点                                                                                         |
+| -------- | --- | -------------- | ------------------------------------------------------------------------------------------- |
+| **SP-2** | ✅   | HackerNews 抓取器 | HN Firebase API · top / ask / show · 抽象 `Crawler` 插件接口                                      |
+| **SP-3** | ✅   | Reddit 抓取器     | Reddit 公开 `.json` 端点（无 OAuth）· 8 个 AI subreddit hot 列表 · 60min crawlInterval · 429 / 5xx 处理 |
+
 
 ### Phase 3：内容处理升级（4 SP，部分并行，各 ~2-4 天）
 
-| SP | 状态 | 名称 | 依赖 |
-|----|------|------|------|
-| **SP-4** | ✅ | 内容清洗 + 多层去重 | URL 规范化 / 内容哈希 / 标题相似度（PG fts），输出 `dedupeHash` |
-| **SP-4.5** | ✅ | RSS 时效性窗口 + 平台分区 | RSS 入库 cutoff = 7d · API `?platforms` + 后端窗口表（HN/Reddit 48h、RSS 7d）· 一次性 cleanup `< now-7d` 的历史 RSS · `crawlInterval` 30min → 1d · 前端社区/权威媒体双 tab |
-| **SP-4.6** | ✅ | RSS 数据源扩展 | Anthropic 换 GitHub raw 镜像并启用 · 新增 Cursor Blog / Claude Blog / Claude Code Changelog · `normalizeUrl` 加 `code.claude.com/docs/en/changelog` 精确路径白名单保留 Mintlify changelog `#X.Y.Z` 锚点 · 不动 schema / `dedupeHash` / SP-4.5 7d 入库窗口 · 7 个 RSS 源全部 `crawlInterval=86400` |
-| **SP-4.7** | ✅ | ArticleExtractor（HN/Reddit 外链正文抓取） | Firecrawl + Jina chain · 独立 worker / 独立队列 / 独立 fetch 限速 · `extractStatus / extractAttempts` 字段 · ingest 阶段 link-post 哨兵命中 → push extract:<id> · 抽取成功后 `summary=NULL` 重入 summary 队列 |
-| **SP-5** | ✅ | AI 摘要 + 标签分类（含 v3.2 / v3.3 / v3.4 三轮迭代） | v3.2：Vercel AI SDK + OpenRouter / DeepSeek-V3.2 · `packages/prompts` 受控词表 + prompt builder + 鲁棒 parser · `SummarizationStrategy` 接口（V1 实现 `SummarizeAllVisibleStrategy`）· BullMQ `summary` 队列 + boot backstop · ingest 入口 L0 主题过滤（keywords.md，非 AI 不入库）· HN quality 阈值 5/2 → 20/5 · Reddit 8 sub → 13 sub bundle 合并 · 一次性 wipe 脚本 `wipe-hot-news-pre-sp5.ts` 。<br/>v3.3：新增 `titleZh String?` 列（中文标题翻译，原 `title` 不动）· 摘要恰好 2 行 / `\n` 分隔 / 60-90 字 · Reddit 阈值再提升（ratio 0.5→0.7 / score 5→10 / comments 2→5）· cleanup 脚本 `cleanup-reddit-quality-v3-3.ts` 按新阈值删现有行 · boot backstop 加 `queue.clean(0, 0, 'failed')` 前置（修 BullMQ jobId dedupe stuck bug） 。<br/>v3.4：摘要 prompt rewrite —— 取消硬换行，改为单段 50-80 字连贯陈述 + 中立新闻派语调 + 套话 / 营销腔黑名单 + 对照 ✗/✓ 示例。 |
-| **SP-6** | ⏳ | 热度分计算 | PRD 6 维公式 · 时间窗参数化（默认 24h）· 入库时计算 + 定时重算（衰减） |
-| **SP-7** | ⏳ | 跨平台热点合并 | pgvector embedding 入库 · 余弦相似度查询 · 阈值聚合赋 `groupId` · 归档机制（30 天后冷表） |
+
+| SP         | 状态  | 名称                                      | 依赖                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| ---------- | --- | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **SP-4**   | ✅   | 内容清洗 + 多层去重                             | URL 规范化 / 内容哈希 / 标题相似度（PG fts），输出 `dedupeHash`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| **SP-4.5** | ✅   | RSS 时效性窗口 + 平台分区                        | RSS 入库 cutoff = 7d · API `?platforms` + 后端窗口表（HN/Reddit 48h、RSS 7d）· 一次性 cleanup `< now-7d` 的历史 RSS · `crawlInterval` 30min → 1d · 前端社区/权威媒体双 tab                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| **SP-4.6** | ✅   | RSS 数据源扩展                               | Anthropic 换 GitHub raw 镜像并启用 · 新增 Cursor Blog / Claude Blog / Claude Code Changelog · `normalizeUrl` 加 `code.claude.com/docs/en/changelog` 精确路径白名单保留 Mintlify changelog `#X.Y.Z` 锚点 · 不动 schema / `dedupeHash` / SP-4.5 7d 入库窗口 · 7 个 RSS 源全部 `crawlInterval=86400`                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| **SP-4.7** | ✅   | ArticleExtractor（HN/Reddit 外链正文抓取）      | Firecrawl + Jina chain · 独立 worker / 独立队列 / 独立 fetch 限速 · `extractStatus / extractAttempts` 字段 · ingest 阶段 link-post 哨兵命中 → push extract: · 抽取成功后 `summary=NULL` 重入 summary 队列                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| **SP-5**   | ✅   | AI 摘要 + 标签分类（含 v3.2 / v3.3 / v3.4 三轮迭代） | v3.2：Vercel AI SDK + OpenRouter / DeepSeek-V3.2 · `packages/prompts` 受控词表 + prompt builder + 鲁棒 parser · `SummarizationStrategy` 接口（V1 实现 `SummarizeAllVisibleStrategy`）· BullMQ `summary` 队列 + boot backstop · ingest 入口 L0 主题过滤（keywords.md，非 AI 不入库）· HN quality 阈值 5/2 → 20/5 · Reddit 8 sub → 13 sub bundle 合并 · 一次性 wipe 脚本 `wipe-hot-news-pre-sp5.ts` 。 v3.3：新增 `titleZh String?` 列（中文标题翻译，原 `title` 不动）· 摘要恰好 2 行 / `\n` 分隔 / 60-90 字 · Reddit 阈值再提升（ratio 0.5→0.7 / score 5→10 / comments 2→5）· cleanup 脚本 `cleanup-reddit-quality-v3-3.ts` 按新阈值删现有行 · boot backstop 加 `queue.clean(0, 0, 'failed')` 前置（修 BullMQ jobId dedupe stuck bug） 。 v3.4：摘要 prompt rewrite —— 取消硬换行，改为单段 50-80 字连贯陈述 + 中立新闻派语调 + 套话 / 营销腔黑名单 + 对照 ✗/✓ 示例。 |
+| **SP-6**   | ⏳   | 热度分计算                                   | PRD 6 维公式 · 时间窗参数化（默认 24h）· 入库时计算 + 定时重算（衰减）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| **SP-7**   | ⏳   | 跨平台热点合并                                 | pgvector embedding 入库 · 余弦相似度查询 · 阈值聚合赋 `groupId` · 归档机制（30 天后冷表）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+
 
 ### Phase 4：Aurora 前端落地（5 SP）
 
-| SP | 名称 | Aurora 对应 | 关键工作 |
-|----|------|-----------|---------|
-| **SP-8** | Aurora 视觉系统 + App 骨架 | `Sidebar` + 9 个 atoms + tokens + 动画 | `packages/ui` 抽出组件 · Tailwind theme 扩展 · 全局 aurora-blob 背景 · 路由壳子（radar/trends/vault 显示 placeholder） |
-| **SP-9** | Dashboard 首页 + Stats API | `HomePage` | 4 卡统计（接 `GET /stats/today`）· 热度榜单（接 `GET /hot-news?sort=heat&limit=6`）· 信源分布（接 `GET /stats/sources`）· 24h `HeatCurve`（接 `GET /stats/heat-curve`）· 增速最快（接 `GET /stats/trending-keywords`）· 我的提醒（占位 placeholder，P5 接通真数据） |
-| **SP-10** | 热点流 FeedPage | `FeedPage` | 三层 Filter（时间/平台/类型）· 双列卡片 · 分页（无限滚动 or 翻页） |
-| **SP-11** | 热点详情 DetailPage | `DetailPage` | AI 摘要 4 维分析 · 关联标签 · 相关热点（基于 `groupId`，接 `GET /hot-news/:id/related`）· 热度趋势 SVG（接 `GET /hot-news/:id/heat-history`）· 互动数据 · 来源分布 · 收藏按钮（占位，P5 启用） |
-| **SP-12** | 内容库 VaultPage | `VaultPage` | 搜索框 + 推荐标签 + 序号列表（PG fts 全文检索） |
+
+| SP        | 名称                       | Aurora 对应                           | 关键工作                                                                                                                                                                                                                    |
+| --------- | ------------------------ | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **SP-8**  | Aurora 视觉系统 + App 骨架     | `Sidebar` + 9 个 atoms + tokens + 动画 | `packages/ui` 抽出组件 · Tailwind theme 扩展 · 全局 aurora-blob 背景 · 路由壳子（radar/trends/vault 显示 placeholder）                                                                                                                    |
+| **SP-9**  | Dashboard 首页 + Stats API | `HomePage`                          | 4 卡统计（接 `GET /stats/today`）· 热度榜单（接 `GET /hot-news?sort=heat&limit=6`）· 信源分布（接 `GET /stats/sources`）· 24h `HeatCurve`（接 `GET /stats/heat-curve`）· 增速最快（接 `GET /stats/trending-keywords`）· 我的提醒（占位 placeholder，P5 接通真数据） |
+| **SP-10** | 热点流 FeedPage             | `FeedPage`                          | 三层 Filter（时间/平台/类型）· 双列卡片 · 分页（无限滚动 or 翻页）                                                                                                                                                                              |
+| **SP-11** | 热点详情 DetailPage          | `DetailPage`                        | AI 摘要 4 维分析 · 关联标签 · 相关热点（基于 `groupId`，接 `GET /hot-news/:id/related`）· 热度趋势 SVG（接 `GET /hot-news/:id/heat-history`）· 互动数据 · 来源分布 · 收藏按钮（占位，P5 启用）                                                                       |
+| **SP-12** | 内容库 VaultPage            | `VaultPage`                         | 搜索框 + 推荐标签 + 序号列表（PG fts 全文检索）                                                                                                                                                                                          |
+
 
 ### Phase 5：关键词监控 + 推送（6 SP）
 
-| SP | 名称 | 关键工作 | 估算 |
-|----|------|---------|------|
-| **SP-13** | 极简单用户认证 | NestJS JWT + 配置文件 admin 账号 + Web 端登录页 + middleware；User 表预留多账号 | ~1 天 |
-| **SP-14** | 关键词 CRUD API | KeywordMonitor 表 · 同义词/排除词/触发规则字段 · `monitorFrequency ≥ crawlInterval` 校验 | ~2 天 |
-| **SP-15** | 关键词监控页 UI（含 Radar SVG） | 雷达图 SVG（极坐标 + requestAnimationFrame 扫描线）· 关键词列表（含 MiniSpark + 状态指示灯 pulse-ring）· 选中详情面板 · 新增模态框 | **~3-4 天** |
-| **SP-16** | 命中检测 worker | 消费每条新 HotNews · 同义词 OR 匹配 · 排除词后置过滤 · 写 KeywordHit 中间表 + 反写 HotNews.matchedKeywords | ~2 天 |
-| **SP-17** | 触发条件 + 站内通知 | minCount / minHeatScore / growthRate 判断 · Notification 表 · NotificationCenter UI · Sidebar Radar 通知徽标接通 · 详情页"推送渠道"接通 | ~3 天 |
-| **SP-18** | 邮件推送 | Nodemailer + SMTP 配置 + 模板 · 失败重试 + 失败邮件告警（PRD 缺口 #8 收尾） | ~2 天 |
+
+| SP        | 名称                     | 关键工作                                                                                                                  | 估算         |
+| --------- | ---------------------- | --------------------------------------------------------------------------------------------------------------------- | ---------- |
+| **SP-13** | 极简单用户认证                | NestJS JWT + 配置文件 admin 账号 + Web 端登录页 + middleware；User 表预留多账号                                                        | ~1 天       |
+| **SP-14** | 关键词 CRUD API           | KeywordMonitor 表 · 同义词/排除词/触发规则字段 · `monitorFrequency ≥ crawlInterval` 校验                                             | ~2 天       |
+| **SP-15** | 关键词监控页 UI（含 Radar SVG） | 雷达图 SVG（极坐标 + requestAnimationFrame 扫描线）· 关键词列表（含 MiniSpark + 状态指示灯 pulse-ring）· 选中详情面板 · 新增模态框                       | **~3-4 天** |
+| **SP-16** | 命中检测 worker            | 消费每条新 HotNews · 同义词 OR 匹配 · 排除词后置过滤 · 写 KeywordHit 中间表 + 反写 HotNews.matchedKeywords                                   | ~2 天       |
+| **SP-17** | 触发条件 + 站内通知            | minCount / minHeatScore / growthRate 判断 · Notification 表 · NotificationCenter UI · Sidebar Radar 通知徽标接通 · 详情页"推送渠道"接通 | ~3 天       |
+| **SP-18** | 邮件推送                   | Nodemailer + SMTP 配置 + 模板 · 失败重试 + 失败邮件告警（PRD 缺口 #8 收尾）                                                               | ~2 天       |
+
 
 ### Phase 6：趋势分析（3 SP，各 ~2-3 天）
 
-| SP | 名称 | 关键工作 |
-|----|------|---------|
-| **SP-19** | KeywordTimeSeries 时序聚合 + API | 按小时/天聚合关键词命中数 · `GET /trends/keywords` · `GET /trends/companies` · `GET /trends/models` |
-| **SP-20** | 趋势分析页 TrendsPage | 公司声量排名（进度条形式）· 多系列折线（**Recharts**，比 ECharts 体积小）· 增速 Top 8 卡片网格 |
-| **SP-21** | AI 日报自动生成 | 每日定时 job · 24h 热点喂 LLM 生成日报 · DailyReport 表 · 日报页（路由 `/daily-report/[date]`）· Dashboard"生成今日日报"按钮接通 |
+
+| SP        | 名称                           | 关键工作                                                                                                |
+| --------- | ---------------------------- | --------------------------------------------------------------------------------------------------- |
+| **SP-19** | KeywordTimeSeries 时序聚合 + API | 按小时/天聚合关键词命中数 · `GET /trends/keywords` · `GET /trends/companies` · `GET /trends/models`             |
+| **SP-20** | 趋势分析页 TrendsPage             | 公司声量排名（进度条形式）· 多系列折线（**Recharts**，比 ECharts 体积小）· 增速 Top 8 卡片网格                                     |
+| **SP-21** | AI 日报自动生成                    | 每日定时 job · 24h 热点喂 LLM 生成日报 · DailyReport 表 · 日报页（路由 `/daily-report/[date]`）· Dashboard"生成今日日报"按钮接通 |
+
 
 ### Phase 7：高阶能力（5 SP，各 ~3-5 天）
 
-| SP | 名称 | 关键点 |
-|----|------|---------|
-| **SP-22** | Twitter/X 抓取器 | 成本评估 + X API 申请 · 关键词搜索 + 指定账号监控 · 推文互动数据 |
-| **SP-23** | 多渠道推送抽象 | 统一 `PushAdapter` 接口 · 飞书 / 钉钉 / Telegram / Webhook adapter |
-| **SP-24** | 后台管理界面 | 数据源管理 / 关键词字典 / 内容质量管理 / 推送日志（仅 admin 可见） |
-| **SP-25** | 浏览器插件（可选） | PRD P2 提及 · 划词监控 / 当前页面 AI 摘要 |
-| **SP-26** | AI 分享文案生成 | 详情页 ✨ 按钮接通 · 小红书 / Twitter thread / 博客标题 / 公众号大纲多模板 |
+
+| SP        | 名称            | 关键点                                                        |
+| --------- | ------------- | ---------------------------------------------------------- |
+| **SP-22** | Twitter/X 抓取器 | 成本评估 + X API 申请 · 关键词搜索 + 指定账号监控 · 推文互动数据                  |
+| **SP-23** | 多渠道推送抽象       | 统一 `PushAdapter` 接口 · 飞书 / 钉钉 / Telegram / Webhook adapter |
+| **SP-24** | 后台管理界面        | 数据源管理 / 关键词字典 / 内容质量管理 / 推送日志（仅 admin 可见）                  |
+| **SP-25** | 浏览器插件（可选）     | PRD P2 提及 · 划词监控 / 当前页面 AI 摘要                              |
+| **SP-26** | AI 分享文案生成     | 详情页 ✨ 按钮接通 · 小红书 / Twitter thread / 博客标题 / 公众号大纲多模板        |
+
 
 ---
 
@@ -388,26 +418,30 @@ M8 = P7 完成          → 完整能力（含 Twitter）         (~第 17 周)
 
 ### 7.3 并行机会
 
-| 可并行组合 | 说明 |
-|---|---|
-| SP-2 ‖ SP-3 | HN 与 Reddit 抓取器互不依赖，完全并行 |
-| SP-4 ‖ SP-5 ‖ SP-6 | 去重 / AI 摘要 / 热度计算 三者输入相同（HotNews 行），可并行实现 |
-| SP-9 ‖ SP-10 ‖ SP-11 ‖ SP-12 | 在 SP-8 视觉系统完成后，4 个前端页面完全并行 |
-| SP-15 ‖ SP-16 | 关键词页 UI 与命中检测 worker 互不阻塞 |
+
+| 可并行组合                        | 说明                                        |
+| ---------------------------- | ----------------------------------------- |
+| SP-2 ‖ SP-3                  | HN 与 Reddit 抓取器互不依赖，完全并行                  |
+| SP-4 ‖ SP-5 ‖ SP-6           | 去重 / AI 摘要 / 热度计算 三者输入相同（HotNews 行），可并行实现 |
+| SP-9 ‖ SP-10 ‖ SP-11 ‖ SP-12 | 在 SP-8 视觉系统完成后，4 个前端页面完全并行                |
+| SP-15 ‖ SP-16                | 关键词页 UI 与命中检测 worker 互不阻塞                 |
+
 
 ---
 
 ## 8. 风险与缓解
 
-| 风险 | 影响 | 缓解 |
-|---|---|---|
-| AI 摘要月成本超预算 | 中 | SP-5 实现"插拔式摘要策略"，提供按热度/平台/类型限流的开关 |
-| 搬瓦工 VPS 性能不足以同时跑 worker + embedding 推理 | 中 | embedding 走 OpenAI API（不本地推理）；worker 用 BullMQ 限流；预留 Phase 5 后再评估是否分服务器 |
-| Twitter API 成本过高 | 高 | 移到 P7 末尾；MVP 期不依赖；可选用 RSSHub 等免费替代方案降级 |
-| Aurora 设计稿 React 内联 style 落到 Tailwind 工作量被低估 | 中 | SP-8 spec 里强制要求"实施策略"小节，先做 token 抽取再做组件 |
-| pgvector 在搬瓦工 PostgreSQL 镜像不可用 | 低 | Docker 镜像用 `pgvector/pgvector:pg16`，已验证可在通用 VPS 跑 |
-| 个人项目动力损耗（写到一半放弃） | 高 | 选 Strategy B（纵切端到端），M2 第 2 周就能在浏览器看到效果 |
-| 关键词同义词的语义匹配可能不够智能 | 低 | V1 先用 OR 字符串匹配；P7 阶段可考虑用 embedding 做语义同义词扩展 |
+
+| 风险                                           | 影响  | 缓解                                                                     |
+| -------------------------------------------- | --- | ---------------------------------------------------------------------- |
+| AI 摘要月成本超预算                                  | 中   | SP-5 实现"插拔式摘要策略"，提供按热度/平台/类型限流的开关                                      |
+| 搬瓦工 VPS 性能不足以同时跑 worker + embedding 推理       | 中   | embedding 走 OpenAI API（不本地推理）；worker 用 BullMQ 限流；预留 Phase 5 后再评估是否分服务器 |
+| Twitter API 成本过高                             | 高   | 移到 P7 末尾；MVP 期不依赖；可选用 RSSHub 等免费替代方案降级                                 |
+| Aurora 设计稿 React 内联 style 落到 Tailwind 工作量被低估 | 中   | SP-8 spec 里强制要求"实施策略"小节，先做 token 抽取再做组件                                |
+| pgvector 在搬瓦工 PostgreSQL 镜像不可用               | 低   | Docker 镜像用 `pgvector/pgvector:pg16`，已验证可在通用 VPS 跑                      |
+| 个人项目动力损耗（写到一半放弃）                             | 高   | 选 Strategy B（纵切端到端），M2 第 2 周就能在浏览器看到效果                                 |
+| 关键词同义词的语义匹配可能不够智能                            | 低   | V1 先用 OR 字符串匹配；P7 阶段可考虑用 embedding 做语义同义词扩展                            |
+
 
 ---
 
@@ -423,22 +457,24 @@ M8 = P7 完成          → 完整能力（含 Twitter）         (~第 17 周)
 
 ## 10. 决策日志（Decision Log）
 
-| 决策日期 | 决策 | 替代方案 | 决策理由 |
-|---|---|---|---|
-| 2026-05-01 | 全栈 Next.js + NestJS 拆分（不合一） | 全栈 Next.js | 用户偏好严格拆分 |
-| 2026-05-01 | Prisma | Drizzle | 用户偏好 |
-| 2026-05-01 | BullMQ + Redis | pg-boss | 用户偏好 |
-| 2026-05-01 | 搬瓦工 VPS + Docker Compose | Vercel + 托管 PG | 用户已有服务器 |
-| 2026-05-01 | P0 引入 pgvector | P3 再引入 | 避免后续大改 schema |
-| 2026-05-01 | 单用户极简认证（User 表预留） | 完整多用户 | 个人自用 |
-| 2026-05-01 | aiTags + matchedKeywords 拆开 | 合并 tags[] | 语义不同，扩展性更好 |
-| 2026-05-01 | Strategy B：纵切端到端 + 横向扩展 | 按 PRD V0.1-V0.4 节奏 | 个人项目防失去动力，最快看到反馈 |
-| 2026-05-01 | Aurora 设计稿锁定为最终视觉 | 后续重新设计 | 设计稿完成度高，5 页面 + 9 组件已成型 |
-| 2026-05-01 | Recharts > ECharts | ECharts | 体积更小 + React 集成更顺 |
-| 2026-05-01 | 总 SP 数 27 | 26 | 新增 SP-26 分享文案生成 |
-| 2026-05-03 | SP-2 抽象 `Crawler` 接口 + `CrawlerFactory` + 重命名 BullMQ 队列 `rss-crawl → crawl` | 在 RssCrawler 上原地加 if-platform 分支 | 平台路由由工厂集中（O(N) 接入新平台）；旧队列在新 worker 启动时 `obliterate` 一次以避免遗留任务 |
-| 2026-05-03 | SP-2 `RawCrawledItem` 加可选 `interactionData?: Record<string,unknown> \| null` | 每平台一张影子表 | 字段约定 spec §4.2 标准化（HN: `hnId/score/comments/externalUrl`，Reddit/X 各加自己前缀字段），未来 SP-3/SP-22 直接复用 |
-| 2026-05-03 | SP-2 HN crawler 直读 Firebase API `https://hacker-news.firebaseio.com/v0/{topstories,askstories,showstories}.json` | 用第三方 SDK | 官方 API 稳定 + 零依赖；`p-limit` 控制 N+1 fetch 并发，`HN_CONCURRENCY=10` / `HN_FETCH_TIMEOUT_MS=15000` 可调 |
+
+| 决策日期       | 决策                                                                                                               | 替代方案                             | 决策理由                                                                                           |
+| ---------- | ---------------------------------------------------------------------------------------------------------------- | -------------------------------- | ---------------------------------------------------------------------------------------------- |
+| 2026-05-01 | 全栈 Next.js + NestJS 拆分（不合一）                                                                                      | 全栈 Next.js                       | 用户偏好严格拆分                                                                                       |
+| 2026-05-01 | Prisma                                                                                                           | Drizzle                          | 用户偏好                                                                                           |
+| 2026-05-01 | BullMQ + Redis                                                                                                   | pg-boss                          | 用户偏好                                                                                           |
+| 2026-05-01 | 搬瓦工 VPS + Docker Compose                                                                                         | Vercel + 托管 PG                   | 用户已有服务器                                                                                        |
+| 2026-05-01 | P0 引入 pgvector                                                                                                   | P3 再引入                           | 避免后续大改 schema                                                                                  |
+| 2026-05-01 | 单用户极简认证（User 表预留）                                                                                                | 完整多用户                            | 个人自用                                                                                           |
+| 2026-05-01 | aiTags + matchedKeywords 拆开                                                                                      | 合并 tags[]                        | 语义不同，扩展性更好                                                                                     |
+| 2026-05-01 | Strategy B：纵切端到端 + 横向扩展                                                                                          | 按 PRD V0.1-V0.4 节奏               | 个人项目防失去动力，最快看到反馈                                                                               |
+| 2026-05-01 | Aurora 设计稿锁定为最终视觉                                                                                                | 后续重新设计                           | 设计稿完成度高，5 页面 + 9 组件已成型                                                                         |
+| 2026-05-01 | Recharts > ECharts                                                                                               | ECharts                          | 体积更小 + React 集成更顺                                                                              |
+| 2026-05-01 | 总 SP 数 27                                                                                                        | 26                               | 新增 SP-26 分享文案生成                                                                                |
+| 2026-05-03 | SP-2 抽象 `Crawler` 接口 + `CrawlerFactory` + 重命名 BullMQ 队列 `rss-crawl → crawl`                                      | 在 RssCrawler 上原地加 if-platform 分支 | 平台路由由工厂集中（O(N) 接入新平台）；旧队列在新 worker 启动时 `obliterate` 一次以避免遗留任务                                  |
+| 2026-05-03 | SP-2 `RawCrawledItem` 加可选 `interactionData?: Record<string,unknown> | null`                                      | 每平台一张影子表                         | 字段约定 spec §4.2 标准化（HN: `hnId/score/comments/externalUrl`，Reddit/X 各加自己前缀字段），未来 SP-3/SP-22 直接复用 |
+| 2026-05-03 | SP-2 HN crawler 直读 Firebase API `https://hacker-news.firebaseio.com/v0/{topstories,askstories,showstories}.json` | 用第三方 SDK                         | 官方 API 稳定 + 零依赖；`p-limit` 控制 N+1 fetch 并发，`HN_CONCURRENCY=10` / `HN_FETCH_TIMEOUT_MS=15000` 可调 |
+
 
 ### SP-3 Reddit 抓取器（2026-05-04）
 
@@ -446,7 +482,7 @@ M8 = P7 完成          → 完整能力（含 Twitter）         (~第 17 周)
 2. **8 个 sub 全开 + hot 25**：与 PRD §7.5.2 推荐对齐；`hot` 半小时变化 ≤10 条，25 覆盖率充分；运维可手工 SQL `UPDATE source_configs SET enabled=false WHERE identifier='X'` 关掉噪音 sub，下次 deploy seed 不覆盖手工改动。
 3. **60 分钟 `crawlInterval`**：Reddit 帖半衰期 ≥6h；与 HN 30 分钟错开节奏；8 sub × 25 帖 × 0.3 新增比例 / h ≈ 60 行/h ≈ 1500 行/天，磁盘压力可控。
 4. **不抓评论原文**：`interactionData.comments` 仅记计数；评论数据真实消费者是 SP-5 AI 摘要，到时候独立 worker 按"高热度帖"按需抓更经济。
-5. **`SourceConfig.url` 优先 vs `identifier` 拼接**：标准 sub 模式 seed 极简（只填 identifier）；未来扩展形态（关键词搜索 / 多 sub 集群）零代码改动接入，crawler `resolveUrl()` 一处处理。
+5. `**SourceConfig.url` 优先 vs `identifier` 拼接**：标准 sub 模式 seed 极简（只填 identifier）；未来扩展形态（关键词搜索 / 多 sub 集群）零代码改动接入，crawler `resolveUrl()` 一处处理。
 6. **crawler 输出的 `sourceUrl` 不带尾斜杠**（与 `normalizeUrl()` canonical form 对齐）：原计划照搬 Reddit permalink 形如 `/r/<sub>/comments/<id>/`（尾斜杠），但 `packages/utils/src/url.ts::normalizeUrl()` 会去掉尾斜杠后入库，导致 `RedditCrawler.toRaw()` 输出 `/r/<sub>/comments/<id>/` 与库内 `/r/<sub>/comments/<id>` 不一致，集成测试 `findFirstOrThrow` 会 P2025。修法：`RedditCrawler` 直接生成无尾斜杠 URL；HN crawler 已天然无尾斜杠，规则统一。
 
 ### SP-4 内容清洗 + 多层去重（2026-05-04）
@@ -457,7 +493,7 @@ M8 = P7 完成          → 完整能力（含 Twitter）         (~第 17 周)
 4. **维度 3 推到 SP-5 而非 SP-4 关键词层**：避免词表维护负担 + 双层冗余；SP-5 LLM 自然处理新话题；接受 SP-4 完工后约 1-2 周内列表仍有"高分非主题"内容的 trade-off。
 5. **URL 规范化 6 条新规则**：http→https 折叠、Reddit 老入口 alias（`old/np/new.reddit.com → www.reddit.com`）、Twitter host alias（`twitter.com / mobile.twitter.com / m.x.com → x.com`）、`m.` / `mobile.` 子域剥离、重复 query 合并（last-wins）、空 `?` 串剥离。**不动 www 子域**（OpenAI 裸域 vs Wikipedia 必带子域，策略不一致）。
 6. **过滤逻辑分层**：platform-specific 阈值（`checkRedditQuality` / `checkHnQuality`）放在 crawler `toRaw()` 写入 `RawCrawledItem.filterReason`；platform-agnostic 兜底（`checkUniversalQuality({ title })`）由 `IngestionService` 在清洗后调用。所有阈值集中在 `packages/utils/src/quality.ts` 的 `FILTER_REASONS` 单一事实源。
-7. **`dedupeHash` 用清洗后标题计算**：原 SP-1 用 `raw.title` 做 hash，但带 `" - OpenAI Blog"` 后缀的 RSS 与不带后缀的去重等价但 hash 不同；`IngestionService` 把 `stripTitleBoilerplate` 提到 `computeDedupeHash` 之前，跨 feed 变体也能折叠成同一 dedupeHash。
+7. `**dedupeHash` 用清洗后标题计算**：原 SP-1 用 `raw.title` 做 hash，但带 `" - OpenAI Blog"` 后缀的 RSS 与不带后缀的去重等价但 hash 不同；`IngestionService` 把 `stripTitleBoilerplate` 提到 `computeDedupeHash` 之前，跨 feed 变体也能折叠成同一 dedupeHash。
 8. **ArticleExtractor 剥离 SP-4 独立**：SP-3 spec 把 ArticleExtractor 标在 SP-4 里，但 brainstorming 时确认该子系统独立性强（独立 worker / 独立队列 / 独立 fetch 限速）。原计划占用 SP-4.6 编号，但该编号在 2026-05-04 已被"RSS 数据源扩展"实际占用，ArticleExtractor 子项目改在 SP-4.7 或 SP-5 前置规划。SP-4 完工后 link-post 保留 `content=title, rawHtml=null` 现状作为检测哨兵。
 9. **backfill 脚本不进 deploy.sh**：一次性脚本进自动链路浪费部署时间；多次 deploy 后报告永远 0 updated 误导运维。手工 ssh 跑一次写进 commit log 标记。Backfill 期间避免 ingest 写入（worker 可临时停），避免 P2002 lookup 与并发 INSERT 竞态——这是单 writer 假设。
 10. **P2002 collapse 必须按 publishedAt 决策**（code-review catch）：原实现「冲突时删当前迭代行」在「老行 `http://`、新行已 canonical `https://`」组合下会误删较早行。修法：P2002 时 `findFirst` 查冲突方，比 `publishedAt` 删较新者，再 retry 当前行的 update；用 `deletedRowIds: Set<string>` 跳过预取列表里已被删的 id 避免 P2025。回归测试 `Layer 1: ... OLDER wins` 锁定语义。**这一 bug 若没 review 直接上 VPS 跑 backfill，会丢历史最早期数据，影响 SP-7 跨平台热度合并的早期信号——keystone review 价值的直接证据**。
@@ -489,25 +525,27 @@ M8 = P7 完成          → 完整能力（含 Twitter）         (~第 17 周)
 
 > **维护策略**：每个 SP 完成（merge to main + smoke 验证通过）后追加一行；标注关键 commit 范围、完成日期、产出特征、对后续 SP 的契约影响。
 
-| SP | 完成日期 | Commit 范围 | 关键产出 | 对后续 SP 的契约影响 |
-|----|---------|-----------|---------|------------------|
-| **SP-0** | 2026-05-02 | `fde9829..b87e7df`（含 `Merge SP-0`） | pnpm/turbo monorepo · `apps/{web,api,worker}` + `packages/{db,types,utils}` · Docker Compose（PG + pgvector + Redis）· Prisma schema（HotNews / SourceConfig / KeywordMonitor / KeywordHit ...）· CI · VPS 部署链路 | 后续 SP 直接消费的基础。`packages/types` 是跨进程契约的源头；`packages/utils` 沉淀跨 crawler 公共逻辑 |
-| **SP-1** | 2026-05-03 | `fde9829..7e6a491^`（即 SP-2 docs 之前）·SP-1 plan: `docs/superpowers/plans/2026-05-02-sp1-rss-list-end-to-end-plan.md` | RssCrawler · CrawlScheduler（BullMQ repeat job，原队列名 `rss-crawl`）· CrawlProcessor · IngestionService（unique sourceUrl + try/catch 抑制 P2002）· `GET /hot-news` 分页 + DTO · `/news` 列表页（纯 Tailwind） | RSS 数据流端到端打通。`Crawler` 接口在 SP-2 才被抽象；SP-1 的 `IngestionService.SourceLike` 在 SP-2 改为通用 `Platform` |
-| **SP-2** | 2026-05-03 | `35da0fe..81f2c70`（13 commits + 2 docs）·spec: `2026-05-03-sp2-hackernews-crawler-design.md` ·plan: `2026-05-03-sp2-hackernews-crawler-plan.md` | `Crawler` 接口 + `CrawlerFactory`（platform → crawler 路由）· `HackerNewsCrawler`（top/ask/show, p-limit, AbortSignal.timeout）· `stripHtml` 抽到 `@ai-hot-news/utils` · `RawCrawledItem.interactionData` 字段约定 · `HotNews.interactionData` 透传 · BullMQ 队列重命名 `rss-crawl → crawl` 并 `obliterate` 老队列 · seed 加 HN top/ask/show 三条 SourceConfig（identifier 而非 url）· `/news` platform 徽章渲染（`HN`/`RSS`/`Reddit`/`X` 4 色） | **接口契约**：`Crawler.fetch(): Promise<RawCrawledItem[]>` 是后续所有平台抓取器的统一形态。**字段约定（spec §4.2）**：`interactionData` 各平台前缀字段命名固化（HN: `hnId`/Reddit: `redditId,redditSubreddit`/X: `twTweetId,twReposts`）。**SP-3/SP-22 影响**：直接 `case Platform.REDDIT/TWITTER` 加进 `CrawlerFactory.create()` switch + 在 `CrawlScheduler.platform IN [...]` 列表里加上即可，零结构改动 |
-| **SP-3** | 2026-05-04 | `7994e79..afa11be`（9 commits）+ 本 docs commit ·spec: `2026-05-03-sp3-reddit-crawler-design.md`（v2 公开 `.json` 路线）·plan: `2026-05-03-sp3-reddit-crawler-plan.md` | `RedditCrawler` 走 Reddit 公开 `.json` 端点（无 OAuth），`resolveUrl()` 支持 `SourceConfig.url` 优先 / `identifier` 回退两种模式 · 8 个 AI subreddit hot 列表（LocalLLaMA / MachineLearning / artificial / OpenAI / ChatGPT / singularity / StableDiffusion / ClaudeAI），60min crawlInterval · `interactionData` 6 字段（`score / comments / externalUrl / redditId / redditSubreddit / redditUpvoteRatio`）· 显式 429 + 5xx 错误处理 · `REDDIT_USER_AGENT` 强制要求（`(by /u/<owner>)` 后缀）+ `REDDIT_FETCH_TIMEOUT_MS` 可调 · `CrawlerFactory` / `CrawlScheduler` / `IngestionService` 全部按 §11 "Onboarding 标准流程" 5 步走 · `RedditCrawler.toRaw()` 输出无尾斜杠 sourceUrl 与 `normalizeUrl()` canonical form 对齐 | **新平台扩展形态**：`SourceConfig.url` 优先 vs `identifier` 拼接的双轨模式被 `RedditCrawler.resolveUrl()` 固化，未来加关键词搜索源 / 多 sub 集群源时 seed 直接填 `url` 字段，零代码改动接入。**URL canonical form 约定**：所有 crawler 的 `toRaw().sourceUrl` 必须与 `normalizeUrl()` 输出一致（无尾斜杠、无 tracking params、hash 已剥离），否则集成测试 `findFirstOrThrow` 会 P2025；HN / Reddit 已对齐，新平台 SP 必须遵守。**Onboarding 流程验证通过**：完全按 §11 "Onboarding 新平台 SP 的标准流程" 5 步实施，零结构改动 |
-| **SP-4.5** | 2026-05-04 | `da31a09..c962c65`（13 commits = 2 docs + 9 feat + 1 test + 1 robustness fix）·spec: `2026-05-04-sp4-5-rss-windowing-design.md` ·plan: `2026-05-04-sp4-5-rss-windowing-plan.md` | `IngestionService.isWithinIngestWindow()` 7d cutoff（RSS-only 平台早返、null `publishedAt`→drop、`>=` 边界）→ 进 `result.skipped`，不新增 `IngestResult` 字段 · `cleanup-rss-pre-window.ts` 一次性 `deleteMany WHERE sourcePlatform='RSS' AND publishedAt < now-7d`，dual-mode entrypoint（`require.main` + `argv[1].endsWith`）+ 集成测试（删除/HN-Reddit-不动/边界），整测试套件并发安全靠 `packages/db/vitest.config.ts: fileParallelism=false` · `sp4-5-update-rss-interval.sql` 幂等 SQL（`WHERE crawlInterval <> 86400`）· `ListHotNewsQuery.platforms?: AllowedPlatform[]` DTO 字段（`@Transform` trim+upper、`@IsIn` 校验、未知平台→400）· `HotNewsService.list(page, size, platforms?)` + `PLATFORM_WINDOW_HOURS: Record<Platform, number>`（HN=48 / Reddit=48 / RSS=168 / Twitter=48 占位 typesafe）+ `DEFAULT_PLATFORMS=['HACKERNEWS','REDDIT']`（`platforms?.length ? platforms : DEFAULT_PLATFORMS` 同时处理 `undefined` 与 `[]`）· `where = { status: 'VISIBLE', OR: [{sourcePlatform, publishedAt: {gte: now-hours*ms}}, ...] }`，`findMany` 与 `count` 共享同一 where · `HotNewsController.list()` 透传 `query.platforms` · `fetchHotNewsList(page, size, platforms?: FeedPlatform[])` Web 层 fetch + `URLSearchParams` 序列化为 `?platforms=A,B` · `apps/web/app/news/_components/feed-tabs.tsx` 服务端组件（`?tab=community\|media`，default community）· `/news/page.tsx` 用 `TAB_PLATFORMS` map 把 tab 转 `platforms[]` 传给 fetcher，EmptyState 移到 `<main>` 内（保留 tabs 始终可见）· `Pagination` 改用 Next `UrlObject` 形式（`{pathname:'/news', query:{tab,page}}`）以兼容 `typedRoutes:true`，渲染 URL 仍为 `/news?tab=...&page=...` | **API 默认行为变更（breaking）**：`GET /hot-news` 默认从「全部平台 VISIBLE」变成「HN+REDDIT 48h VISIBLE」。任何不带 `?platforms=` 的旧客户端会少看到 RSS。Web 端配套切换到 `?tab=` 协议；外部脚本如有依赖需升级。**新平台扩展点**：`PLATFORM_WINDOW_HOURS` 是 `Record<Platform, number>` exhaustive，未来加 Twitter / 任何新 Platform 必须同时填窗口；`ALLOWED_PLATFORMS`（DTO）和 `FeedPlatform`（web）是 union string，新平台需三处同步。**Ingest cutoff 契约**：RSS-only，HN/Reddit 仍依赖 SP-4 quality 维度过滤；将来若有新「snapshot 型协议」（GitHub trending、产品周报等）应该挂同款 cutoff，`isWithinIngestWindow` 是命名锚点。**一次性脚本契约（继续遵守 SP-4 §10 决策 11）**：`cleanup-rss-pre-window.ts` 用包名 import + `scripts/run-prod-oneshot.sh` 调用，prod 部署需先 stop worker 维持 single-writer。**`fileParallelism=false` 并发安全契约（新增）**：`packages/db` 集成测试共享一个 dev DB，全局性 deleteMany 测试与其他 spec 并行会冲突；新增 db-package 测试若是「全局性写」必须意识到该 fileParallelism 关闭、测试断言改 prefix-scoped 而非全局精确计数（用例 1 修过同款 flake，commit `c962c65`）。**前端 typedRoutes 兼容**：`next.config.ts: typedRoutes=true` 下任何含 `${string-union}` 的 `Link href` 必须用 `UrlObject` 形式 `{pathname, query}`，模板字符串无法静态收窄。后续 SP-? 想给 `/news` 加更多 query 参数照同款写。**RSS 拉取节流**：crawlInterval 30min→1d，最坏延迟 24h；如果运营反馈 OpenAI/Anthropic 新博客上线滞后明显，可短期调回 1800 而无需改代码（DB-driven）。**Web 测试基础设施债**（implicit）：`apps/web` 至今无 vitest infra（`test` script 是 `echo 'no tests yet (P4)'`），Task 7 的 fetchHotNewsList 改动跳过单测靠 typecheck + Task 11 prod smoke 兜底；如果未来 web 逻辑分支变多应单独开 SP 装 vitest+jsdom+RTL，目前 YAGNI。 |
-| **SP-4** | 2026-05-04 | `aa9e03a..652c981`（14 commits）·spec: `2026-05-04-sp4-content-cleaning-dedup-design.md` ·plan: `2026-05-04-sp4-content-cleaning-dedup-plan.md` | `normalizeUrl` 6 条新规则（http→https / Reddit alias / Twitter alias / m./mobile. 剥离 / 重复 query 合并 last-wins / 空 `?` 串剥离）· `stripTitleBoilerplate`（13 站点白名单 + 4 种 dash/pipe 分隔符）+ `stripContentBoilerplate`（4 种 RSS 尾部模式 + 空白/换行折叠）· `quality.ts` 三函数（`checkRedditQuality` / `checkHnQuality` / `checkUniversalQuality`）+ `FILTER_REASONS` 4 常量 · `RawCrawledItem.filterReason?: string \| null` 字段（types 包）· `HotNews.filterReason String?` 列 + Prisma migration（`20260504073513_sp4_filter_reason`，camelCase 列名）· `RedditCrawler.toRaw()` / `HackerNewsCrawler.toRaw()` 写入 `filterReason` · `IngestionService` 入库前清洗（cleanTitle/cleanContent 先于 dedupeHash 计算）+ `raw.filterReason ?? checkUniversalQuality()` 兜底 + status/filterReason 写入 + `IngestResult.hidden` 计数 · `CrawlProcessor` 日志含 `hidden=` · `HotNewsService` 默认 `WHERE status=VISIBLE` · `packages/db/scripts/migrate-sp4.ts` 一次性 backfill（Layer 1 normalize + Layer 2 quality）含按 `publishedAt` 决策的 P2002 collapse · `pnpm db:migrate-sp4` 根脚本 · `packages/db/test/setup-env.ts` 让 turbo test 自动 load `.env` | **新过滤维度契约**：dimension 1 (compliance) → drop in crawler；dimension 2 (quality) → ingest with `status='HIDDEN'` + `filterReason`；dimension 3 (topic) → defer to SP-5 LLM。**HIDDEN 数据保留契约**：SP-7 跨平台合并消费 HIDDEN 行做覆盖度信号增强；SP-5 LLM 上线后可重新判定 status；任何写入路径必须维护两条不变量「`VISIBLE & filterReason!=NULL` count=0」「`HIDDEN & filterReason=NULL` count=0」。**utils 内阈值约定**：所有 quality 阈值集中在 `packages/utils/src/quality.ts`，未来想 per-source 调整可升级到 `SourceConfig.metadata` 注入。**API 默认契约**：`GET /hot-news` 默认 `WHERE status='VISIBLE'`，不暴露 `?includeHidden=true`（YAGNI）。**清洗流水线契约**：`stripTitleBoilerplate` → `stripContentBoilerplate` → `computeDedupeHash(sourceUrl, cleanTitle)` → quality verdict → status，新 crawler 必须遵守这一前后顺序。**P2002 backfill collapse 算法**：P2002 时 findFirst 查冲突方比 `publishedAt`，删较新者并 retry 当前 update；不可在 backfill 期间并发写入（单 writer 假设）。**一次性 prod 脚本契约**（post-mortem，详见 §10 决策 11）：脚本放 `packages/db/scripts/`、用包名 import（`'@ai-hot-news/db'` / `'@ai-hot-news/utils'`）、worker Dockerfile `COPY packages/db/scripts`、运维通过 `bash scripts/run-prod-oneshot.sh packages/db scripts/<script>.ts` 调用；后续 SP-7 pgvector backfill / SP-19 KeywordTimeSeries 聚合等所有一次性脚本必须遵守。|
-| **SP-4.6** | 2026-05-05 | `5af5ffe..05fb692`（6 commits）·spec: `2026-05-04-sp4-6-rss-sources-expansion-design.md` ·plan: `2026-05-04-sp4-6-rss-sources-expansion-plan.md` | seed 加 4 个新 RSS 源（Anthropic GitHub raw mirror + Cursor Blog + Claude Blog + Claude Code Changelog）·  `normalizeUrl` 加 `code.claude.com/docs/en/changelog` 精确路径白名单保留 Mintlify changelog `#X.Y.Z` 锚点（其它 host 仍剥 fragment）· seed.ts dual-mode（apply 主路径）+ `sp4.6-add-rss-sources.sql` 幂等 SQL fallback · 7 RSS 源全部 `crawlInterval=86400`（24h）· prod 数据点：default RSS total 9 → 27（4 个新源全部抓到，含 5 条 Mintlify changelog `#X.Y.Z` 各自唯一）| **`normalizeUrl` 精确路径白名单契约**：保留 fragment 是该函数的破例行为，未来如有同款"fragment 是唯一 ID"协议需求（如某 changelog 站点）请加白名单条目 `(host, exact_path)` 而不是松动 host-level 规则。**RSS 源管理 = pure DB 操作**：seed 改动是 idempotent upsert，prod deploy 通过 `prisma db seed` 自动 apply；如果未来想动态加/减 RSS 源（例如关键词搜索源、用户订阅源），路径已铺好。|
-| **SP-4.7** | 2026-05-05 | PR #1-#4（squash `d3a52183 / a06ee87c / 9317d4a4 / 52cf4e3`）·spec: `2026-05-05-sp4-7-article-extractor-design.md` ·plan: `2026-05-05-sp4-7-article-extractor-plan.md` | `apps/worker/src/extract/` 完整模块（`extract.module.ts` / `extract.queue.ts` / `extract.service.ts` / `extract.processor.ts` + chain / firecrawl / jina providers）· `HotNews` 加 `extractStatus String?` + `extractAttempts Int @default(0)` 列（migration `20260505072156_sp4_7_extract_status` + 部分索引 `hot_news_extract_pending_idx`）· `IngestionService` 在 ingest 阶段对 link-post 哨兵（HN/Reddit `interactionData.externalUrl` 存在且 `content==title`）触发 `extract:<id>` 入队 · `extractStatus=EXTRACTED` 后 `summary=NULL` 重入 `summary:<id>` 队列触发 SP-5 重摘 · `apps/worker/src/redis/redis.module.ts` 抽出 `RedisModule` 共享 `REDIS_CONNECTION` token（PR #2 修 SummarizeModule / ExtractModule queue providers UnknownDependenciesException 同款 bug）· `docker/docker-compose.prod.yml` worker.environment 显式透传 `FIRECRAWL_API_KEY / JINA_API_KEY / EXTRACT_CONCURRENCY`（PR #3 修：compose 只透传显式声明的变量）· `wipe-hot-news-pre-ai.ts` 一次性脚本（"AI 阶段开机"操作） | **PR-driven workflow 起点**：SP-4.7 是首个 ship via 4 个 PR 而非 main 直推的 SP，hot-fix 路径（PR #2 / #3）成为后续 SP 的标准模板。**`RedisModule` 契约**：任何 inject `REDIS_CONNECTION` 的新 module 必须 `imports: [RedisModule]`，否则 unit test (`apps/worker/src/redis/redis.module.spec.ts`) 阶段就红 — SP-5 / SP-6 / SP-7 等所有用 BullMQ 的新 module 必须遵守。**`docker-compose.prod.yml` env 透传契约**：worker.environment 段必须显式 `FOO: ${FOO}` 才会注入到容器；只在 `.env` 写不够。后续任何新增 worker 端 env var 都必须**同步**改 compose（不要省略）。**ingest → extract → summary 三段触发链**：SP-5 v3.4 仍依赖该链路 — link-post 第一次摘要可能基于 `content==title` 出 degraded 摘要，SP-4.7 跑完后 `summary=NULL` 重入队让 SP-5 再跑一次。**一次性脚本契约**（继续 SP-4 §10 决策 11）：`packages/db/scripts/` + 包名 import + `bash scripts/run-prod-oneshot.sh` 调用。 |
-| **SP-5** | 2026-05-07 | PR #5-#7（squash `00d1273 / 93f59ce / 54de248`）·spec: `2026-05-05-sp5-ai-summary-tags-design.md` + `2026-05-05-sp5-ai-topic-filtering-design.md` (v3.2) ·plan: `2026-05-05-sp5-ai-summary-tags-plan.md` + `2026-05-06-sp5-ai-topic-filtering-v3-2-plan.md` | `packages/prompts/` 新 workspace 包（taxonomy 受控词表 + buildSystemPrompt / buildUserPrompt / parseSummarizeResponse + esbuild bundle 同 utils pattern + `keywords.md` 自动 copy + `matchesAiTopic`）· `apps/worker/src/summarize/` 完整模块（`summarize.module.ts` / `summarize.queue.ts` / `summarize.processor.ts` / `summarize.service.ts` / `llm-client.ts` + `strategies/{strategy.interface,summarize-all-visible}.ts`）· Vercel AI SDK + `@ai-sdk/openai` (OpenRouter compat) + `SUMMARY_CONCURRENCY=3` BullMQ Worker · `IngestionService` ingest 阶段 L0-skip（status=VISIBLE → push `summary:<id>`；非 AI / 低质量 → `result.skipped++` 不入库，**HIDDEN 通道彻底废弃**）· HN quality 阈值 score 5→**20**, descendants 2→**5** · Reddit 8 个 sub → 1 个 13-sub bundle (`r/ChatGPT+OpenAI+singularity+ArtificialInteligence+artificial+ClaudeAI+PromptEngineering+AI_Agents+vibecoding+LLMDevs+cursor+agi+LangChain/hot.json`) + 9 单 sub 各保留 60min · `consolidate-sp5-sources.ts` + `wipe-hot-news-pre-sp5.ts` 一次性脚本 · `HotNewsListItemDto` 加 `summary / aiTags` 字段 · `/news` 渲染 summary · `.env.example` + `docker-compose.prod.yml` 加 `OPENROUTER_API_KEY / SUMMARY_MODEL / LLM_BASE_URL / SUMMARY_CONCURRENCY` 透传 | **API 契约扩展**：`HotNewsListItemDto.summary: string \| null` + `aiTags: string[]`（prefix-encoded `company:X / model:Y / category:Z / tech:W`）。null 表示 worker 还没处理 / boot backstop 会 catch up。**HIDDEN 通道废弃**：v3.2 起 ingest 不再写 `status='HIDDEN'`，所有不达标的 → `result.skipped++` 不入库。SP-7 跨平台合并若想用历史 HIDDEN 信号需另起方案。**L0 主题过滤约定**：`keywords.md`（仓库根，开发者维护）→ `packages/prompts` 在 build 阶段 copy 进 bundle → ingest 阶段 `matchesAiTopic(title + content)` 判断；新增/调整关键词只需改 `keywords.md` + 重新 build prompts。**Boot backstop 契约**：`OnApplicationBootstrap` 扫 `summary IS NULL` 重入摘要队列 — 任何 prompt 版本 bump / 一次性 `UPDATE summary=NULL` 都依赖此机制 catch up。**插拔策略接口**（PRD §6 契约）：`SummarizationStrategy.shouldSummarize()` 返 `'allow' \| 'skip:<reason>'`；V1 仅实现 `SummarizeAllVisibleStrategy`，未来按热度阈值 / 平台白名单 / group-once 等限流策略可加新实现而不动 service 层。**LLM provider 抽象**：通过 Vercel AI SDK，`SUMMARY_MODEL` / `LLM_BASE_URL` env var 切换 provider 零代码改动（OpenRouter / OpenAI / Anthropic / 本地 ollama 都能跑）。 |
-| **SP-5-v3.3** | 2026-05-07 | `0e1904b / c64fe93`（commit `0e1904b` v3.3 主体 + `c64fe93` boot backstop fix） | `HotNews.titleZh String?` 列（migration `20260507135326_sp5_title_zh`）+ LLM prompt v2 同时输出 `titleZh`（10-30 字、保留专有名词、原文中文则复用）· parser 加 titleZh 字段 + 100 字硬上限 + null 兜底 · summary v2 改恰好 2 行 / 25-45 字一句 / `\n` 分隔 + `normalizeToTwoLines` LLM drift 兜底 · Web 用 `titleZh ?? title` 主显示 + 原 title 写入 `<a title>` tooltip + `whitespace-pre-line` + `line-clamp-2` · Reddit quality 阈值再升级（ratio 0.5→0.7 / score 5→10 / comments 2→5；拦截标题党 `score=0,comments=151,ratio=0.50` + 伸手党 `score=1,comments=2,ratio=1.00` 两种典型）· `cleanup-reddit-quality-v3-3.ts` 一次性脚本（按新阈值删现有 Reddit 行，prod 实测 33/110 删除 = 30%）· `SummarizeModule.onApplicationBootstrap` 加 `queue.clean(0, 0, 'failed')` 前置（c64fe93）—— 修 BullMQ jobId dedupe stuck bug：failed 集合 100 个 stale jobId hash 会让 boot backstop 的 `queue.add(jobId)` silently no-op | **SP-5 schema 扩展**：`HotNews.titleZh` 是 v3.3 起永久字段，所有 LLM 调用都会填。**spec §0.1 contract still holds**：原 `title` 不动，`titleZh` 是独立的"展示用中文标题"。**前端兜底链**：`titleZh ?? title` —— null 时 fallback 原标题，避免空白卡片。**Reddit quality 阈值新基线**：`packages/utils/src/quality.ts` 三常量 0.7 / 10 / 5 是后续所有 Reddit 数据源 SP（多语言 sub / 关键词搜索 sub 等）的默认起点；如果新 sub 信号噪声分布显著不同应通过 SourceConfig.metadata 注入 per-sub override 而不是改全局常量。**BullMQ jobId dedupe 教训**（写进 `apps/worker/src/summarize/summarize.module.ts` 注释 + `summarize.module.spec.ts` 回归 case）：`queue.add(name, data, { jobId })` 当 jobId 在 wait/active/completed/failed **任何**集合存在时被视为 dup，silently no-op。任何"mass UPDATE summary=NULL 重摘"运维操作都依赖 boot backstop 的 `queue.clean(0, 0, 'failed')` 前置；后续 SP-7 embedding backfill 等触发重摘的 SP 必须意识到这一点（**已知未修隐患**：`completed` 集合也会撞 dedupe，但因为 `removeOnComplete: count=100` + 单进程 worker 自然消化 + jobId 形式 `summarize-<rowId>` 是按行唯一的，正常 ingest 路径不会撞；只有手工 wipe 重摘才会，需要时手工 redis-cli 清 completed） |
-| **SP-5-v3.4** | 2026-05-07 | `042289c` | summary prompt rewrite from "exactly 2 lines, 25-45 chars each, joined by \n, total 60-90 字" → "single coherent paragraph, 50-80 字, no forced newline; LLM may use ONE \n only when there are genuinely two independent dimensions" · 增加套话 / 营销腔黑名单（"文章探讨了 / 该 X / 此举旨在 / 重磅 / 一文看懂" 等）· 加 2 个对照 ✗/✓ 示例锚定语感 · `SUMMARIZE_PROMPT_VERSION` 2→3 · `normalizeToTwoLines` 保留作 LLM drift 兜底（实际几乎不触发） | **Prompt 风格契约**：v3.4 起的所有 SP-5 摘要都是单段中立新闻派（"腾讯 AI 速递 / 少数派 Matrix" 风格），不再是"事实 + 解读"双行卡片。SP-11 详情页 4 维分析 / SP-21 AI 日报等下游 SP 如果想要更结构化的输出，应当用**新的 prompt** 而非复用 SP-5 的 summary（SP-5 summary 已经回归"卡片列表用的精炼 brief"定位）。**`whitespace-pre-line` 兼容性**：UI 仍保留该 CSS，覆盖 LLM 偶发输出 1 个 \n 的 dual-dimension case；删除该 CSS 不破坏 v3.4 主流场景但会让 dual-dimension case 文本挤成一行。 |
+
+| SP            | 完成日期       | Commit 范围                                                                                                                                                                                                                                                 | 关键产出                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | 对后续 SP 的契约影响                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ------------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **SP-0**      | 2026-05-02 | `fde9829..b87e7df`（含 `Merge SP-0`）                                                                                                                                                                                                                        | pnpm/turbo monorepo · `apps/{web,api,worker}` + `packages/{db,types,utils}` · Docker Compose（PG + pgvector + Redis）· Prisma schema（HotNews / SourceConfig / KeywordMonitor / KeywordHit ...）· CI · VPS 部署链路                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | 后续 SP 直接消费的基础。`packages/types` 是跨进程契约的源头；`packages/utils` 沉淀跨 crawler 公共逻辑                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| **SP-1**      | 2026-05-03 | `fde9829..7e6a491^`（即 SP-2 docs 之前）·SP-1 plan: `docs/superpowers/plans/2026-05-02-sp1-rss-list-end-to-end-plan.md`                                                                                                                                        | RssCrawler · CrawlScheduler（BullMQ repeat job，原队列名 `rss-crawl`）· CrawlProcessor · IngestionService（unique sourceUrl + try/catch 抑制 P2002）· `GET /hot-news` 分页 + DTO · `/news` 列表页（纯 Tailwind）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | RSS 数据流端到端打通。`Crawler` 接口在 SP-2 才被抽象；SP-1 的 `IngestionService.SourceLike` 在 SP-2 改为通用 `Platform`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| **SP-2**      | 2026-05-03 | `35da0fe..81f2c70`（13 commits + 2 docs）·spec: `2026-05-03-sp2-hackernews-crawler-design.md` ·plan: `2026-05-03-sp2-hackernews-crawler-plan.md`                                                                                                            | `Crawler` 接口 + `CrawlerFactory`（platform → crawler 路由）· `HackerNewsCrawler`（top/ask/show, p-limit, AbortSignal.timeout）· `stripHtml` 抽到 `@ai-hot-news/utils` · `RawCrawledItem.interactionData` 字段约定 · `HotNews.interactionData` 透传 · BullMQ 队列重命名 `rss-crawl → crawl` 并 `obliterate` 老队列 · seed 加 HN top/ask/show 三条 SourceConfig（identifier 而非 url）· `/news` platform 徽章渲染（`HN`/`RSS`/`Reddit`/`X` 4 色）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | **接口契约**：`Crawler.fetch(): Promise<RawCrawledItem[]>` 是后续所有平台抓取器的统一形态。**字段约定（spec §4.2）**：`interactionData` 各平台前缀字段命名固化（HN: `hnId`/Reddit: `redditId,redditSubreddit`/X: `twTweetId,twReposts`）。**SP-3/SP-22 影响**：直接 `case Platform.REDDIT/TWITTER` 加进 `CrawlerFactory.create()` switch + 在 `CrawlScheduler.platform IN [...]` 列表里加上即可，零结构改动                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| **SP-3**      | 2026-05-04 | `7994e79..afa11be`（9 commits）+ 本 docs commit ·spec: `2026-05-03-sp3-reddit-crawler-design.md`（v2 公开 `.json` 路线）·plan: `2026-05-03-sp3-reddit-crawler-plan.md`                                                                                             | `RedditCrawler` 走 Reddit 公开 `.json` 端点（无 OAuth），`resolveUrl()` 支持 `SourceConfig.url` 优先 / `identifier` 回退两种模式 · 8 个 AI subreddit hot 列表（LocalLLaMA / MachineLearning / artificial / OpenAI / ChatGPT / singularity / StableDiffusion / ClaudeAI），60min crawlInterval · `interactionData` 6 字段（`score / comments / externalUrl / redditId / redditSubreddit / redditUpvoteRatio`）· 显式 429 + 5xx 错误处理 · `REDDIT_USER_AGENT` 强制要求（`(by /u/<owner>)` 后缀）+ `REDDIT_FETCH_TIMEOUT_MS` 可调 · `CrawlerFactory` / `CrawlScheduler` / `IngestionService` 全部按 §11 "Onboarding 标准流程" 5 步走 · `RedditCrawler.toRaw()` 输出无尾斜杠 sourceUrl 与 `normalizeUrl()` canonical form 对齐                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | **新平台扩展形态**：`SourceConfig.url` 优先 vs `identifier` 拼接的双轨模式被 `RedditCrawler.resolveUrl()` 固化，未来加关键词搜索源 / 多 sub 集群源时 seed 直接填 `url` 字段，零代码改动接入。**URL canonical form 约定**：所有 crawler 的 `toRaw().sourceUrl` 必须与 `normalizeUrl()` 输出一致（无尾斜杠、无 tracking params、hash 已剥离），否则集成测试 `findFirstOrThrow` 会 P2025；HN / Reddit 已对齐，新平台 SP 必须遵守。**Onboarding 流程验证通过**：完全按 §11 "Onboarding 新平台 SP 的标准流程" 5 步实施，零结构改动                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| **SP-4.5**    | 2026-05-04 | `da31a09..c962c65`（13 commits = 2 docs + 9 feat + 1 test + 1 robustness fix）·spec: `2026-05-04-sp4-5-rss-windowing-design.md` ·plan: `2026-05-04-sp4-5-rss-windowing-plan.md`                                                                             | `IngestionService.isWithinIngestWindow()` 7d cutoff（RSS-only 平台早返、null `publishedAt`→drop、`>=` 边界）→ 进 `result.skipped`，不新增 `IngestResult` 字段 · `cleanup-rss-pre-window.ts` 一次性 `deleteMany WHERE sourcePlatform='RSS' AND publishedAt < now-7d`，dual-mode entrypoint（`require.main` + `argv[1].endsWith`）+ 集成测试（删除/HN-Reddit-不动/边界），整测试套件并发安全靠 `packages/db/vitest.config.ts: fileParallelism=false` · `sp4-5-update-rss-interval.sql` 幂等 SQL（`WHERE crawlInterval <> 86400`）· `ListHotNewsQuery.platforms?: AllowedPlatform[]` DTO 字段（`@Transform` trim+upper、`@IsIn` 校验、未知平台→400）· `HotNewsService.list(page, size, platforms?)` + `PLATFORM_WINDOW_HOURS: Record<Platform, number>`（HN=48 / Reddit=48 / RSS=168 / Twitter=48 占位 typesafe）+ `DEFAULT_PLATFORMS=['HACKERNEWS','REDDIT']`（`platforms?.length ? platforms : DEFAULT_PLATFORMS` 同时处理 `undefined` 与 `[]`）· `where = { status: 'VISIBLE', OR: [{sourcePlatform, publishedAt: {gte: now-hours*ms}}, ...] }`，`findMany` 与 `count` 共享同一 where · `HotNewsController.list()` 透传 `query.platforms` · `fetchHotNewsList(page, size, platforms?: FeedPlatform[])` Web 层 fetch + `URLSearchParams` 序列化为 `?platforms=A,B` · `apps/web/app/news/_components/feed-tabs.tsx` 服务端组件（`?tab=community|media`，default community）· `/news/page.tsx` 用 `TAB_PLATFORMS` map 把 tab 转 `platforms[]` 传给 fetcher，EmptyState 移到 `<main>` 内（保留 tabs 始终可见）· `Pagination` 改用 Next `UrlObject` 形式（`{pathname:'/news', query:{tab,page}}`）以兼容 `typedRoutes:true`，渲染 URL 仍为 `/news?tab=...&page=...` | **API 默认行为变更（breaking）**：`GET /hot-news` 默认从「全部平台 VISIBLE」变成「HN+REDDIT 48h VISIBLE」。任何不带 `?platforms=` 的旧客户端会少看到 RSS。Web 端配套切换到 `?tab=` 协议；外部脚本如有依赖需升级。**新平台扩展点**：`PLATFORM_WINDOW_HOURS` 是 `Record<Platform, number>` exhaustive，未来加 Twitter / 任何新 Platform 必须同时填窗口；`ALLOWED_PLATFORMS`（DTO）和 `FeedPlatform`（web）是 union string，新平台需三处同步。**Ingest cutoff 契约**：RSS-only，HN/Reddit 仍依赖 SP-4 quality 维度过滤；将来若有新「snapshot 型协议」（GitHub trending、产品周报等）应该挂同款 cutoff，`isWithinIngestWindow` 是命名锚点。**一次性脚本契约（继续遵守 SP-4 §10 决策 11）**：`cleanup-rss-pre-window.ts` 用包名 import + `scripts/run-prod-oneshot.sh` 调用，prod 部署需先 stop worker 维持 single-writer。`**fileParallelism=false` 并发安全契约（新增）**：`packages/db` 集成测试共享一个 dev DB，全局性 deleteMany 测试与其他 spec 并行会冲突；新增 db-package 测试若是「全局性写」必须意识到该 fileParallelism 关闭、测试断言改 prefix-scoped 而非全局精确计数（用例 1 修过同款 flake，commit `c962c65`）。**前端 typedRoutes 兼容**：`next.config.ts: typedRoutes=true` 下任何含 `${string-union}` 的 `Link href` 必须用 `UrlObject` 形式 `{pathname, query}`，模板字符串无法静态收窄。后续 SP-? 想给 `/news` 加更多 query 参数照同款写。**RSS 拉取节流**：crawlInterval 30min→1d，最坏延迟 24h；如果运营反馈 OpenAI/Anthropic 新博客上线滞后明显，可短期调回 1800 而无需改代码（DB-driven）。**Web 测试基础设施债**（implicit）：`apps/web` 至今无 vitest infra（`test` script 是 `echo 'no tests yet (P4)'`），Task 7 的 fetchHotNewsList 改动跳过单测靠 typecheck + Task 11 prod smoke 兜底；如果未来 web 逻辑分支变多应单独开 SP 装 vitest+jsdom+RTL，目前 YAGNI。 |
+| **SP-4**      | 2026-05-04 | `aa9e03a..652c981`（14 commits）·spec: `2026-05-04-sp4-content-cleaning-dedup-design.md` ·plan: `2026-05-04-sp4-content-cleaning-dedup-plan.md`                                                                                                             | `normalizeUrl` 6 条新规则（http→https / Reddit alias / Twitter alias / m./mobile. 剥离 / 重复 query 合并 last-wins / 空 `?` 串剥离）· `stripTitleBoilerplate`（13 站点白名单 + 4 种 dash/pipe 分隔符）+ `stripContentBoilerplate`（4 种 RSS 尾部模式 + 空白/换行折叠）· `quality.ts` 三函数（`checkRedditQuality` / `checkHnQuality` / `checkUniversalQuality`）+ `FILTER_REASONS` 4 常量 · `RawCrawledItem.filterReason?: string | null` 字段（types 包）· `HotNews.filterReason String?` 列 + Prisma migration（`20260504073513_sp4_filter_reason`，camelCase 列名）· `RedditCrawler.toRaw()` / `HackerNewsCrawler.toRaw()` 写入 `filterReason` · `IngestionService` 入库前清洗（cleanTitle/cleanContent 先于 dedupeHash 计算）+ `raw.filterReason ?? checkUniversalQuality()` 兜底 + status/filterReason 写入 + `IngestResult.hidden` 计数 · `CrawlProcessor` 日志含 `hidden=` · `HotNewsService` 默认 `WHERE status=VISIBLE` · `packages/db/scripts/migrate-sp4.ts` 一次性 backfill（Layer 1 normalize + Layer 2 quality）含按 `publishedAt` 决策的 P2002 collapse · `pnpm db:migrate-sp4` 根脚本 · `packages/db/test/setup-env.ts` 让 turbo test 自动 load `.env`                                                                                                                                                                                                                                                                                                                                                                                                                                                              | **新过滤维度契约**：dimension 1 (compliance) → drop in crawler；dimension 2 (quality) → ingest with `status='HIDDEN'` + `filterReason`；dimension 3 (topic) → defer to SP-5 LLM。**HIDDEN 数据保留契约**：SP-7 跨平台合并消费 HIDDEN 行做覆盖度信号增强；SP-5 LLM 上线后可重新判定 status；任何写入路径必须维护两条不变量「`VISIBLE & filterReason!=NULL` count=0」「`HIDDEN & filterReason=NULL` count=0」。**utils 内阈值约定**：所有 quality 阈值集中在 `packages/utils/src/quality.ts`，未来想 per-source 调整可升级到 `SourceConfig.metadata` 注入。**API 默认契约**：`GET /hot-news` 默认 `WHERE status='VISIBLE'`，不暴露 `?includeHidden=true`（YAGNI）。**清洗流水线契约**：`stripTitleBoilerplate` → `stripContentBoilerplate` → `computeDedupeHash(sourceUrl, cleanTitle)` → quality verdict → status，新 crawler 必须遵守这一前后顺序。**P2002 backfill collapse 算法**：P2002 时 findFirst 查冲突方比 `publishedAt`，删较新者并 retry 当前 update；不可在 backfill 期间并发写入（单 writer 假设）。**一次性 prod 脚本契约**（post-mortem，详见 §10 决策 11）：脚本放 `packages/db/scripts/`、用包名 import（`'@ai-hot-news/db'` / `'@ai-hot-news/utils'`）、worker Dockerfile `COPY packages/db/scripts`、运维通过 `bash scripts/run-prod-oneshot.sh packages/db scripts/<script>.ts` 调用；后续 SP-7 pgvector backfill / SP-19 KeywordTimeSeries 聚合等所有一次性脚本必须遵守。                                                                                                                                                                                                                  |
+| **SP-4.6**    | 2026-05-05 | `5af5ffe..05fb692`（6 commits）·spec: `2026-05-04-sp4-6-rss-sources-expansion-design.md` ·plan: `2026-05-04-sp4-6-rss-sources-expansion-plan.md`                                                                                                            | seed 加 4 个新 RSS 源（Anthropic GitHub raw mirror + Cursor Blog + Claude Blog + Claude Code Changelog）· `normalizeUrl` 加 `code.claude.com/docs/en/changelog` 精确路径白名单保留 Mintlify changelog `#X.Y.Z` 锚点（其它 host 仍剥 fragment）· seed.ts dual-mode（apply 主路径）+ `sp4.6-add-rss-sources.sql` 幂等 SQL fallback · 7 RSS 源全部 `crawlInterval=86400`（24h）· prod 数据点：default RSS total 9 → 27（4 个新源全部抓到，含 5 条 Mintlify changelog `#X.Y.Z` 各自唯一）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | `**normalizeUrl` 精确路径白名单契约**：保留 fragment 是该函数的破例行为，未来如有同款"fragment 是唯一 ID"协议需求（如某 changelog 站点）请加白名单条目 `(host, exact_path)` 而不是松动 host-level 规则。**RSS 源管理 = pure DB 操作**：seed 改动是 idempotent upsert，prod deploy 通过 `prisma db seed` 自动 apply；如果未来想动态加/减 RSS 源（例如关键词搜索源、用户订阅源），路径已铺好。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| **SP-4.7**    | 2026-05-05 | PR #1-#4（squash `d3a52183 / a06ee87c / 9317d4a4 / 52cf4e3`）·spec: `2026-05-05-sp4-7-article-extractor-design.md` ·plan: `2026-05-05-sp4-7-article-extractor-plan.md`                                                                                      | `apps/worker/src/extract/` 完整模块（`extract.module.ts` / `extract.queue.ts` / `extract.service.ts` / `extract.processor.ts` + chain / firecrawl / jina providers）· `HotNews` 加 `extractStatus String?` + `extractAttempts Int @default(0)` 列（migration `20260505072156_sp4_7_extract_status` + 部分索引 `hot_news_extract_pending_idx`）· `IngestionService` 在 ingest 阶段对 link-post 哨兵（HN/Reddit `interactionData.externalUrl` 存在且 `content==title`）触发 `extract:<id>` 入队 · `extractStatus=EXTRACTED` 后 `summary=NULL` 重入 `summary:<id>` 队列触发 SP-5 重摘 · `apps/worker/src/redis/redis.module.ts` 抽出 `RedisModule` 共享 `REDIS_CONNECTION` token（PR #2 修 SummarizeModule / ExtractModule queue providers UnknownDependenciesException 同款 bug）· `docker/docker-compose.prod.yml` worker.environment 显式透传 `FIRECRAWL_API_KEY / JINA_API_KEY / EXTRACT_CONCURRENCY`（PR #3 修：compose 只透传显式声明的变量）· `wipe-hot-news-pre-ai.ts` 一次性脚本（"AI 阶段开机"操作）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | **PR-driven workflow 起点**：SP-4.7 是首个 ship via 4 个 PR 而非 main 直推的 SP，hot-fix 路径（PR #2 / #3）成为后续 SP 的标准模板。`**RedisModule` 契约**：任何 inject `REDIS_CONNECTION` 的新 module 必须 `imports: [RedisModule]`，否则 unit test (`apps/worker/src/redis/redis.module.spec.ts`) 阶段就红 — SP-5 / SP-6 / SP-7 等所有用 BullMQ 的新 module 必须遵守。`**docker-compose.prod.yml` env 透传契约**：worker.environment 段必须显式 `FOO: ${FOO}` 才会注入到容器；只在 `.env` 写不够。后续任何新增 worker 端 env var 都必须**同步**改 compose（不要省略）。**ingest → extract → summary 三段触发链**：SP-5 v3.4 仍依赖该链路 — link-post 第一次摘要可能基于 `content==title` 出 degraded 摘要，SP-4.7 跑完后 `summary=NULL` 重入队让 SP-5 再跑一次。**一次性脚本契约**（继续 SP-4 §10 决策 11）：`packages/db/scripts/` + 包名 import + `bash scripts/run-prod-oneshot.sh` 调用。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| **SP-5**      | 2026-05-07 | PR #5-#7（squash `00d1273 / 93f59ce / 54de248`）·spec: `2026-05-05-sp5-ai-summary-tags-design.md` + `2026-05-05-sp5-ai-topic-filtering-design.md` (v3.2) ·plan: `2026-05-05-sp5-ai-summary-tags-plan.md` + `2026-05-06-sp5-ai-topic-filtering-v3-2-plan.md` | `packages/prompts/` 新 workspace 包（taxonomy 受控词表 + buildSystemPrompt / buildUserPrompt / parseSummarizeResponse + esbuild bundle 同 utils pattern + `keywords.md` 自动 copy + `matchesAiTopic`）· `apps/worker/src/summarize/` 完整模块（`summarize.module.ts` / `summarize.queue.ts` / `summarize.processor.ts` / `summarize.service.ts` / `llm-client.ts` + `strategies/{strategy.interface,summarize-all-visible}.ts`）· Vercel AI SDK + `@ai-sdk/openai` (OpenRouter compat) + `SUMMARY_CONCURRENCY=3` BullMQ Worker · `IngestionService` ingest 阶段 L0-skip（status=VISIBLE → push `summary:<id>`；非 AI / 低质量 → `result.skipped++` 不入库，**HIDDEN 通道彻底废弃**）· HN quality 阈值 score 5→**20**, descendants 2→**5** · Reddit 8 个 sub → 1 个 13-sub bundle (`r/ChatGPT+OpenAI+singularity+ArtificialInteligence+artificial+ClaudeAI+PromptEngineering+AI_Agents+vibecoding+LLMDevs+cursor+agi+LangChain/hot.json`) + 9 单 sub 各保留 60min · `consolidate-sp5-sources.ts` + `wipe-hot-news-pre-sp5.ts` 一次性脚本 · `HotNewsListItemDto` 加 `summary / aiTags` 字段 · `/news` 渲染 summary · `.env.example` + `docker-compose.prod.yml` 加 `OPENROUTER_API_KEY / SUMMARY_MODEL / LLM_BASE_URL / SUMMARY_CONCURRENCY` 透传                                                                                                                                                                                                                                                                                                                                            | **API 契约扩展**：`HotNewsListItemDto.summary: string | null` + `aiTags: string[]`（prefix-encoded `company:X / model:Y / category:Z / tech:W`）。null 表示 worker 还没处理 / boot backstop 会 catch up。**HIDDEN 通道废弃**：v3.2 起 ingest 不再写 `status='HIDDEN'`，所有不达标的 → `result.skipped++` 不入库。SP-7 跨平台合并若想用历史 HIDDEN 信号需另起方案。**L0 主题过滤约定**：`keywords.md`（仓库根，开发者维护）→ `packages/prompts` 在 build 阶段 copy 进 bundle → ingest 阶段 `matchesAiTopic(title + content)` 判断；新增/调整关键词只需改 `keywords.md` + 重新 build prompts。**Boot backstop 契约**：`OnApplicationBootstrap` 扫 `summary IS NULL` 重入摘要队列 — 任何 prompt 版本 bump / 一次性 `UPDATE summary=NULL` 都依赖此机制 catch up。**插拔策略接口**（PRD §6 契约）：`SummarizationStrategy.shouldSummarize()` 返 `'allow' | 'skip:<reason>'`；V1 仅实现 `SummarizeAllVisibleStrategy`，未来按热度阈值 / 平台白名单 / group-once 等限流策略可加新实现而不动 service 层。**LLM provider 抽象**：通过 Vercel AI SDK，`SUMMARY_MODEL` / `LLM_BASE_URL` env var 切换 provider 零代码改动（OpenRouter / OpenAI / Anthropic / 本地 ollama 都能跑）。                                                                                                                                                                                                                                                                                                                                                                                                               |
+| **SP-5-v3.3** | 2026-05-07 | `0e1904b / c64fe93`（commit `0e1904b` v3.3 主体 + `c64fe93` boot backstop fix）                                                                                                                                                                               | `HotNews.titleZh String?` 列（migration `20260507135326_sp5_title_zh`）+ LLM prompt v2 同时输出 `titleZh`（10-30 字、保留专有名词、原文中文则复用）· parser 加 titleZh 字段 + 100 字硬上限 + null 兜底 · summary v2 改恰好 2 行 / 25-45 字一句 / `\n` 分隔 + `normalizeToTwoLines` LLM drift 兜底 · Web 用 `titleZh ?? title` 主显示 + 原 title 写入 `<a title>` tooltip + `whitespace-pre-line` + `line-clamp-2` · Reddit quality 阈值再升级（ratio 0.5→0.7 / score 5→10 / comments 2→5；拦截标题党 `score=0,comments=151,ratio=0.50` + 伸手党 `score=1,comments=2,ratio=1.00` 两种典型）· `cleanup-reddit-quality-v3-3.ts` 一次性脚本（按新阈值删现有 Reddit 行，prod 实测 33/110 删除 = 30%）· `SummarizeModule.onApplicationBootstrap` 加 `queue.clean(0, 0, 'failed')` 前置（c64fe93）—— 修 BullMQ jobId dedupe stuck bug：failed 集合 100 个 stale jobId hash 会让 boot backstop 的 `queue.add(jobId)` silently no-op                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | **SP-5 schema 扩展**：`HotNews.titleZh` 是 v3.3 起永久字段，所有 LLM 调用都会填。**spec §0.1 contract still holds**：原 `title` 不动，`titleZh` 是独立的"展示用中文标题"。**前端兜底链**：`titleZh ?? title` —— null 时 fallback 原标题，避免空白卡片。**Reddit quality 阈值新基线**：`packages/utils/src/quality.ts` 三常量 0.7 / 10 / 5 是后续所有 Reddit 数据源 SP（多语言 sub / 关键词搜索 sub 等）的默认起点；如果新 sub 信号噪声分布显著不同应通过 SourceConfig.metadata 注入 per-sub override 而不是改全局常量。**BullMQ jobId dedupe 教训**（写进 `apps/worker/src/summarize/summarize.module.ts` 注释 + `summarize.module.spec.ts` 回归 case）：`queue.add(name, data, { jobId })` 当 jobId 在 wait/active/completed/failed **任何**集合存在时被视为 dup，silently no-op。任何"mass UPDATE summary=NULL 重摘"运维操作都依赖 boot backstop 的 `queue.clean(0, 0, 'failed')` 前置；后续 SP-7 embedding backfill 等触发重摘的 SP 必须意识到这一点（**已知未修隐患**：`completed` 集合也会撞 dedupe，但因为 `removeOnComplete: count=100` + 单进程 worker 自然消化 + jobId 形式 `summarize-<rowId>` 是按行唯一的，正常 ingest 路径不会撞；只有手工 wipe 重摘才会，需要时手工 redis-cli 清 completed）                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| **SP-5-v3.4** | 2026-05-07 | `042289c`                                                                                                                                                                                                                                                 | summary prompt rewrite from "exactly 2 lines, 25-45 chars each, joined by \n, total 60-90 字" → "single coherent paragraph, 50-80 字, no forced newline; LLM may use ONE \n only when there are genuinely two independent dimensions" · 增加套话 / 营销腔黑名单（"文章探讨了 / 该 X / 此举旨在 / 重磅 / 一文看懂" 等）· 加 2 个对照 ✗/✓ 示例锚定语感 · `SUMMARIZE_PROMPT_VERSION` 2→3 · `normalizeToTwoLines` 保留作 LLM drift 兜底（实际几乎不触发）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | **Prompt 风格契约**：v3.4 起的所有 SP-5 摘要都是单段中立新闻派（"腾讯 AI 速递 / 少数派 Matrix" 风格），不再是"事实 + 解读"双行卡片。SP-11 详情页 4 维分析 / SP-21 AI 日报等下游 SP 如果想要更结构化的输出，应当用**新的 prompt** 而非复用 SP-5 的 summary（SP-5 summary 已经回归"卡片列表用的精炼 brief"定位）。`**whitespace-pre-line` 兼容性**：UI 仍保留该 CSS，覆盖 LLM 偶发输出 1 个 \n 的 dual-dimension case；删除该 CSS 不破坏 v3.4 主流场景但会让 dual-dimension case 文本挤成一行。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+
 
 ### SP-3 端到端 smoke 凭据（2026-05-04）
 
 - **DB 实测**：本地 backfill 后 `hot_news` 共 1927 行（RSS=1129、HACKERNEWS=610、REDDIT=188），`sourcePlatform` 列分布正确，`interactionData` JSON 列 188/188 = 100% 填充率（HN 610/610 同样 100%、RSS 0/1129 = 0%，符合各平台契约）。样本：`{score: 219, comments: 51, redditId: "1t1p098", externalUrl: "https://i.redd.it/...", redditSubreddit: "ClaudeAI", redditUpvoteRatio: 0.96}`，与 SP-3 spec §4 约定完全一致。
 - **公开 `.json` 端点 reachability 实测**：直接 `curl -A "ai-hot-news-bot/0.1 (by /u/anonymous)" 'https://www.reddit.com/r/OpenAI/hot.json?limit=5&raw_json=1'` 返回 HTTP 200 + 标准 `Listing` payload，包含 `id / title / score / num_comments` 全字段；本机 IP 未触发 429。
-- **8 个 sub 全部 backfill**：worker 启动 ~3 分钟内 8 个 `crawl-boot-cmopz800*` 任务全部 `completed`（BullMQ events stream 验证），`/news` 渲染 36 个 `bg-red-50 text-red-700` Reddit 徽章覆盖全部 8 个 subreddit（含 r/LocalLLaMA / r/MachineLearning / r/artificial / r/OpenAI / r/ChatGPT / r/singularity / r/StableDiffusion / r/ClaudeAI）。
+- **8 个 sub 全部 backfill**：worker 启动 ~3 分钟内 8 个 `crawl-boot-cmopz800`* 任务全部 `completed`（BullMQ events stream 验证），`/news` 渲染 36 个 `bg-red-50 text-red-700` Reddit 徽章覆盖全部 8 个 subreddit（含 r/LocalLLaMA / r/MachineLearning / r/artificial / r/OpenAI / r/ChatGPT / r/singularity / r/StableDiffusion / r/ClaudeAI）。
 - **Idempotency 实测**：`pnpm db:seed` 二次跑 8 个 Reddit candidates 全走 UPDATE 路径（非 INSERT），`source_configs` REDDIT 行数恒等于 8；`IngestionService` REDDIT 路径的 first-write-wins 行为由集成测试 `does NOT overwrite interactionData on duplicate sourceUrl` 自动验证（commit `5f9bde7`）。
 - **测试矩阵**：worker 45/45 + api 3/3 + 其他全绿；含新增 13/13 `RedditCrawler` 单元测试 + 3/3 `IngestionService` REDDIT 集成测试 + 4/4 `CrawlerFactory` + 4/4 `CrawlScheduler`。`pnpm turbo run lint typecheck` 16/16 cached/clean，`pnpm turbo run build` 7/7 通过。
 
@@ -599,7 +637,7 @@ M8 = P7 完成          → 完整能力（含 Twitter）         (~第 17 周)
   /api/hot-news?platforms=HACKERNEWS      total=140 items: 全 HACKERNEWS ✅
   ```
   - **默认 = HN+REDDIT 48h** 由 `DEFAULT_PLATFORMS=['HACKERNEWS','REDDIT']` 兜底，total 399 比 SP-4 smoke 的 2025 少了 ~80% 是预期（窗口从全历史→48h）。
-  - **`?platforms=RSS` 命中所有 9 行**（DB VISIBLE RSS = 9，API total = 9，完全对齐），证明 7d 窗口 + status=VISIBLE 同时生效且无任何 HIDDEN 漏出。
+  - `**?platforms=RSS` 命中所有 9 行**（DB VISIBLE RSS = 9，API total = 9，完全对齐），证明 7d 窗口 + status=VISIBLE 同时生效且无任何 HIDDEN 漏出。
   - **单平台过滤** API total=140，`unique platforms = {'HACKERNEWS'}`，证明 platforms 参数 `IsIn` 校验 + service `OR` 子句精确路由。
 - **Worker scheduler 实测**：worker startup 日志显示 `[CrawlScheduler] Registered 14 enabled sources: 3 HACKERNEWS, 8 REDDIT, 3 RSS`（Anthropic disabled 不进队列），紧随 `Old queue 'rss-crawl' obliterated` + Liveness writer started。3 个 RSS 源以 86400s（24h）注册到 BullMQ repeat job，DB-driven 配置生效。
 - **deploy.yml 自动 smoke**：CI 25324681962 → Deploy SSH 部署 + `/api/health` + `/api/hot-news?pageSize=1` 双绿后再做的本次 SP-4.5 后端操作，整链路无 step 失败。
@@ -660,18 +698,18 @@ M8 = P7 完成          → 完整能力（含 Twitter）         (~第 17 周)
 - **测试矩阵**：52/52 自动化测试绿（含 6/6 PostgreSQL integration test 验证 HN interactionData 透传 + 重复 sourceUrl 不覆盖语义）；worker/types/utils typecheck + lint 全清。
 - **SP-2 收尾 session 修复的 dev/deploy 遗留**（commits `c66673d` / `cfea0b4` / `d6d6a69`）：
   - **Auto-deploy seed**：`scripts/deploy.sh` 现在在 `prisma migrate deploy` 之后**自动**跑一次 `prisma db seed` 并 restart worker。SP-2 首次 deploy `cdc78cd` 时因为没有这一步，prod 一度只有 RSS=1129 行没有 HN — 修复后 `cfea0b4` 触发的 deploy 立即把 prod 拉到 RSS+HN 混合 1734 行。详见下方 "Onboarding 新平台 SP 的标准流程"。
-  - **`pnpm dev` race condition**：根因不是 nest watch，是 `apps/{api,worker}/nest-cli.json` 的 `deleteOutDir: true` 让 `nest start --watch --tsc` 启动时清空 dist 目录，导致 node 立即 require 失败。改为 `false` + `dev` script 改成 `tsc + nest start --watch` 形态后 cold start 干净。
-  - **`engines.node` 收紧**：从 `>=22.0.0` 收紧到 `>=22.0.0 <23.0.0`，避免 Node 25 等更新主版本误用。`.npmrc` 加 `engine-strict=true` 让本机 install 直接 fail-fast。
+  - `**pnpm dev` race condition**：根因不是 nest watch，是 `apps/{api,worker}/nest-cli.json` 的 `deleteOutDir: true` 让 `nest start --watch --tsc` 启动时清空 dist 目录，导致 node 立即 require 失败。改为 `false` + `dev` script 改成 `tsc + nest start --watch` 形态后 cold start 干净。
+  - `**engines.node` 收紧**：从 `>=22.0.0` 收紧到 `>=22.0.0 <23.0.0`，避免 Node 25 等更新主版本误用。`.npmrc` 加 `engine-strict=true` 让本机 install 直接 fail-fast。
   - **Next.js 15.5 `<Html>` /500 build error**：vercel/next.js#83784 的上游 bug，**只影响本机 Node 25 + standalone build**，CI 在 Node 22 上一直 green、docker prod 镜像构建一直 green。已加 `app/not-found.tsx` + `app/global-error.tsx` 作为社区推荐 workaround，等上游修复后可清理。
 
 ### Onboarding 新平台 SP 的标准流程（auto-deploy seed 约定，2026-05-03 起生效）
 
 SP-2 收尾时把 `prisma db seed` 嵌进 `scripts/deploy.sh`，**新增数据源平台从此变成纯代码改动**，零手工 ssh。SP-3（Reddit）/ SP-22（Twitter） 等后续平台 SP 的接入流程：
 
-1. **`packages/db/prisma/seed.ts`**：追加新平台的 `<Platform>Candidate` 类型 + candidates 数组 + `seed<Platform>()` 函数，跟 `seedHn()` 对齐（findFirst-then-update-or-create on (platform, identifier)；如果新平台天然有 url 唯一键也可走 `upsert(platform_url)` 像 RSS 那样）。在 `main()` 里加 `await seed<Platform>()` 调用。
-2. **`apps/worker/src/crawl/crawler.factory.ts`**：在 switch 里加一个 `case Platform.<NEW>: return new <New>Crawler(...)` 分支（O(1) 改动）。
-3. **`apps/worker/src/crawl/crawl.scheduler.ts`**：把 `Platform.<NEW>` 加到 `findMany.where.platform.in [...]` 数组（1 行）。
-4. **`apps/web/app/news/_components/news-item.tsx`**：在 `PLATFORM_LABEL` + `PLATFORM_BADGE_CLASS` map 里加新平台的展示 label + tailwind class（已经 SP-2 时把 RSS/HN/REDDIT/TWITTER 4 个 badge 全占好位）。
+1. `**packages/db/prisma/seed.ts`**：追加新平台的 `<Platform>Candidate` 类型 + candidates 数组 + `seed<Platform>()` 函数，跟 `seedHn()` 对齐（findFirst-then-update-or-create on (platform, identifier)；如果新平台天然有 url 唯一键也可走 `upsert(platform_url)` 像 RSS 那样）。在 `main()` 里加 `await seed<Platform>()` 调用。
+2. `**apps/worker/src/crawl/crawler.factory.ts**`：在 switch 里加一个 `case Platform.<NEW>: return new <New>Crawler(...)` 分支（O(1) 改动）。
+3. `**apps/worker/src/crawl/crawl.scheduler.ts**`：把 `Platform.<NEW>` 加到 `findMany.where.platform.in [...]` 数组（1 行）。
+4. `**apps/web/app/news/_components/news-item.tsx**`：在 `PLATFORM_LABEL` + `PLATFORM_BADGE_CLASS` map 里加新平台的展示 label + tailwind class（已经 SP-2 时把 RSS/HN/REDDIT/TWITTER 4 个 badge 全占好位）。
 5. **数据库 schema**：通常**不需要改** — `interactionData` 是 JSONB 字段，按 spec §4.2 字段命名约定（`<platform>Id` / `<platform><Field>`）填进去即可。Prisma `Platform` enum 已在 SP-0 schema 里包含 `RSS / HACKERNEWS / REDDIT / TWITTER`。
 
 push 到 main 后 GitHub Actions 自动跑 CI → Build images → Deploy（含 `prisma db seed` + `restart worker`），新平台数据约 3-5 分钟后开始流入 prod。无需手工 ssh、无需手工 seed、无需手工 restart。
@@ -706,16 +744,18 @@ SP-4.7 ArticleExtractor 已落地：
 - prod 二次 reset：fix #3 之后将 PR #2 deploy 期间残留的 536 行 `extractStatus='FAILED'`（jina 限流误标）UPDATE 回 `PENDING/extractAttempts=0`，restart worker 让 boot backstop 重新入队
 - prod smoke（部署后 ~30 分钟）：
 
-| 指标 | 值 | 阈值 |
-|---|---|---|
-| 总行数 | 811 | — |
-| `extractStatus IS NULL`（self-post / RSS） | 178 | 合理 |
-| `EXTRACTED` | 527 + 持续上升 | — |
-| `FAILED` | 7 (0.86% of link-posts) | < 10% ✓ |
-| `PENDING`（in-flight） | 99 | 收敛中 |
-| `EXTRACTED && content==title` | 0 | = 0 ✓ |
-| `VISIBLE && filterReason IS NOT NULL` | 0 | = 0 ✓ |
-| 5 行最近 EXTRACTED `clen vs tlen` | 7054/9006/14123/8226/38328 vs 11–78 | content >> title ✓ |
+
+| 指标                                       | 值                                   | 阈值                 |
+| ---------------------------------------- | ----------------------------------- | ------------------ |
+| 总行数                                      | 811                                 | —                  |
+| `extractStatus IS NULL`（self-post / RSS） | 178                                 | 合理                 |
+| `EXTRACTED`                              | 527 + 持续上升                          | —                  |
+| `FAILED`                                 | 7 (0.86% of link-posts)             | < 10% ✓            |
+| `PENDING`（in-flight）                     | 99                                  | 收敛中                |
+| `EXTRACTED && content==title`            | 0                                   | = 0 ✓              |
+| `VISIBLE && filterReason IS NOT NULL`    | 0                                   | = 0 ✓              |
+| 5 行最近 EXTRACTED `clen vs tlen`           | 7054/9006/14123/8226/38328 vs 11–78 | content >> title ✓ |
+
 
 下一步推进顺序更新为：
 
@@ -741,5 +781,7 @@ SP-5 三轮迭代（v3.2 主体 + v3.3 标题翻译 + 双行摘要 + Reddit 阈�
 4. **Web 测试基础设施 SP（YAGNI / 待触发）**：保持现状；SP-8 落地后 web 分支会变多，再单独开 SP 装 vitest+jsdom+RTL。
 
 **SP-5 已知未修隐患（write-up）**：
+
 - `BullMQ.queue.add(jobId)` 当 jobId 在 `completed` 集合也存在时会 dedupe（c64fe93 只清了 `failed`）。正常 ingest 不会撞（jobId 形式 `summarize-<rowId>` 按行唯一），仅"手工 mass UPDATE summary=NULL 重摘"运维操作会撞（要求手工 redis-cli 清 completed）。SP-7 embedding backfill 等下游 SP 如果要触发重摘需注意。
 - v3.4 prompt 套话黑名单 LLM 不会 100% 遵守（实测 ~5/6 样本完全干净，1/6 仍出现"文章指出"等元叙述）。如需 100% 干净可加 few-shot 反例 + 调 temperature 0；当前 95%+ 改善已足够，YAGNI。
+

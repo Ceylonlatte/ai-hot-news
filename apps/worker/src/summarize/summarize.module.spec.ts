@@ -65,7 +65,7 @@ describe('SummarizeModule.onApplicationBootstrap (boot backstop)', () => {
     );
   });
 
-  it('clears stale failed jobs BEFORE re-queueing (SP-5 v3.3 regression: BullMQ jobId dedupe)', async () => {
+  it('clears stale failed AND completed jobs BEFORE re-queueing (SP-5 v3.5 regression: BullMQ jobId dedupe checks both sets)', async () => {
     queue.clean.mockResolvedValue(['summarize-stale-1', 'summarize-stale-2']);
     mockPrisma.hotNews.findMany.mockResolvedValue([{ id: 'fresh' }]);
     const m = new SummarizeModule(queue as unknown as Queue, worker as unknown as Worker);
@@ -73,12 +73,16 @@ describe('SummarizeModule.onApplicationBootstrap (boot backstop)', () => {
     await m.onApplicationBootstrap();
 
     expect(queue.clean).toHaveBeenCalledWith(0, 0, 'failed');
-    const cleanCallOrder = queue.clean.mock.invocationCallOrder[0]!;
+    expect(queue.clean).toHaveBeenCalledWith(0, 0, 'completed');
+    const firstCleanOrder = queue.clean.mock.invocationCallOrder[0]!;
+    const lastCleanOrder =
+      queue.clean.mock.invocationCallOrder[queue.clean.mock.invocationCallOrder.length - 1]!;
     const firstAddCallOrder = queue.add.mock.invocationCallOrder[0]!;
-    expect(cleanCallOrder).toBeLessThan(firstAddCallOrder);
+    expect(lastCleanOrder).toBeLessThan(firstAddCallOrder);
+    expect(firstCleanOrder).toBeLessThan(firstAddCallOrder);
   });
 
-  it('still works when no failed jobs exist (clean returns empty)', async () => {
+  it('still works when both clean buckets return empty', async () => {
     queue.clean.mockResolvedValue([]);
     mockPrisma.hotNews.findMany.mockResolvedValue([{ id: 'a' }]);
     const m = new SummarizeModule(queue as unknown as Queue, worker as unknown as Worker);

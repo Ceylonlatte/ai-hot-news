@@ -67,19 +67,19 @@ export class SummarizeModule
   ) {}
 
   async onApplicationBootstrap(): Promise<void> {
-    // SP-5 v3.3 fix: BullMQ deduplicates queue.add(jobId) by checking the
-    // `bull:<queue>:<jobId>` hash key. With removeOnFail: { count: 100 } we
-    // keep the last 100 failed jobs around — including their hashes — and
-    // any future re-queue with the same jobId silently no-ops. After ops
-    // events that mass-clear `summary` to NULL (prompt version bumps,
-    // backfills, prod env-key recovery), boot backstop must clear stale
-    // failed history first; otherwise rows whose previous attempts went
-    // through a transient infra failure stay stuck forever even though the
-    // underlying issue is fixed.
+    // SP-5 v3.3 fix (extended in v3.5): BullMQ deduplicates queue.add(jobId)
+    // by checking the `bull:<queue>:<jobId>` hash key — and the hash
+    // survives in BOTH the `failed` and `completed` zsets (capped by
+    // removeOnFail/removeOnComplete: count=100). Without clearing both,
+    // ops events that mass-clear `summary` to NULL (prompt version bumps,
+    // antibot cleanup resets, SP-7 embedding backfill, etc.) silently
+    // re-queue rows whose jobId is still in either set, leaving them
+    // stuck at summary=NULL even though the worker is healthy.
     const cleanedFailed = await this.queue.clean(0, 0, 'failed');
-    if (cleanedFailed.length > 0) {
+    const cleanedCompleted = await this.queue.clean(0, 0, 'completed');
+    if (cleanedFailed.length > 0 || cleanedCompleted.length > 0) {
       this.logger.log(
-        `Boot backstop: cleared ${cleanedFailed.length} stale failed jobs before re-queue`,
+        `Boot backstop: cleared ${cleanedFailed.length} failed + ${cleanedCompleted.length} completed jobs before re-queue`,
       );
     }
 
