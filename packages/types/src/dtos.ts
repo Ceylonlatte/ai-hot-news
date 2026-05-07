@@ -38,6 +38,19 @@ export interface RawCrawledItem {
 export interface HotNewsListItemDto {
   id: string;
   title: string;
+  /**
+   * SP-5: AI-generated Chinese summary, 60-160 chars. Null while the worker
+   * has not yet processed the row (boot backstop will pick it up). Once
+   * written it is final until the prompt version changes.
+   */
+  summary: string | null;
+  /**
+   * SP-5: 4-dimension prefix-encoded tags from controlled taxonomy
+   * (`company:` / `model:` / `category:` / `tech:`). Empty array when the
+   * worker has not yet processed the row, or when the LLM produced no
+   * recognizable tags.
+   */
+  aiTags: string[];
   sourceUrl: string;
   sourcePlatform: Platform;
   author: string | null;
