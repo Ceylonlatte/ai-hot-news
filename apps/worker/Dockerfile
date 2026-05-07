@@ -12,6 +12,7 @@ COPY apps/worker/package.json apps/worker/
 COPY packages/db/package.json packages/db/
 COPY packages/types/package.json packages/types/
 COPY packages/utils/package.json packages/utils/
+COPY packages/prompts/package.json packages/prompts/
 RUN pnpm install --frozen-lockfile
 
 FROM node:${NODE_VERSION} AS builder
@@ -23,9 +24,11 @@ COPY --from=deps /app/apps/worker/node_modules ./apps/worker/node_modules
 COPY --from=deps /app/packages/db/node_modules ./packages/db/node_modules
 COPY --from=deps /app/packages/types/node_modules ./packages/types/node_modules
 COPY --from=deps /app/packages/utils/node_modules ./packages/utils/node_modules
+COPY --from=deps /app/packages/prompts/node_modules ./packages/prompts/node_modules
 COPY . .
 RUN pnpm --filter @ai-hot-news/db build
 RUN pnpm --filter @ai-hot-news/utils build
+RUN pnpm --filter @ai-hot-news/prompts build
 RUN pnpm --filter @ai-hot-news/worker build
 
 FROM node:${NODE_VERSION} AS runner
@@ -38,6 +41,7 @@ COPY --from=builder /app/apps/worker/package.json apps/worker/package.json
 COPY --from=builder /app/packages/db/package.json packages/db/package.json
 COPY --from=builder /app/packages/types/package.json packages/types/package.json
 COPY --from=builder /app/packages/utils/package.json packages/utils/package.json
+COPY --from=builder /app/packages/prompts/package.json packages/prompts/package.json
 COPY --from=builder /app/apps/worker/dist apps/worker/dist
 COPY --from=builder /app/packages/db/dist packages/db/dist
 COPY --from=builder /app/packages/db/prisma packages/db/prisma
@@ -50,6 +54,7 @@ COPY --from=builder /app/packages/db/prisma packages/db/prisma
 COPY --from=builder /app/packages/db/scripts packages/db/scripts
 COPY --from=builder /app/packages/types/src packages/types/src
 COPY --from=builder /app/packages/utils/dist packages/utils/dist
+COPY --from=builder /app/packages/prompts/dist packages/prompts/dist
 RUN pnpm install --prod --frozen-lockfile --filter @ai-hot-news/worker...
 
 HEALTHCHECK --interval=60s --timeout=5s --start-period=30s --retries=3 \

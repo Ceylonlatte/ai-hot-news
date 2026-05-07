@@ -9,8 +9,8 @@ export type FilterReason = (typeof FILTER_REASONS)[keyof typeof FILTER_REASONS];
 const REDDIT_LOW_RATIO_THRESHOLD = 0.5;
 const REDDIT_LOW_SCORE = 5;
 const REDDIT_LOW_COMMENTS = 2;
-const HN_LOW_SCORE = 5;
-const HN_LOW_DESCENDANTS = 2;
+const HN_LOW_SCORE = 20;
+const HN_LOW_DESCENDANTS = 5;
 const TITLE_MIN_LENGTH = 5;
 
 export interface RedditQualityInput {

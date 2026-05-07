@@ -12,18 +12,22 @@
   },
   "dependencies": {
     "@ai-hot-news/db": "workspace:*",
+    "@ai-hot-news/prompts": "workspace:*",
     "@ai-hot-news/types": "workspace:*",
     "@ai-hot-news/utils": "workspace:*",
+    "@ai-sdk/openai": "^1.3.24",
     "@nestjs/common": "^11.0.0",
     "@nestjs/config": "^4.0.0",
     "@nestjs/core": "^11.0.0",
     "@nestjs/schedule": "^4.1.2",
+    "ai": "^4.3.19",
     "bullmq": "^5.34.0",
     "ioredis": "^5.4.1",
     "p-limit": "^6.2.0",
     "reflect-metadata": "^0.2.2",
     "rss-parser": "^3.13.0",
-    "rxjs": "^7.8.1"
+    "rxjs": "^7.8.1",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@nestjs/cli": "^11.0.0",

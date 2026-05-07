@@ -82,8 +82,8 @@ describe('IngestionService', () => {
       await service.ingest(
         [
           {
-            title: 'Edge case at the boundary',
-            contentText: 'body',
+            title: 'OpenAI releases a new LLM',
+            contentText: 'OpenAI releases a new LLM',
             rawHtml: null,
             sourceUrl: 'https://openai.com/blog/edge',
             author: null,
@@ -101,8 +101,8 @@ describe('IngestionService', () => {
       await service.ingest(
         [
           {
-            title: 'HN old item should still be ingested',
-            contentText: 'body',
+            title: 'OpenAI releases a new LLM',
+            contentText: 'OpenAI releases a new LLM',
             rawHtml: null,
             sourceUrl: 'https://news.ycombinator.com/item?id=1',
             author: null,
@@ -113,6 +113,120 @@ describe('IngestionService', () => {
         { id: 's2', platform: Platform.HACKERNEWS, url: null, identifier: 'hn', name: 'HN' },
       );
       expect(prismaMock.hotNews.create).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('SP-5 v3.2 L0-skip AI topic filter', () => {
+    it('inserts AI topic items as VISIBLE and enqueues summary', async () => {
+      const summaryQueueAdd = vi.fn().mockResolvedValue(undefined);
+      const summaryQueue = { add: summaryQueueAdd } as unknown as Queue;
+      const extractQueue = { add: vi.fn().mockResolvedValue(undefined) } as unknown as Queue;
+      service = new IngestionService(summaryQueue, extractQueue);
+
+      const result = await service.ingest(
+        [
+          {
+            title: 'Show HN: AI Agent for code review',
+            contentText: 'AI Agent for code review',
+            rawHtml: null,
+            sourceUrl: 'https://news.ycombinator.com/item?id=50000001',
+            author: 'alice',
+            publishedAt: new Date('2026-05-06T00:00:00Z'),
+            filterReason: null,
+          },
+        ],
+        { id: 's2', platform: Platform.HACKERNEWS, url: null, identifier: 'top', name: 'HN' },
+      );
+
+      expect(result).toEqual({
+        fetched: 1,
+        inserted: 1,
+        skipped: 0,
+        skippedQuality: 0,
+        skippedNonAi: 0,
+        skippedDedupe: 0,
+        hidden: 0,
+        failed: 0,
+      });
+      expect(prismaMock.hotNews.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            status: 'VISIBLE',
+            filterReason: null,
+          }),
+        }),
+      );
+      expect(summaryQueueAdd).toHaveBeenCalledTimes(1);
+    });
+
+    it('skips quality-failed items without inserting HIDDEN rows', async () => {
+      const result = await service.ingest(
+        [
+          {
+            title: 'AI',
+            contentText: 'AI',
+            rawHtml: null,
+            sourceUrl: 'https://news.ycombinator.com/item?id=50000002',
+            author: null,
+            publishedAt: new Date('2026-05-06T00:00:00Z'),
+            filterReason: 'title_too_short',
+          },
+        ],
+        { id: 's2', platform: Platform.HACKERNEWS, url: null, identifier: 'top', name: 'HN' },
+      );
+
+      expect(result.inserted).toBe(0);
+      expect(result.skipped).toBe(1);
+      expect(result.skippedQuality).toBe(1);
+      expect(result.skippedNonAi).toBe(0);
+      expect(prismaMock.hotNews.create).not.toHaveBeenCalled();
+    });
+
+    it('skips non-AI items without inserting HIDDEN rows', async () => {
+      const result = await service.ingest(
+        [
+          {
+            title: 'Cricket India vs Pakistan score',
+            contentText: 'Cricket India vs Pakistan score',
+            rawHtml: null,
+            sourceUrl: 'https://news.ycombinator.com/item?id=50000003',
+            author: null,
+            publishedAt: new Date('2026-05-06T00:00:00Z'),
+            filterReason: null,
+          },
+        ],
+        { id: 's2', platform: Platform.HACKERNEWS, url: null, identifier: 'top', name: 'HN' },
+      );
+
+      expect(result.inserted).toBe(0);
+      expect(result.skipped).toBe(1);
+      expect(result.skippedQuality).toBe(0);
+      expect(result.skippedNonAi).toBe(1);
+      expect(prismaMock.hotNews.create).not.toHaveBeenCalled();
+    });
+
+    it('increments skippedDedupe on P2002 after passing L0 checks', async () => {
+      prismaMock.hotNews.create.mockRejectedValueOnce({ code: 'P2002' });
+
+      const result = await service.ingest(
+        [
+          {
+            title: 'OpenAI releases a new LLM',
+            contentText: 'OpenAI releases a new LLM',
+            rawHtml: null,
+            sourceUrl: 'https://news.ycombinator.com/item?id=50000004',
+            author: null,
+            publishedAt: new Date('2026-05-06T00:00:00Z'),
+            filterReason: null,
+          },
+        ],
+        { id: 's2', platform: Platform.HACKERNEWS, url: null, identifier: 'top', name: 'HN' },
+      );
+
+      expect(result.inserted).toBe(0);
+      expect(result.skipped).toBe(1);
+      expect(result.skippedDedupe).toBe(1);
+      expect(result.failed).toBe(0);
     });
   });
 });

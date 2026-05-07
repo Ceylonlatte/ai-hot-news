@@ -1,6 +1,7 @@
 import { Injectable, Logger, Inject } from '@nestjs/common';
 import { Queue } from 'bullmq';
 import { getPrisma, Prisma, ContentStatus, type Platform } from '@ai-hot-news/db';
+import { matchesAiTopic } from '@ai-hot-news/prompts';
 import {
   computeDedupeHash,
   normalizeUrl,
@@ -16,6 +17,9 @@ export interface IngestResult {
   fetched: number;
   inserted: number;
   skipped: number;
+  skippedQuality: number;
+  skippedNonAi: number;
+  skippedDedupe: number;
   hidden: number;
   failed: number;
 }
@@ -58,6 +62,9 @@ export class IngestionService {
       fetched: items.length,
       inserted: 0,
       skipped: 0,
+      skippedQuality: 0,
+      skippedNonAi: 0,
+      skippedDedupe: 0,
       hidden: 0,
       failed: 0,
     };
@@ -81,13 +88,21 @@ export class IngestionService {
         // SP-4: dedupeHash uses cleaned title (input is more stable across feed variations)
         const dedupeHash = computeDedupeHash(sourceUrl, cleanTitle);
 
-        // SP-4: filterReason — prefer crawler's verdict; otherwise run universal fallback
-        const finalReason =
+        // SP-5: skip low-quality and non-AI items before DB insert.
+        const qualityReason =
           raw.filterReason ?? checkUniversalQuality({ title: cleanTitle });
+        if (qualityReason) {
+          result.skipped += 1;
+          result.skippedQuality += 1;
+          continue;
+        }
 
-        const status: ContentStatus = finalReason
-          ? ContentStatus.HIDDEN
-          : ContentStatus.VISIBLE;
+        const aiTopicProbe = `${cleanTitle}\n${cleanContent.slice(0, 500)}`;
+        if (!matchesAiTopic(aiTopicProbe)) {
+          result.skipped += 1;
+          result.skippedNonAi += 1;
+          continue;
+        }
 
         try {
           const created = await prisma.hotNews.create({
@@ -100,56 +115,53 @@ export class IngestionService {
               author: raw.author,
               publishedAt: raw.publishedAt ?? new Date(),
               dedupeHash,
-              status,
-              filterReason: finalReason ?? null,
+              status: ContentStatus.VISIBLE,
+              filterReason: null,
               ...(raw.interactionData != null
                 ? { interactionData: raw.interactionData as Prisma.InputJsonValue }
                 : {}),
             },
           });
-          if (status === ContentStatus.HIDDEN) {
-            result.hidden += 1;
-          } else {
-            result.inserted += 1;
-            await this.summaryQueue.add(
-              'summarize',
+          result.inserted += 1;
+          await this.summaryQueue.add(
+            'summarize',
+            { hotNewsId: created.id },
+            {
+              jobId: `summarize-${created.id}`,
+              attempts: 3,
+              backoff: { type: 'exponential', delay: 30_000 },
+              removeOnComplete: { count: 100 },
+              removeOnFail: { count: 100 },
+            },
+          );
+
+          const extUrl = (raw.interactionData as { externalUrl?: string } | null)
+            ?.externalUrl;
+          const isLinkPost =
+            typeof extUrl === 'string' &&
+            /^https?:/.test(extUrl) &&
+            cleanContent === cleanTitle;
+          if (isLinkPost) {
+            await prisma.hotNews.update({
+              where: { id: created.id },
+              data: { extractStatus: 'PENDING' },
+            });
+            await this.extractQueue.add(
+              'extract',
               { hotNewsId: created.id },
               {
-                jobId: `summarize-${created.id}`,
+                jobId: `extract-${created.id}`,
                 attempts: 3,
-                backoff: { type: 'exponential', delay: 30_000 },
+                backoff: { type: 'exponential', delay: 60_000 },
                 removeOnComplete: { count: 100 },
                 removeOnFail: { count: 100 },
               },
             );
-
-            const extUrl = (raw.interactionData as { externalUrl?: string } | null)
-              ?.externalUrl;
-            const isLinkPost =
-              typeof extUrl === 'string' &&
-              /^https?:/.test(extUrl) &&
-              cleanContent === cleanTitle;
-            if (isLinkPost) {
-              await prisma.hotNews.update({
-                where: { id: created.id },
-                data: { extractStatus: 'PENDING' },
-              });
-              await this.extractQueue.add(
-                'extract',
-                { hotNewsId: created.id },
-                {
-                  jobId: `extract-${created.id}`,
-                  attempts: 3,
-                  backoff: { type: 'exponential', delay: 60_000 },
-                  removeOnComplete: { count: 100 },
-                  removeOnFail: { count: 100 },
-                },
-              );
-            }
           }
         } catch (createErr) {
           if ((createErr as { code?: string }).code === 'P2002') {
             result.skipped += 1;
+            result.skippedDedupe += 1;
           } else {
             throw createErr;
           }
@@ -161,6 +173,13 @@ export class IngestionService {
         result.failed += 1;
       }
     }
+    this.logger.log(
+      `[Ingest] ${source.platform} ${source.name}: ` +
+        `fetched=${result.fetched} inserted=${result.inserted} ` +
+        `skipped=${result.skipped} (quality=${result.skippedQuality} ` +
+        `nonAi=${result.skippedNonAi} dedupe=${result.skippedDedupe}) ` +
+        `failed=${result.failed}`,
+    );
     return result;
   }
 }

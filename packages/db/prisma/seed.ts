@@ -1,4 +1,9 @@
 import { getPrisma } from '@ai-hot-news/db';
+import {
+  REDDIT_BUNDLE_ID,
+  REDDIT_BUNDLE_URL,
+  REDDIT_INTERVAL_BUNDLE,
+} from '../scripts/consolidate-sp5-sources';
 
 const prisma = getPrisma();
 
@@ -17,7 +22,7 @@ interface HnCandidate {
 
 interface RedditCandidate {
   name: string;
-  identifier: string;
+  identifier: string | null;
   url: string | null;
   enabled: boolean;
   crawlInterval: number;
@@ -34,20 +39,27 @@ const rssCandidates: RssCandidate[] = [
 ];
 
 const hnCandidates: HnCandidate[] = [
-  { name: 'HackerNews Top',  identifier: 'top',  enabled: true, crawlInterval: 900  },
-  { name: 'HackerNews Ask',  identifier: 'ask',  enabled: true, crawlInterval: 1800 },
-  { name: 'HackerNews Show', identifier: 'show', enabled: true, crawlInterval: 1800 },
+  { name: 'HackerNews Top',  identifier: 'top',  enabled: true, crawlInterval: 3600  },
+  { name: 'HackerNews Ask',  identifier: 'ask',  enabled: true, crawlInterval: 14400 },
+  { name: 'HackerNews Show', identifier: 'show', enabled: true, crawlInterval: 14400 },
 ];
 
 const redditCandidates: RedditCandidate[] = [
-  { name: 'r/LocalLLaMA',       identifier: 'LocalLLaMA',       url: null, enabled: true, crawlInterval: 3600 },
-  { name: 'r/MachineLearning',  identifier: 'MachineLearning',  url: null, enabled: true, crawlInterval: 3600 },
-  { name: 'r/artificial',       identifier: 'artificial',       url: null, enabled: true, crawlInterval: 3600 },
-  { name: 'r/OpenAI',           identifier: 'OpenAI',           url: null, enabled: true, crawlInterval: 3600 },
-  { name: 'r/ChatGPT',          identifier: 'ChatGPT',          url: null, enabled: true, crawlInterval: 3600 },
-  { name: 'r/singularity',      identifier: 'singularity',      url: null, enabled: true, crawlInterval: 3600 },
-  { name: 'r/StableDiffusion',  identifier: 'StableDiffusion',  url: null, enabled: true, crawlInterval: 3600 },
-  { name: 'r/ClaudeAI',         identifier: 'ClaudeAI',         url: null, enabled: true, crawlInterval: 3600 },
+  { name: 'r/LocalLLaMA',       identifier: 'LocalLLaMA',       url: null, enabled: false, crawlInterval: 3600 },
+  { name: 'r/MachineLearning',  identifier: 'MachineLearning',  url: null, enabled: false, crawlInterval: 3600 },
+  { name: 'r/artificial',       identifier: 'artificial',       url: null, enabled: false, crawlInterval: 3600 },
+  { name: 'r/OpenAI',           identifier: 'OpenAI',           url: null, enabled: false, crawlInterval: 3600 },
+  { name: 'r/ChatGPT',          identifier: 'ChatGPT',          url: null, enabled: false, crawlInterval: 3600 },
+  { name: 'r/singularity',      identifier: 'singularity',      url: null, enabled: false, crawlInterval: 3600 },
+  { name: 'r/StableDiffusion',  identifier: 'StableDiffusion',  url: null, enabled: false, crawlInterval: 3600 },
+  { name: 'r/ClaudeAI',         identifier: 'ClaudeAI',         url: null, enabled: false, crawlInterval: 3600 },
+  {
+    name: 'AI Subreddit Bundle (13 subs hot)',
+    identifier: null,
+    url: REDDIT_BUNDLE_URL,
+    enabled: true,
+    crawlInterval: REDDIT_INTERVAL_BUNDLE,
+  },
 ];
 
 async function seedRss() {
@@ -56,11 +68,12 @@ async function seedRss() {
       where: { platform: 'RSS', name: c.name },
     });
     if (existing) {
+      // Preserve runtime fields (enabled / status) on re-run so operator
+      // overrides and crawler-set FAILED/LIMITED flags are not reverted.
       await prisma.sourceConfig.update({
         where: { id: existing.id },
         data: {
           url: c.url,
-          enabled: c.enabled,
           crawlInterval: 86400,
         },
       });
@@ -85,6 +98,8 @@ async function seedHn() {
       where: { platform: 'HACKERNEWS', identifier: c.identifier },
     });
     if (existing) {
+      // Preserve runtime fields (enabled / status) on re-run so operator
+      // overrides and crawler-set FAILED/LIMITED flags are not reverted.
       await prisma.sourceConfig.update({
         where: { id: existing.id },
         data: {
@@ -110,21 +125,31 @@ async function seedHn() {
 
 async function seedReddit() {
   for (const c of redditCandidates) {
-    const existing = await prisma.sourceConfig.findFirst({
-      where: { platform: 'REDDIT', identifier: c.identifier },
-    });
+    const existing = c.identifier
+      ? await prisma.sourceConfig.findFirst({
+          where: { platform: 'REDDIT', identifier: c.identifier },
+        })
+      : await prisma.sourceConfig.findUnique({
+          where: { id: REDDIT_BUNDLE_ID },
+        });
     if (existing) {
+      // Preserve runtime fields (enabled / status) on re-run so operator
+      // overrides and crawler-set FAILED/LIMITED flags are not reverted.
+      // identifier is included so a legacy bundle row with a stale identifier
+      // can be repaired by re-running seed.
       await prisma.sourceConfig.update({
         where: { id: existing.id },
         data: {
           name: c.name,
           url: c.url,
+          identifier: c.identifier,
           crawlInterval: c.crawlInterval,
         },
       });
     } else {
       await prisma.sourceConfig.create({
         data: {
+          ...(c.identifier === null ? { id: REDDIT_BUNDLE_ID } : {}),
           platform: 'REDDIT',
           name: c.name,
           url: c.url,

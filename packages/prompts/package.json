@@ -1,0 +1,24 @@
+{
+  "name": "@ai-hot-news/prompts",
+  "version": "0.0.1",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "lint": "eslint src/",
+    "typecheck": "tsc --noEmit",
+    "build": "node build.mjs",
+    "test": "node build.mjs --copy-only && vitest run"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.0",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.5"
+  }
+}
