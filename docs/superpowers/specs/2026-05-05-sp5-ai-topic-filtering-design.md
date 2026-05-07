@@ -860,11 +860,24 @@ if (isMainEntry || isTsxEntry) {
 
 ### 7.4 调用方式
 
+`packages/db/build` 仅编译 `src/index.ts`，**不会**把 `scripts/*.ts` 编进 `dist/`。Worker 镜像里 `packages/db/scripts/*` 仍是 TypeScript 源文件，必须通过 `npx tsx` 运行。Prod 用 SP-4.7 引入的统一 wrapper `scripts/run-prod-oneshot.sh` 调用：
+
 ```bash
-# Prod 运行（顺序：先清空，再调整 source_configs，最后重启 worker）：
-docker exec ai-hot-news-worker node /app/packages/db/scripts/wipe-hot-news-pre-sp5.js
-docker exec ai-hot-news-worker node /app/packages/db/scripts/consolidate-sp5-sources.js
-docker restart ai-hot-news-worker  # 触发 BullMQ obliterate + 按新 interval 重排
+# Prod 运行（顺序：停 worker → 先清空，再调整 source_configs → 重启 worker）：
+cd /srv/ai-hot-news
+
+# Backup before destructive wipe:
+docker compose -f docker/docker-compose.prod.yml --env-file .env exec postgres \
+  pg_dump --table=hot_news "$DATABASE_URL" > /backups/hot_news_pre_sp5_$(date +%Y%m%d).sql
+
+# Stop worker before mutating hot_news (single-writer assumption):
+docker compose -f docker/docker-compose.prod.yml --env-file .env stop worker
+
+bash scripts/run-prod-oneshot.sh packages/db scripts/wipe-hot-news-pre-sp5.ts
+bash scripts/run-prod-oneshot.sh packages/db scripts/consolidate-sp5-sources.ts
+
+# Restart worker to obliterate stale BullMQ repeatable jobs and pick up new intervals:
+docker compose -f docker/docker-compose.prod.yml --env-file .env start worker
 ```
 
 ### 7.5 SCHEDULER 配合
@@ -881,20 +894,13 @@ docker restart ai-hot-news-worker  # 触发 BullMQ obliterate + 按新 interval 
 
 1. 合并 PR 到 `main` → CI 触发 docker build + push
 2. AI-stage 自动部署 → 等待 worker 健康；用 ai-stage 数据 SMOKE 验证 L0-skip 行为正确
-3. SSH 进 prod 按顺序跑一次性脚本：
-   ```bash
-   docker exec ai-hot-news-worker node /app/packages/db/scripts/wipe-hot-news-pre-sp5.js
-   docker exec ai-hot-news-worker node /app/packages/db/scripts/consolidate-sp5-sources.js
-   docker restart ai-hot-news-worker
-   ```
+3. SSH 进 prod，按 §7.4 顺序跑一次性脚本：先 `pg_dump` 备份 → `docker compose ... stop worker` → `bash scripts/run-prod-oneshot.sh packages/db scripts/wipe-hot-news-pre-sp5.ts` → `bash scripts/run-prod-oneshot.sh packages/db scripts/consolidate-sp5-sources.ts` → `docker compose ... start worker`。
 4. 手动确认 prod 状态：
    - `SELECT COUNT(*) FROM hot_news` = 0（wipe 成功）
    - 旧 Reddit 8 sub `enabled=false`
    - 新 bundle `id='reddit-ai-bundle-v1'` 存在且 `crawlInterval=7200`
-   - HN Top `crawlInterval=3600` / HN Ask&Show `crawlInterval=14400`
-5. Worker 重启日志可见：
-   - `Old queue obliterated`（BullMQ 清旧 repeatable jobs）
-   - `[CrawlScheduler] schedule HACKERNEWS top interval=3600`（新频率生效）
+   - HN Top `crawlInterval=3600` / HN Ask&Show `crawlInterval=14400`（频率生效请通过 SQL 确认；`CrawlScheduler` 启动只输出聚合 `Registered N enabled sources` 日志，不打印逐源 interval）
+5. Worker 重启日志可见 `[CrawlScheduler] Old queue 'rss-crawl' obliterated`（BullMQ 清旧 repeatable jobs）和 `[CrawlScheduler] Registered N enabled sources: ...`。
 
 ### 8.2 SMOKE 验证
 
@@ -902,10 +908,9 @@ docker restart ai-hot-news-worker  # 触发 BullMQ obliterate + 按新 interval 
 
 | 验证项 | 期望日志/数据 |
 |---|---|
-| L0-skip 工作 | `[Ingest] HN top: fetched=500 inserted=N skipped=M (quality=Q nonAi=A dedupe=D)`，且 `inserted ≪ fetched` |
-| Reddit bundle | `[CrawlProcessor] REDDIT crawl ok: source=AI Subreddit Bundle (13 subs hot) items=80-100` |
-| HN Top 频率新 | 启动后 `[CrawlScheduler] schedule HACKERNEWS top interval=3600` 日志（vs 当前 900）|
-| HN Ask&Show 频率新 | 启动后 `[CrawlScheduler] schedule HACKERNEWS ask|show interval=14400` 日志（vs 当前 1800）|
+| L0-skip 工作 | `[IngestionService] [Ingest] HACKERNEWS HackerNews Top: fetched=499 inserted=N skipped=M (quality=Q nonAi=A dedupe=D) failed=0`，且 `inserted ≪ fetched`（每次 ingest 一行聚合）|
+| Reddit bundle | `[IngestionService] [Ingest] REDDIT AI Subreddit Bundle (13 subs hot): fetched=80-100 inserted=... skipped=... (quality=... nonAi=... dedupe=...) failed=0` |
+| HN 频率生效 | 启动只打印聚合 `[CrawlScheduler] Registered N enabled sources: ...`；逐源 `crawlInterval` 用 SQL 校验：`SELECT identifier, "crawlInterval" FROM source_configs WHERE platform='HACKERNEWS';` 期望 `top=3600`、`ask=14400`、`show=14400` |
 | `hot_news` 表纯净 | `SELECT COUNT(*) FROM hot_news WHERE status='HIDDEN'` 应该 = 0 |
 | `hot_news` 表全是 AI | `SELECT title FROM hot_news ORDER BY createdAt DESC LIMIT 20` 肉眼检查全是 AI 主题 |
 | jina 调用减少 | 部署后 24h 内 ExtractService 调用数比之前减 ~61% |

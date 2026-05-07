@@ -1440,18 +1440,22 @@ Expected: only `VISIBLE` rows; no `HIDDEN`.
 
 ## Deployment Runbook Notes
 
+`packages/db/build` only emits `dist/index.ts`; `scripts/*.ts` stays as TypeScript source inside the worker image, so prod must invoke it via `npx tsx`. Use the SP-4.7 wrapper `scripts/run-prod-oneshot.sh` (auto-detects the running worker image tag and reuses the prod compose network):
+
 Before prod wipe:
 
 ```bash
-pg_dump --table=hot_news "$DATABASE_URL" > /backups/hot_news_pre_sp5_$(date +%Y%m%d).sql
+docker compose -f docker/docker-compose.prod.yml --env-file .env exec postgres \
+  pg_dump --table=hot_news "$DATABASE_URL" > /backups/hot_news_pre_sp5_$(date +%Y%m%d).sql
 ```
 
-Prod command order:
+Prod command order (run from `/srv/ai-hot-news`):
 
 ```bash
-docker exec ai-hot-news-worker node /app/packages/db/scripts/wipe-hot-news-pre-sp5.js
-docker exec ai-hot-news-worker node /app/packages/db/scripts/consolidate-sp5-sources.js
-docker restart ai-hot-news-worker
+docker compose -f docker/docker-compose.prod.yml --env-file .env stop worker
+bash scripts/run-prod-oneshot.sh packages/db scripts/wipe-hot-news-pre-sp5.ts
+bash scripts/run-prod-oneshot.sh packages/db scripts/consolidate-sp5-sources.ts
+docker compose -f docker/docker-compose.prod.yml --env-file .env start worker
 ```
 
 24h acceptance:
