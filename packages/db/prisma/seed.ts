@@ -1,11 +1,22 @@
 import { getPrisma } from '@ai-hot-news/db';
-import {
-  REDDIT_BUNDLE_ID,
-  REDDIT_BUNDLE_URL,
-  REDDIT_INTERVAL_BUNDLE,
-} from '../scripts/consolidate-sp5-sources';
 
 const prisma = getPrisma();
+
+// Reddit bundle identity for SP-5 v3.2.
+//
+// These three constants are the source of truth for the prod migration script
+// (`packages/db/scripts/consolidate-sp5-sources.ts`). They are duplicated here
+// rather than imported because the api Docker image does not COPY
+// `packages/db/scripts/` (only the worker image does — see
+// `apps/worker/Dockerfile` line 54), and the api image is what runs
+// `prisma db seed` during deploy.
+//
+// `consolidate-sp5-sources.spec.ts` and `seed.consts.spec.ts` lock these
+// values to the same literals so the duplication cannot drift silently.
+const REDDIT_BUNDLE_ID = 'reddit-ai-bundle-v1';
+const REDDIT_BUNDLE_URL =
+  'https://www.reddit.com/r/ChatGPT+OpenAI+singularity+ArtificialInteligence+artificial+ClaudeAI+PromptEngineering+AI_Agents+vibecoding+LLMDevs+cursor+agi+LangChain/hot.json?limit=100&raw_json=1';
+const REDDIT_INTERVAL_BUNDLE = 7200;
 
 interface RssCandidate {
   name: string;
