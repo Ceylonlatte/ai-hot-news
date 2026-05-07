@@ -68,6 +68,7 @@ export class SummarizeService {
       await prisma.hotNews.update({
         where: { id: hotNewsId },
         data: {
+          titleZh: parsed.titleZh,
           summary: parsed.summary,
           aiTags: parsed.aiTags,
         },
@@ -78,7 +79,7 @@ export class SummarizeService {
     }
 
     this.logger.log(
-      `hotNewsId=${hotNewsId} → done (${result.durationMs}ms, in=${result.tokensIn}, out=${result.tokensOut}, summary=${parsed.summary.length}c, tags=${parsed.aiTags.length})`,
+      `hotNewsId=${hotNewsId} → done (${result.durationMs}ms, in=${result.tokensIn}, out=${result.tokensOut}, summary=${parsed.summary.length}c, titleZh=${parsed.titleZh ? parsed.titleZh.length + 'c' : 'null'}, tags=${parsed.aiTags.length})`,
     );
   }
 }

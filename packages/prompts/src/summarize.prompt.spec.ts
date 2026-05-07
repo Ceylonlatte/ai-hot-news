@@ -26,6 +26,15 @@ describe('summarize.prompt', () => {
     expect(sys).toMatch(/小编|营销/);
   });
 
+  it('system prompt declares titleZh field + exactly-2-line summary (SP-5 v3.3)', () => {
+    const sys = buildSystemPrompt();
+    expect(sys).toContain('titleZh');
+    expect(sys).toMatch(/恰好\s*2\s*行/);
+    expect(sys).toMatch(/60-90\s*字/);
+    expect(sys).toContain('\\n');
+    expect(sys).toContain('保留');
+  });
+
   it('user prompt embeds platform + title + body verbatim when content < 6000 chars', () => {
     const user = buildUserPrompt({
       title: 'GPT-5 announcement',

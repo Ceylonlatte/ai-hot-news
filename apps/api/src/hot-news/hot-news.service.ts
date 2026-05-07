@@ -44,6 +44,7 @@ export class HotNewsService {
         select: {
           id: true,
           title: true,
+          titleZh: true,
           summary: true,
           aiTags: true,
           sourceUrl: true,
@@ -59,6 +60,7 @@ export class HotNewsService {
       items: rows.map((r) => ({
         id: r.id,
         title: r.title,
+        titleZh: r.titleZh,
         summary: r.summary,
         aiTags: r.aiTags,
         sourceUrl: r.sourceUrl,

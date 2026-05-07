@@ -39,9 +39,16 @@ export interface HotNewsListItemDto {
   id: string;
   title: string;
   /**
-   * SP-5: AI-generated Chinese summary, 60-160 chars. Null while the worker
-   * has not yet processed the row (boot backstop will pick it up). Once
-   * written it is final until the prompt version changes.
+   * SP-5 v3.3: AI-translated Chinese title (10-30 chars). Null when the
+   * worker has not yet processed the row, when LLM omitted the field, or for
+   * pre-v3.3 rows. UI falls back to `title` when null.
+   */
+  titleZh: string | null;
+  /**
+   * SP-5: AI-generated Chinese summary. v3.3+ writes exactly 2 lines joined
+   * by a single `\n` (60-90 chars total). UI should render with whitespace
+   * preserved (e.g. `whitespace-pre-line`). Null while the worker has not
+   * yet processed the row (boot backstop will pick it up).
    */
   summary: string | null;
   /**

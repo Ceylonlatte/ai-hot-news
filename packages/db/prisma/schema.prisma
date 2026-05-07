@@ -58,6 +58,7 @@ enum NotificationType {
 model HotNews {
   id              String        @id @default(cuid())
   title           String
+  titleZh         String?
   summary         String?
   content         String        @db.Text
   rawHtml         String?       @db.Text

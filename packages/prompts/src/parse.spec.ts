@@ -2,7 +2,9 @@ import { describe, it, expect } from 'vitest';
 import { parseSummarizeResponse } from './parse';
 
 const goodJson = JSON.stringify({
-  summary: 'OpenAI 今日发布 GPT-5，相比 GPT-4o 在数学推理上提升 30%。模型已开放给 API 用户使用。',
+  titleZh: 'OpenAI 发布 GPT-5：推理能力大幅提升',
+  summary:
+    'OpenAI 今日发布 GPT-5，相比 GPT-4o 在数学推理上提升 30%。\n模型已开放给所有 API 用户，定价与 GPT-4o 持平。',
   companies: ['OpenAI'],
   models: ['GPT-5'],
   category: 'Release',
@@ -127,5 +129,126 @@ describe('parseSummarizeResponse', () => {
     const techTag = r.aiTags.find((t) => t.startsWith('tech:'));
     expect(techTag).toBeDefined();
     expect(techTag!.length).toBeLessThanOrEqual(35);
+  });
+
+  it('parses titleZh when present (SP-5 v3.3)', () => {
+    const r = parseSummarizeResponse(goodJson)!;
+    expect(r.titleZh).toBe('OpenAI 发布 GPT-5：推理能力大幅提升');
+  });
+
+  it('returns titleZh=null when field is missing (V1 prompt back-compat)', () => {
+    const json = JSON.stringify({
+      summary: '一段摘要',
+      companies: [],
+      models: [],
+      category: 'Opinion',
+      tech: [],
+    });
+    const r = parseSummarizeResponse(json)!;
+    expect(r.titleZh).toBeNull();
+  });
+
+  it('returns titleZh=null when field is empty / whitespace', () => {
+    const json = JSON.stringify({
+      titleZh: '   ',
+      summary: '一段摘要',
+      companies: [],
+      models: [],
+      category: 'Opinion',
+      tech: [],
+    });
+    const r = parseSummarizeResponse(json)!;
+    expect(r.titleZh).toBeNull();
+  });
+
+  it('returns titleZh=null when field is non-string', () => {
+    const json = JSON.stringify({
+      titleZh: 123,
+      summary: '一段摘要',
+      companies: [],
+      models: [],
+      category: 'Opinion',
+      tech: [],
+    });
+    const r = parseSummarizeResponse(json)!;
+    expect(r.titleZh).toBeNull();
+  });
+
+  it('caps titleZh at 100 chars to defend against runaway LLM output', () => {
+    const json = JSON.stringify({
+      titleZh: '中'.repeat(200),
+      summary: '正常摘要\n第二行',
+      companies: [],
+      models: [],
+      category: 'Opinion',
+      tech: [],
+    });
+    const r = parseSummarizeResponse(json)!;
+    expect(r.titleZh).not.toBeNull();
+    expect(r.titleZh!.length).toBeLessThanOrEqual(100);
+  });
+
+  it('preserves two-line summary as-is (joined with single \\n)', () => {
+    const r = parseSummarizeResponse(goodJson)!;
+    const lines = r.summary.split('\n');
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toMatch(/OpenAI 今日发布 GPT-5/);
+    expect(lines[1]).toMatch(/API 用户/);
+  });
+
+  it('normalizes 3+ line summary down to first 2 non-empty lines (LLM drift defense)', () => {
+    const json = JSON.stringify({
+      titleZh: 't',
+      summary: '第一行核心事实。\n第二行关键细节。\n第三行多余的话。\n第四行也不要',
+      companies: [],
+      models: [],
+      category: 'Opinion',
+      tech: [],
+    });
+    const r = parseSummarizeResponse(json)!;
+    const lines = r.summary.split('\n');
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toBe('第一行核心事实。');
+    expect(lines[1]).toBe('第二行关键细节。');
+  });
+
+  it('normalizes blank lines between sentences (\\n\\n → \\n)', () => {
+    const json = JSON.stringify({
+      titleZh: 't',
+      summary: '第一行。\n\n第二行。',
+      companies: [],
+      models: [],
+      category: 'Opinion',
+      tech: [],
+    });
+    const r = parseSummarizeResponse(json)!;
+    expect(r.summary).toBe('第一行。\n第二行。');
+  });
+
+  it('normalizes CRLF / CR line endings to LF', () => {
+    const json = JSON.stringify({
+      titleZh: 't',
+      summary: '第一行。\r\n第二行。',
+      companies: [],
+      models: [],
+      category: 'Opinion',
+      tech: [],
+    });
+    const r = parseSummarizeResponse(json)!;
+    expect(r.summary).toBe('第一行。\n第二行。');
+  });
+
+  it('accepts a single-line summary as-is (no synthetic line break injected)', () => {
+    const json = JSON.stringify({
+      titleZh: 't',
+      summary: '仅有一行内容。',
+      companies: [],
+      models: [],
+      category: 'Opinion',
+      tech: [],
+    });
+    const r = parseSummarizeResponse(json)!;
+    expect(r.summary).toBe('仅有一行内容。');
+    expect(r.summary).not.toContain('\n');
   });
 });

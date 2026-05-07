@@ -6,9 +6,15 @@ export const FILTER_REASONS = {
 } as const;
 export type FilterReason = (typeof FILTER_REASONS)[keyof typeof FILTER_REASONS];
 
-const REDDIT_LOW_RATIO_THRESHOLD = 0.5;
-const REDDIT_LOW_SCORE = 5;
-const REDDIT_LOW_COMMENTS = 2;
+// SP-5 v3.3 (2026-05-07): bumped Reddit thresholds to filter:
+//   - "伸手党/求助帖" (score=1, comments=2, ratio=1.00) — passed ratio<0.5 and
+//     engagement (comments>=2). Now: needs score>=10 OR comments>=5.
+//   - "标题党/钓鱼帖" (e.g. score=0, comments=151, ratio=0.50) — passed strict
+//     ratio<0.5. Now: ratio<0.7 dropped (high comments + 50/50 split is noise).
+// Previous thresholds (SP-3 baseline): ratio=0.5, score=5, comments=2.
+const REDDIT_LOW_RATIO_THRESHOLD = 0.7;
+const REDDIT_LOW_SCORE = 10;
+const REDDIT_LOW_COMMENTS = 5;
 const HN_LOW_SCORE = 20;
 const HN_LOW_DESCENDANTS = 5;
 const TITLE_MIN_LENGTH = 5;

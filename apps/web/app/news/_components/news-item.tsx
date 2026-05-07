@@ -18,18 +18,21 @@ const PLATFORM_BADGE_CLASS: Record<string, string> = {
 export function NewsItem({ item }: { item: HotNewsListItemDto }) {
   const label = PLATFORM_LABEL[item.sourcePlatform] ?? item.sourcePlatform;
   const badgeCls = PLATFORM_BADGE_CLASS[item.sourcePlatform] ?? 'bg-gray-100 text-gray-700';
+  const displayTitle = item.titleZh ?? item.title;
+  const tooltip = item.titleZh && item.titleZh !== item.title ? item.title : undefined;
   return (
     <li className="py-3">
       <a
         href={item.sourceUrl}
         target="_blank"
         rel="noopener noreferrer"
+        title={tooltip}
         className="block text-base font-medium text-gray-900 hover:underline"
       >
-        {item.title}
+        {displayTitle}
       </a>
       {item.summary ? (
-        <p className="mt-1 text-sm leading-relaxed text-gray-600 line-clamp-3">
+        <p className="mt-1 whitespace-pre-line text-sm leading-relaxed text-gray-600 line-clamp-2">
           {item.summary}
         </p>
       ) : null}

@@ -53,6 +53,7 @@ describe('HotNewsService', () => {
       {
         id: 'a',
         title: 'A',
+        titleZh: null,
         summary: null,
         aiTags: [],
         sourceUrl: 'https://example.com/a',
@@ -70,12 +71,13 @@ describe('HotNewsService', () => {
     expect(result.items[0]).not.toHaveProperty('filterReason');
   });
 
-  it('SP-5: passes summary + aiTags through to the DTO', async () => {
+  it('SP-5: passes titleZh + summary + aiTags through to the DTO', async () => {
     prismaMock.hotNews.findMany.mockResolvedValueOnce([
       {
         id: 'b',
         title: 'OpenAI launches GPT-5',
-        summary: 'OpenAI 在大会上正式发布 GPT-5……',
+        titleZh: 'OpenAI 发布 GPT-5：推理大幅提升',
+        summary: 'OpenAI 今日发布 GPT-5。\n模型已开放给 API 用户。',
         aiTags: ['company:OpenAI', 'model:GPT-5', 'category:Product', 'tech:LLM'],
         sourceUrl: 'https://example.com/b',
         sourcePlatform: 'RSS',
@@ -86,6 +88,7 @@ describe('HotNewsService', () => {
       {
         id: 'c',
         title: 'Pending row',
+        titleZh: null,
         summary: null,
         aiTags: [],
         sourceUrl: 'https://example.com/c',
@@ -101,17 +104,20 @@ describe('HotNewsService', () => {
 
     expect(result.items[0]).toMatchObject({
       id: 'b',
-      summary: 'OpenAI 在大会上正式发布 GPT-5……',
+      titleZh: 'OpenAI 发布 GPT-5：推理大幅提升',
+      summary: 'OpenAI 今日发布 GPT-5。\n模型已开放给 API 用户。',
       aiTags: ['company:OpenAI', 'model:GPT-5', 'category:Product', 'tech:LLM'],
     });
     expect(result.items[1]).toMatchObject({
       id: 'c',
+      titleZh: null,
       summary: null,
       aiTags: [],
     });
 
     const findManyArgs = prismaMock.hotNews.findMany.mock.calls[0]![0]!;
     expect(findManyArgs.select).toMatchObject({
+      titleZh: true,
       summary: true,
       aiTags: true,
     });

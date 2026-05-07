@@ -16,9 +16,15 @@ describe('FILTER_REASONS constants', () => {
 });
 
 describe('checkRedditQuality', () => {
-  it('returns REDDIT_LOW_RATIO when upvote_ratio < 0.5', () => {
+  it('returns REDDIT_LOW_RATIO when upvote_ratio < 0.7 (SP-5 v3.3 bumped from 0.5)', () => {
     expect(
-      checkRedditQuality({ upvote_ratio: 0.4, score: 100, num_comments: 50 }),
+      checkRedditQuality({ upvote_ratio: 0.6, score: 100, num_comments: 50 }),
+    ).toBe('reddit_low_ratio');
+  });
+
+  it('drops standard 钓鱼帖 pattern (score=0, comments=151, ratio=0.50)', () => {
+    expect(
+      checkRedditQuality({ upvote_ratio: 0.5, score: 0, num_comments: 151 }),
     ).toBe('reddit_low_ratio');
   });
 
@@ -28,21 +34,27 @@ describe('checkRedditQuality', () => {
     ).toBeNull();
   });
 
-  it('returns REDDIT_LOW_ENGAGEMENT when score<5 AND num_comments<2', () => {
+  it('returns REDDIT_LOW_ENGAGEMENT when score<10 AND num_comments<5 (SP-5 v3.3 bumped from 5/2)', () => {
     expect(
-      checkRedditQuality({ upvote_ratio: 0.95, score: 3, num_comments: 0 }),
+      checkRedditQuality({ upvote_ratio: 0.95, score: 9, num_comments: 4 }),
     ).toBe('reddit_low_engagement');
   });
 
-  it('returns null when score<5 BUT num_comments>=2 (high engagement saves it)', () => {
+  it('drops standard 伸手党 pattern (score=1, comments=2, ratio=1.00)', () => {
     expect(
-      checkRedditQuality({ upvote_ratio: 0.95, score: 3, num_comments: 5 }),
+      checkRedditQuality({ upvote_ratio: 1.0, score: 1, num_comments: 2 }),
+    ).toBe('reddit_low_engagement');
+  });
+
+  it('returns null when score<10 BUT num_comments>=5 (discussion heat saves it)', () => {
+    expect(
+      checkRedditQuality({ upvote_ratio: 0.95, score: 3, num_comments: 8 }),
     ).toBeNull();
   });
 
-  it('returns null when score>=5 (above engagement threshold)', () => {
+  it('returns null when score>=10 (above engagement threshold)', () => {
     expect(
-      checkRedditQuality({ upvote_ratio: 0.95, score: 100, num_comments: 0 }),
+      checkRedditQuality({ upvote_ratio: 0.95, score: 10, num_comments: 0 }),
     ).toBeNull();
   });
 
@@ -52,18 +64,18 @@ describe('checkRedditQuality', () => {
     ).toBe('reddit_low_ratio');
   });
 
-  it('returns null at the exact upvote_ratio = 0.5 boundary (strict less-than)', () => {
+  it('returns null at the exact upvote_ratio = 0.7 boundary (strict less-than)', () => {
     expect(
-      checkRedditQuality({ upvote_ratio: 0.5, score: 100, num_comments: 50 }),
+      checkRedditQuality({ upvote_ratio: 0.7, score: 100, num_comments: 50 }),
     ).toBeNull();
   });
 
-  it('returns null at the exact engagement boundaries (score=5 OR comments=2)', () => {
+  it('returns null at the exact engagement boundaries (score=10 OR comments=5)', () => {
     expect(
-      checkRedditQuality({ upvote_ratio: 0.95, score: 5, num_comments: 0 }),
+      checkRedditQuality({ upvote_ratio: 0.95, score: 10, num_comments: 0 }),
     ).toBeNull();
     expect(
-      checkRedditQuality({ upvote_ratio: 0.95, score: 4, num_comments: 2 }),
+      checkRedditQuality({ upvote_ratio: 0.95, score: 9, num_comments: 5 }),
     ).toBeNull();
   });
 });
