@@ -22,7 +22,7 @@ import { SummarizeAllVisibleStrategy } from './strategies/summarize-all-visible.
 const goodLlmResponse = JSON.stringify({
   titleZh: 'OpenAI 发布 GPT-5：推理能力大幅提升',
   summary:
-    'OpenAI 今日发布 GPT-5，相比 GPT-4o 在数学推理上提升 30%。\n模型已开放给所有 API 用户，定价与 GPT-4o 持平。',
+    'OpenAI 发布 GPT-5，数学推理较 GPT-4o 提升 30%，已开放给所有 API 用户，定价与 GPT-4o 持平。',
   companies: ['OpenAI'],
   models: ['GPT-5'],
   category: 'Release',
@@ -69,7 +69,7 @@ describe('SummarizeService.run', () => {
       where: { id: 'cm-1' },
       data: expect.objectContaining({
         titleZh: 'OpenAI 发布 GPT-5：推理能力大幅提升',
-        summary: expect.stringMatching(/OpenAI 今日发布 GPT-5.*\n.*API 用户/s),
+        summary: expect.stringMatching(/OpenAI 发布 GPT-5.*GPT-4o.*API 用户/s),
         aiTags: expect.arrayContaining(['company:OpenAI', 'model:GPT-5', 'category:Release']),
       }),
     });
@@ -77,7 +77,7 @@ describe('SummarizeService.run', () => {
 
   it('writes titleZh=null when LLM omits the field (V1 prompt back-compat)', async () => {
     const v1Response = JSON.stringify({
-      summary: '一段摘要内容。\n第二行内容。',
+      summary: '一段摘要内容。',
       companies: [],
       models: [],
       category: 'Opinion',

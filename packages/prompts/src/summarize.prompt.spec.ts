@@ -26,13 +26,16 @@ describe('summarize.prompt', () => {
     expect(sys).toMatch(/小编|营销/);
   });
 
-  it('system prompt declares titleZh field + exactly-2-line summary (SP-5 v3.3)', () => {
+  it('system prompt declares titleZh + single-paragraph 50-80 字 + 套话黑名单 (SP-5 v3.4)', () => {
     const sys = buildSystemPrompt();
     expect(sys).toContain('titleZh');
-    expect(sys).toMatch(/恰好\s*2\s*行/);
-    expect(sys).toMatch(/60-90\s*字/);
-    expect(sys).toContain('\\n');
-    expect(sys).toContain('保留');
+    expect(sys).toMatch(/50-80\s*字/);
+    expect(sys).toMatch(/单段连贯陈述/);
+    expect(sys).toMatch(/不强制换行/);
+    expect(sys).toContain('文章探讨了');
+    expect(sys).toContain('该 X');
+    expect(sys).toContain('重磅');
+    expect(sys).toContain('对照示例');
   });
 
   it('user prompt embeds platform + title + body verbatim when content < 6000 chars', () => {

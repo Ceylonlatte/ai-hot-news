@@ -77,7 +77,7 @@ describe('HotNewsService', () => {
         id: 'b',
         title: 'OpenAI launches GPT-5',
         titleZh: 'OpenAI 发布 GPT-5：推理大幅提升',
-        summary: 'OpenAI 今日发布 GPT-5。\n模型已开放给 API 用户。',
+        summary: 'OpenAI 发布 GPT-5，已开放给所有 API 用户。',
         aiTags: ['company:OpenAI', 'model:GPT-5', 'category:Product', 'tech:LLM'],
         sourceUrl: 'https://example.com/b',
         sourcePlatform: 'RSS',
@@ -105,7 +105,7 @@ describe('HotNewsService', () => {
     expect(result.items[0]).toMatchObject({
       id: 'b',
       titleZh: 'OpenAI 发布 GPT-5：推理大幅提升',
-      summary: 'OpenAI 今日发布 GPT-5。\n模型已开放给 API 用户。',
+      summary: 'OpenAI 发布 GPT-5，已开放给所有 API 用户。',
       aiTags: ['company:OpenAI', 'model:GPT-5', 'category:Product', 'tech:LLM'],
     });
     expect(result.items[1]).toMatchObject({

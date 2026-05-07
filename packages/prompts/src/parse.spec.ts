@@ -4,7 +4,7 @@ import { parseSummarizeResponse } from './parse';
 const goodJson = JSON.stringify({
   titleZh: 'OpenAI 发布 GPT-5：推理能力大幅提升',
   summary:
-    'OpenAI 今日发布 GPT-5，相比 GPT-4o 在数学推理上提升 30%。\n模型已开放给所有 API 用户，定价与 GPT-4o 持平。',
+    'OpenAI 发布 GPT-5，数学推理较 GPT-4o 提升 30%，已开放给所有 API 用户，定价与 GPT-4o 持平。',
   companies: ['OpenAI'],
   models: ['GPT-5'],
   category: 'Release',
@@ -15,7 +15,7 @@ describe('parseSummarizeResponse', () => {
   it('parses a clean JSON response with all fields', () => {
     const r = parseSummarizeResponse(goodJson);
     expect(r).not.toBeNull();
-    expect(r!.summary).toMatch(/OpenAI 今日发布 GPT-5/);
+    expect(r!.summary).toMatch(/OpenAI 发布 GPT-5/);
     expect(r!.aiTags).toEqual(
       expect.arrayContaining([
         'company:OpenAI',
@@ -188,12 +188,25 @@ describe('parseSummarizeResponse', () => {
     expect(r.titleZh!.length).toBeLessThanOrEqual(100);
   });
 
-  it('preserves two-line summary as-is (joined with single \\n)', () => {
+  it('passes through a single-paragraph summary unchanged (SP-5 v3.4 default)', () => {
     const r = parseSummarizeResponse(goodJson)!;
-    const lines = r.summary.split('\n');
-    expect(lines).toHaveLength(2);
-    expect(lines[0]).toMatch(/OpenAI 今日发布 GPT-5/);
-    expect(lines[1]).toMatch(/API 用户/);
+    expect(r.summary).not.toContain('\n');
+    expect(r.summary).toMatch(/OpenAI 发布 GPT-5/);
+    expect(r.summary).toMatch(/API 用户/);
+  });
+
+  it('still passes through a deliberately two-line summary unchanged (LLM-elected dual-dimension shape)', () => {
+    const json = JSON.stringify({
+      titleZh: 't',
+      summary:
+        'OpenAI 发布 GPT-5，数学推理较 GPT-4o 提升 30%。\n但研究者指出该评测集已被多家模型针对性优化，实际收益仍需独立验证。',
+      companies: [],
+      models: [],
+      category: 'Release',
+      tech: [],
+    });
+    const r = parseSummarizeResponse(json)!;
+    expect(r.summary.split('\n')).toHaveLength(2);
   });
 
   it('normalizes 3+ line summary down to first 2 non-empty lines (LLM drift defense)', () => {

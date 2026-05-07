@@ -45,10 +45,11 @@ export interface HotNewsListItemDto {
    */
   titleZh: string | null;
   /**
-   * SP-5: AI-generated Chinese summary. v3.3+ writes exactly 2 lines joined
-   * by a single `\n` (60-90 chars total). UI should render with whitespace
-   * preserved (e.g. `whitespace-pre-line`). Null while the worker has not
-   * yet processed the row (boot backstop will pick it up).
+   * SP-5: AI-generated Chinese summary. v3.4+ writes a single coherent
+   * paragraph (50-80 chars typical). The LLM may occasionally elect to
+   * use a single `\n` to split two genuinely independent dimensions (fact
+   * vs counter-evidence); UI should keep `whitespace-pre-line` to render
+   * that case. Null while the worker has not yet processed the row.
    */
   summary: string | null;
   /**
