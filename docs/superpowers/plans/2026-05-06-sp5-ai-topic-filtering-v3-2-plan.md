@@ -1410,11 +1410,13 @@ set -a && . ./.env && set +a && pnpm --filter @ai-hot-news/worker start:dev
 Expected logs:
 
 ```text
-[CrawlScheduler] schedule HACKERNEWS top interval=3600
-[CrawlScheduler] schedule HACKERNEWS ask interval=14400
-[CrawlScheduler] schedule HACKERNEWS show interval=14400
-[Ingest] HACKERNEWS HackerNews Top: fetched=... inserted=... skipped=... (quality=... nonAi=... dedupe=...) failed=0
+[CrawlScheduler] Old queue 'rss-crawl' obliterated
+[CrawlScheduler] Registered 11 enabled sources: 7 RSS, 1 REDDIT, 3 HACKERNEWS
+[IngestionService] [Ingest] HACKERNEWS HackerNews Top: fetched=... inserted=... skipped=... (quality=... nonAi=... dedupe=...) failed=0
+[IngestionService] [Ingest] REDDIT AI Subreddit Bundle (13 subs hot): fetched=... inserted=... skipped=... (quality=... nonAi=... dedupe=...) failed=0
 ```
+
+`CrawlScheduler` only emits an aggregate `Registered N enabled sources` line per startup; per-source `crawlInterval` values must be confirmed through the DB query in Step 9.1, not from worker logs.
 
 Stop worker after confirming logs.
 
