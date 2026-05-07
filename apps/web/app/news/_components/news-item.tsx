@@ -28,6 +28,11 @@ export function NewsItem({ item }: { item: HotNewsListItemDto }) {
       >
         {item.title}
       </a>
+      {item.summary ? (
+        <p className="mt-1 text-sm leading-relaxed text-gray-600 line-clamp-3">
+          {item.summary}
+        </p>
+      ) : null}
       <div className="mt-1 flex items-center gap-2 text-xs text-gray-500">
         <span>{item.author ?? '匿名'}</span>
         <span>·</span>

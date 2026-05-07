@@ -53,6 +53,8 @@ describe('HotNewsService', () => {
       {
         id: 'a',
         title: 'A',
+        summary: null,
+        aiTags: [],
         sourceUrl: 'https://example.com/a',
         sourcePlatform: 'RSS',
         author: null,
@@ -66,6 +68,53 @@ describe('HotNewsService', () => {
 
     expect(result.items[0]).not.toHaveProperty('status');
     expect(result.items[0]).not.toHaveProperty('filterReason');
+  });
+
+  it('SP-5: passes summary + aiTags through to the DTO', async () => {
+    prismaMock.hotNews.findMany.mockResolvedValueOnce([
+      {
+        id: 'b',
+        title: 'OpenAI launches GPT-5',
+        summary: 'OpenAI 在大会上正式发布 GPT-5……',
+        aiTags: ['company:OpenAI', 'model:GPT-5', 'category:Product', 'tech:LLM'],
+        sourceUrl: 'https://example.com/b',
+        sourcePlatform: 'RSS',
+        author: null,
+        publishedAt: new Date('2026-05-07T12:00:00Z'),
+        crawledAt: new Date('2026-05-07T12:00:00Z'),
+      },
+      {
+        id: 'c',
+        title: 'Pending row',
+        summary: null,
+        aiTags: [],
+        sourceUrl: 'https://example.com/c',
+        sourcePlatform: 'HACKERNEWS',
+        author: 'alice',
+        publishedAt: new Date('2026-05-07T12:30:00Z'),
+        crawledAt: new Date('2026-05-07T12:30:00Z'),
+      },
+    ]);
+    prismaMock.hotNews.count.mockResolvedValueOnce(2);
+
+    const result = await service.list(1, 20);
+
+    expect(result.items[0]).toMatchObject({
+      id: 'b',
+      summary: 'OpenAI 在大会上正式发布 GPT-5……',
+      aiTags: ['company:OpenAI', 'model:GPT-5', 'category:Product', 'tech:LLM'],
+    });
+    expect(result.items[1]).toMatchObject({
+      id: 'c',
+      summary: null,
+      aiTags: [],
+    });
+
+    const findManyArgs = prismaMock.hotNews.findMany.mock.calls[0]![0]!;
+    expect(findManyArgs.select).toMatchObject({
+      summary: true,
+      aiTags: true,
+    });
   });
 
   describe('SP-4.5 platform window filter', () => {
