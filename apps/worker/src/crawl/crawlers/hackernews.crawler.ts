@@ -31,8 +31,19 @@ export class HackerNewsCrawler implements Crawler {
     }
     const ids = await this.fetchIds(topic);
     const limit = pLimit(this.concurrency());
-    const stories = await Promise.all(ids.map((id) => limit(() => this.fetchStory(id))));
-    return stories.filter(this.isValidStory).map((s) => this.toRaw(s));
+    const stories = await Promise.all(
+      ids.map((id, idx) =>
+        limit(async () => {
+          const s = await this.fetchStory(id);
+          return s ? { story: s, position: idx + 1 } : null;
+        }),
+      ),
+    );
+    return stories
+      .filter(
+        (e): e is { story: HnStory; position: number } => e !== null && this.isValidStory(e.story),
+      )
+      .map(({ story, position }) => this.toRaw(story, position));
   }
 
   private async fetchIds(topic: HnTopic): Promise<number[]> {
@@ -84,13 +95,14 @@ export class HackerNewsCrawler implements Crawler {
     return true;
   };
 
-  private toRaw(s: HnStory): RawCrawledItem {
+  private toRaw(s: HnStory, position: number): RawCrawledItem {
     const isSelfPost = !s.url && !!s.text;
     const title = s.title ?? '(untitled)';
 
     const filterReason = checkHnQuality({
       score: s.score ?? null,
       descendants: s.descendants ?? null,
+      position,
     });
 
     return {
@@ -105,6 +117,7 @@ export class HackerNewsCrawler implements Crawler {
         comments: s.descendants ?? 0,
         externalUrl: s.url ?? null,
         hnId: s.id,
+        hnPosition: position,
       },
       filterReason,
     };

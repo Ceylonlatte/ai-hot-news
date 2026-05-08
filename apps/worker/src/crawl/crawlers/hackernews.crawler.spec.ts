@@ -166,29 +166,43 @@ describe('HackerNewsCrawler', () => {
     });
   });
 
-  describe('SP-4 filterReason', () => {
-    it('writes filterReason="hn_low_engagement" for low score + low comments', async () => {
+  describe('SP-4 filterReason / SP-5 v3.5 top-N pass-through', () => {
+    it('writes filterReason="hn_low_engagement" for low score + low comments at position>20', async () => {
+      const ids = [...Array(25).keys()].map((i) => 90000 + i);
+      const targetId = 99999;
+      ids[24] = targetId; // position 25 (1-based) → past the top-20 pass-through
       fetchMock.mockImplementation(async (url: string) => {
-        if (url.endsWith('/topstories.json')) return jsonResponse([99999]);
-        if (url.endsWith('/item/99999.json'))
+        if (url.endsWith('/topstories.json')) return jsonResponse(ids);
+        const id = url.match(/\/item\/(\d+)\.json$/)?.[1];
+        if (id === String(targetId))
           return jsonResponse({
-            id: 99999,
+            id: targetId,
             type: 'story',
-            title: 'Cold HN post',
+            title: 'Cold HN post outside top 20',
             by: 'alice',
             time: 1746230400,
             score: 2,
             descendants: 0,
             url: 'https://example.com/x',
           });
-        return jsonResponse(null);
+        return jsonResponse({
+          id: Number(id),
+          type: 'story',
+          title: `placeholder ${id}`,
+          by: 'pad',
+          time: 1746230000,
+          score: 100,
+          descendants: 50,
+          url: 'https://example.com/p',
+        });
       });
 
       const crawler = new HackerNewsCrawler({ id: 'src1', identifier: 'top' });
       const items = await crawler.fetch();
 
-      expect(items).toHaveLength(1);
-      expect(items[0]!.filterReason).toBe('hn_low_engagement');
+      const target = items.find((i) => i.interactionData?.hnId === targetId);
+      expect(target).toBeDefined();
+      expect(target!.filterReason).toBe('hn_low_engagement');
     });
 
     it('writes filterReason=null for high-engagement HN post', async () => {
@@ -215,17 +229,19 @@ describe('HackerNewsCrawler', () => {
       expect(items[0]!.filterReason).toBeNull();
     });
 
-    it('treats missing score / descendants as low engagement', async () => {
+    it('SP-5 v3.5: top-20 pass-through admits low-engagement post when position<=20', async () => {
       fetchMock.mockImplementation(async (url: string) => {
-        if (url.endsWith('/topstories.json')) return jsonResponse([99997]);
-        if (url.endsWith('/item/99997.json'))
+        if (url.endsWith('/topstories.json')) return jsonResponse([99996]); // position=1
+        if (url.endsWith('/item/99996.json'))
           return jsonResponse({
-            id: 99997,
+            id: 99996,
             type: 'story',
-            title: 'No engagement data',
-            by: 'carol',
-            time: 1746230600,
-            // score / descendants intentionally omitted
+            title: 'Cold HN post but ranked #1',
+            by: 'dave',
+            time: 1746230700,
+            score: 2,
+            descendants: 0,
+            url: 'https://example.com/y',
           });
         return jsonResponse(null);
       });
@@ -234,7 +250,72 @@ describe('HackerNewsCrawler', () => {
       const items = await crawler.fetch();
 
       expect(items).toHaveLength(1);
-      expect(items[0]!.filterReason).toBe('hn_low_engagement');
+      expect(items[0]!.filterReason).toBeNull();
+      expect(items[0]!.interactionData).toMatchObject({ hnPosition: 1 });
+    });
+
+    it('SP-5 v3.5: hnPosition reflects 1-based rank in /topstories.json', async () => {
+      fetchMock.mockImplementation(async (url: string) => {
+        if (url.endsWith('/topstories.json')) return jsonResponse([90001, 90002, 90003]);
+        const id = url.match(/\/item\/(\d+)\.json$/)?.[1];
+        return jsonResponse({
+          id: Number(id),
+          type: 'story',
+          title: `Post ${id}`,
+          by: 'x',
+          time: 1746230800,
+          score: 100,
+          descendants: 10,
+          url: `https://example.com/${id}`,
+        });
+      });
+
+      const crawler = new HackerNewsCrawler({ id: 'src1', identifier: 'top' });
+      const items = await crawler.fetch();
+
+      expect(items).toHaveLength(3);
+      const byId = new Map(
+        items.map((it) => [it.interactionData?.hnId as number, it.interactionData?.hnPosition]),
+      );
+      expect(byId.get(90001)).toBe(1);
+      expect(byId.get(90002)).toBe(2);
+      expect(byId.get(90003)).toBe(3);
+    });
+
+    it('treats missing score / descendants as low engagement when position>20', async () => {
+      const ids = [...Array(25).keys()].map((i) => 80000 + i);
+      const targetId = 99997;
+      ids[24] = targetId;
+      fetchMock.mockImplementation(async (url: string) => {
+        if (url.endsWith('/topstories.json')) return jsonResponse(ids);
+        const id = url.match(/\/item\/(\d+)\.json$/)?.[1];
+        if (id === String(targetId))
+          return jsonResponse({
+            id: targetId,
+            type: 'story',
+            title: 'No engagement data',
+            by: 'carol',
+            time: 1746230600,
+            // score / descendants intentionally omitted
+          });
+        return jsonResponse({
+          id: Number(id),
+          type: 'story',
+          title: `pad ${id}`,
+          by: 'pad',
+          time: 1746230000,
+          score: 100,
+          descendants: 50,
+          url: 'https://example.com/p',
+        });
+      });
+
+      const crawler = new HackerNewsCrawler({ id: 'src1', identifier: 'top' });
+      const items = await crawler.fetch();
+
+      const target = items.find((i) => i.interactionData?.hnId === targetId);
+      expect(target).toBeDefined();
+      expect(target!.filterReason).toBe('hn_low_engagement');
     });
   });
 });

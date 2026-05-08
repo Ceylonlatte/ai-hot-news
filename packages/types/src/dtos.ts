@@ -13,7 +13,7 @@ export interface RawCrawledItem {
    *
    * Cross-platform field name conventions (see SP-2 spec §4.2):
    * - Common (any platform): `score`, `comments`, `externalUrl`
-   * - HN-specific: `hnId`
+   * - HN-specific: `hnId`, `hnPosition` (1-based rank in topstories.json, SP-5 v3.5)
    * - Reddit-specific (SP-3): `redditId`, `redditSubreddit`
    * - Twitter-specific (SP-22): `twTweetId`, `twReposts`
    *

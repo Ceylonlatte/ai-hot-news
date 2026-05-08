@@ -102,6 +102,43 @@ describe('checkHnQuality', () => {
     expect(checkHnQuality({ score: 20, descendants: 0 })).toBeNull();
     expect(checkHnQuality({ score: 19, descendants: 5 })).toBeNull();
   });
+
+  describe('SP-5 v3.5 top-N pass-through', () => {
+    it('passes through when position<=20 even with low engagement (score=8, comments=0)', () => {
+      expect(checkHnQuality({ score: 8, descendants: 0, position: 5 })).toBeNull();
+    });
+
+    it('passes through at the exact boundary position=20', () => {
+      expect(checkHnQuality({ score: 1, descendants: 0, position: 20 })).toBeNull();
+    });
+
+    it('falls back to engagement check when position>20', () => {
+      expect(checkHnQuality({ score: 8, descendants: 0, position: 21 })).toBe(
+        'hn_low_engagement',
+      );
+    });
+
+    it('falls back to engagement check when position is undefined (legacy callers)', () => {
+      expect(checkHnQuality({ score: 8, descendants: 0 })).toBe('hn_low_engagement');
+    });
+
+    it('falls back to engagement check when position is null', () => {
+      expect(checkHnQuality({ score: 8, descendants: 0, position: null })).toBe(
+        'hn_low_engagement',
+      );
+    });
+
+    it('still drops when position invalid (<1) and engagement low', () => {
+      expect(checkHnQuality({ score: 5, descendants: 0, position: 0 })).toBe(
+        'hn_low_engagement',
+      );
+    });
+
+    it('top-N pass-through respects engagement above threshold (no double-drop)', () => {
+      expect(checkHnQuality({ score: 100, descendants: 50, position: 5 })).toBeNull();
+      expect(checkHnQuality({ score: 100, descendants: 50, position: 50 })).toBeNull();
+    });
+  });
 });
 
 describe('checkUniversalQuality', () => {
