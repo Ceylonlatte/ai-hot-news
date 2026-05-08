@@ -44,7 +44,9 @@ function makeItem(n: number): RawCrawledItem {
     rawHtml: `<p>OpenAI launches GPT-5 update ${n}</p>`,
     sourceUrl: `https://lab.example.com/post/${n}?utm_source=rss`,
     author: 'Alice',
-    publishedAt: new Date('2026-05-01T08:00:00.000Z'),
+    // SP-4.5 RSS 7d window — keep fixture relative to "now" so the suite
+    // doesn't decay (a fixed date drifts past the window after one week).
+    publishedAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
   };
 }
 
