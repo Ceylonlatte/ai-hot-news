@@ -9,7 +9,7 @@ import type { RawCrawledItem } from '@ai-hot-news/types';
 import type { Crawler } from './crawler.interface';
 import type { RedditListingResponse, RedditPost } from './reddit.types';
 
-// SP-6 (2026-05-09): a self-post with effectively no body text is almost
+// SP-5.5 (2026-05-09): a self-post with effectively no body text is almost
 // always a one-line vent / question / meme caption. Threshold tuned to
 // drop "idk help" / "is this normal" / single-emoji posts while keeping
 // bench reports / setup logs / discussions that wrote *anything*.
@@ -92,7 +92,7 @@ export class RedditCrawler implements Crawler {
     const externalUrl = isSelfPost ? null : (p.url ?? null);
     const contentText = isSelfPost ? stripHtml(selftextHtml || p.title) : p.title;
 
-    // SP-6 (2026-05-09): content-value pipeline. Order matters and supersedes
+    // SP-5.5 (2026-05-09): content-value pipeline. Order matters and supersedes
     // engagement-based rules — see `quality.ts` for empirical justification.
     //
     //   1. HIGH-domain link (arxiv / huggingface / github / lab blogs / press)

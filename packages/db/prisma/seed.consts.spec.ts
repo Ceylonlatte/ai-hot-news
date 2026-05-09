@@ -39,7 +39,7 @@ describe('seed.ts inlined Reddit bundle constants', () => {
     );
   });
 
-  it('REDDIT_BUNDLE_NAME matches consolidate-sp5-sources export (SP-6)', () => {
+  it('REDDIT_BUNDLE_NAME matches consolidate-sp5-sources export (SP-5.5)', () => {
     expect(extractStringLiteral('REDDIT_BUNDLE_NAME')).toBe(REDDIT_BUNDLE_NAME);
   });
 });

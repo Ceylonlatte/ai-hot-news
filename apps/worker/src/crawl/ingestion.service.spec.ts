@@ -230,7 +230,7 @@ describe('IngestionService', () => {
     });
   });
 
-  describe('SP-6 trustedSource bypass', () => {
+  describe('SP-5.5 trustedSource bypass', () => {
     it('admits a non-AI-keyword title when trustedSource=true (Reddit HIGH-domain link)', async () => {
       // Title alone would fail matchesAiTopic — "DS4" / "MacBooks" don't
       // hit any keyword. But the crawler set trustedSource=true (link is
@@ -241,7 +241,7 @@ describe('IngestionService', () => {
             title: 'DS4: a flash specific inference engine for 128gb MacBooks',
             contentText: 'DS4: a flash specific inference engine for 128gb MacBooks',
             rawHtml: null,
-            sourceUrl: 'https://www.reddit.com/r/LocalLLaMA/comments/sp6-trust',
+            sourceUrl: 'https://www.reddit.com/r/LocalLLaMA/comments/sp5-5-trust',
             author: 'researcher',
             publishedAt: new Date('2026-05-06T00:00:00Z'),
             filterReason: null,
@@ -264,7 +264,7 @@ describe('IngestionService', () => {
             title: 'a',
             contentText: 'a',
             rawHtml: null,
-            sourceUrl: 'https://www.reddit.com/r/LocalLLaMA/comments/sp6-trust-q',
+            sourceUrl: 'https://www.reddit.com/r/LocalLLaMA/comments/sp5-5-trust-q',
             author: null,
             publishedAt: new Date('2026-05-06T00:00:00Z'),
             filterReason: 'title_too_short',

@@ -14,7 +14,7 @@ const REDDIT_OLD_SUBS = [
 ];
 
 export const REDDIT_BUNDLE_ID = 'reddit-ai-bundle-v1';
-// SP-6 (2026-05-09): r/ChatGPT removed from bundle. 80/98 of its hot posts
+// SP-5.5 (2026-05-09): r/ChatGPT removed from bundle. 80/98 of its hot posts
 // are i.redd.it / v.redd.it memes (data: 688-post sample) and 0 link to
 // any HIGH-signal domain — same-shaped value loss as r/StableDiffusion
 // which was already absent from the bundle. Bundle is now 12 subs.
@@ -59,7 +59,7 @@ export async function consolidateSp5Sources(): Promise<ConsolidateResult> {
   } else {
     // Preserve runtime fields (enabled / status) on re-run so operator-driven
     // disables or crawler-set FAILED/LIMITED flags don't get silently reverted.
-    // name + url ARE refreshed so SP-6 bundle changes propagate on next deploy.
+    // name + url ARE refreshed so SP-5.5 bundle changes propagate on next deploy.
     await prisma.sourceConfig.update({
       where: { id: REDDIT_BUNDLE_ID },
       data: {

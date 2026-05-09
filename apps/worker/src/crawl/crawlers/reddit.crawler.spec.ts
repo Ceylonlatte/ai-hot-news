@@ -305,18 +305,18 @@ describe('RedditCrawler.fetch', () => {
     expect(items[0]!.filterReason).toBe('reddit_low_engagement');
   });
 
-  // === SP-6: domain-signal pipeline ===
+  // === SP-5.5: domain-signal pipeline ===
   // Order: HIGH bypass > LOW reject > tiny-selfpost > engagement check.
 
-  it('SP-6: HIGH-signal link → trustedSource=true, filterReason=null (even with cold engagement)', async () => {
+  it('SP-5.5: HIGH-signal link → trustedSource=true, filterReason=null (even with cold engagement)', async () => {
     // Paper link with tiny score should still be admitted.
     const coldHighLink = {
-      id: 'sp6-hi',
+      id: 'sp5-5-hi',
       title: '[R] DeepSeek V4 paper full version is out',
       author: 'researcher',
       subreddit: 'MachineLearning',
       url: 'https://arxiv.org/abs/2604.12345',
-      permalink: '/r/MachineLearning/comments/sp6-hi',
+      permalink: '/r/MachineLearning/comments/sp5-5-hi',
       is_self: false,
       selftext: '',
       selftext_html: null,
@@ -332,7 +332,7 @@ describe('RedditCrawler.fetch', () => {
     fetchMock.mockResolvedValue(jsonResponse(listingOf(coldHighLink)));
 
     const crawler = new RedditCrawler(
-      { id: 'sp6-hi', url: null, identifier: 'MachineLearning' },
+      { id: 'sp5-5-hi', url: null, identifier: 'MachineLearning' },
       'ai-hot-news-bot/0.1 (by /u/test)',
     );
     const [item] = await crawler.fetch();
@@ -341,14 +341,14 @@ describe('RedditCrawler.fetch', () => {
     expect(item!.trustedSource).toBe(true);
   });
 
-  it('SP-6: HIGH-signal subdomain (alignment.anthropic.com) is recognized', async () => {
+  it('SP-5.5: HIGH-signal subdomain (alignment.anthropic.com) is recognized', async () => {
     const subdomainHighLink = {
-      id: 'sp6-sub',
+      id: 'sp5-5-sub',
       title: 'Anthropic researchers detail "model spec midtraining"',
       author: 'researcher',
       subreddit: 'artificial',
       url: 'https://alignment.anthropic.com/2026/midtraining',
-      permalink: '/r/artificial/comments/sp6-sub',
+      permalink: '/r/artificial/comments/sp5-5-sub',
       is_self: false,
       selftext: '',
       selftext_html: null,
@@ -364,7 +364,7 @@ describe('RedditCrawler.fetch', () => {
     fetchMock.mockResolvedValue(jsonResponse(listingOf(subdomainHighLink)));
 
     const crawler = new RedditCrawler(
-      { id: 'sp6-sub', url: null, identifier: 'artificial' },
+      { id: 'sp5-5-sub', url: null, identifier: 'artificial' },
       'ai-hot-news-bot/0.1 (by /u/test)',
     );
     const [item] = await crawler.fetch();
@@ -373,15 +373,15 @@ describe('RedditCrawler.fetch', () => {
     expect(item!.trustedSource).toBe(true);
   });
 
-  it('SP-6: LOW-signal link (i.redd.it) → filterReason="reddit_low_signal_link" regardless of viral engagement', async () => {
+  it('SP-5.5: LOW-signal link (i.redd.it) → filterReason="reddit_low_signal_link" regardless of viral engagement', async () => {
     // Top-scoring meme on r/ChatGPT (s=13103) is still rejected.
     const memePost = {
-      id: 'sp6-lo',
+      id: 'sp5-5-lo',
       title: 'Like dis if you cry everytim',
       author: 'meme_lord',
       subreddit: 'ChatGPT',
       url: 'https://i.redd.it/abcdef.png',
-      permalink: '/r/ChatGPT/comments/sp6-lo',
+      permalink: '/r/ChatGPT/comments/sp5-5-lo',
       is_self: false,
       selftext: '',
       selftext_html: null,
@@ -397,7 +397,7 @@ describe('RedditCrawler.fetch', () => {
     fetchMock.mockResolvedValue(jsonResponse(listingOf(memePost)));
 
     const crawler = new RedditCrawler(
-      { id: 'sp6-lo', url: null, identifier: 'ChatGPT' },
+      { id: 'sp5-5-lo', url: null, identifier: 'ChatGPT' },
       'ai-hot-news-bot/0.1 (by /u/test)',
     );
     const [item] = await crawler.fetch();
@@ -406,14 +406,14 @@ describe('RedditCrawler.fetch', () => {
     expect(item!.trustedSource).toBeFalsy();
   });
 
-  it('SP-6: v.redd.it video is also LOW (Boston Dynamics meme variant)', async () => {
+  it('SP-5.5: v.redd.it video is also LOW (Boston Dynamics meme variant)', async () => {
     const videoMeme = {
-      id: 'sp6-vid',
+      id: 'sp5-5-vid',
       title: 'New Boston Dynamics Atlas trick',
       author: 'someone',
       subreddit: 'singularity',
       url: 'https://v.redd.it/xyz',
-      permalink: '/r/singularity/comments/sp6-vid',
+      permalink: '/r/singularity/comments/sp5-5-vid',
       is_self: false,
       selftext: '',
       selftext_html: null,
@@ -429,7 +429,7 @@ describe('RedditCrawler.fetch', () => {
     fetchMock.mockResolvedValue(jsonResponse(listingOf(videoMeme)));
 
     const crawler = new RedditCrawler(
-      { id: 'sp6-vid', url: null, identifier: 'singularity' },
+      { id: 'sp5-5-vid', url: null, identifier: 'singularity' },
       'ai-hot-news-bot/0.1 (by /u/test)',
     );
     const [item] = await crawler.fetch();
@@ -437,14 +437,14 @@ describe('RedditCrawler.fetch', () => {
     expect(item!.filterReason).toBe('reddit_low_signal_link');
   });
 
-  it('SP-6: tiny selfpost (selftext < 50 chars) → filterReason="reddit_tiny_selfpost"', async () => {
+  it('SP-5.5: tiny selfpost (selftext < 50 chars) → filterReason="reddit_tiny_selfpost"', async () => {
     const tinySelf = {
-      id: 'sp6-tiny',
+      id: 'sp5-5-tiny',
       title: 'Why does ChatGPT keep doing this?',
       author: 'venter',
       subreddit: 'ChatGPT',
-      url: 'https://www.reddit.com/r/ChatGPT/comments/sp6-tiny/',
-      permalink: '/r/ChatGPT/comments/sp6-tiny',
+      url: 'https://www.reddit.com/r/ChatGPT/comments/sp5-5-tiny/',
+      permalink: '/r/ChatGPT/comments/sp5-5-tiny',
       is_self: true,
       selftext: 'idk help',
       selftext_html: '<p>idk help</p>',
@@ -460,7 +460,7 @@ describe('RedditCrawler.fetch', () => {
     fetchMock.mockResolvedValue(jsonResponse(listingOf(tinySelf)));
 
     const crawler = new RedditCrawler(
-      { id: 'sp6-tiny', url: null, identifier: 'ChatGPT' },
+      { id: 'sp5-5-tiny', url: null, identifier: 'ChatGPT' },
       'ai-hot-news-bot/0.1 (by /u/test)',
     );
     const [item] = await crawler.fetch();
@@ -468,14 +468,14 @@ describe('RedditCrawler.fetch', () => {
     expect(item!.filterReason).toBe('reddit_tiny_selfpost');
   });
 
-  it('SP-6: substantive selfpost (selftext >= 50 chars) goes through engagement check', async () => {
+  it('SP-5.5: substantive selfpost (selftext >= 50 chars) goes through engagement check', async () => {
     const substantiveSelf = {
-      id: 'sp6-self-ok',
+      id: 'sp5-5-self-ok',
       title: 'Hi everyone, I built a benchmark',
       author: 'researcher',
       subreddit: 'LocalLLaMA',
-      url: 'https://www.reddit.com/r/LocalLLaMA/comments/sp6-self-ok/',
-      permalink: '/r/LocalLLaMA/comments/sp6-self-ok',
+      url: 'https://www.reddit.com/r/LocalLLaMA/comments/sp5-5-self-ok/',
+      permalink: '/r/LocalLLaMA/comments/sp5-5-self-ok',
       is_self: true,
       selftext:
         'I spent the last two weeks running 12 open-weight models head-to-head on math tasks; here are the takeaways I think actually matter for picking a daily-driver below 70B.',
@@ -493,7 +493,7 @@ describe('RedditCrawler.fetch', () => {
     fetchMock.mockResolvedValue(jsonResponse(listingOf(substantiveSelf)));
 
     const crawler = new RedditCrawler(
-      { id: 'sp6-self-ok', url: null, identifier: 'LocalLLaMA' },
+      { id: 'sp5-5-self-ok', url: null, identifier: 'LocalLLaMA' },
       'ai-hot-news-bot/0.1 (by /u/test)',
     );
     const [item] = await crawler.fetch();
@@ -502,14 +502,14 @@ describe('RedditCrawler.fetch', () => {
     expect(item!.trustedSource).toBeFalsy();
   });
 
-  it('SP-6: ambiguous outbound (fortune.com) falls through to engagement check', async () => {
+  it('SP-5.5: ambiguous outbound (fortune.com) falls through to engagement check', async () => {
     const ambiguous = {
-      id: 'sp6-amb',
+      id: 'sp5-5-amb',
       title: 'Dario Amodei spent last year warning of AI white-collar bloodbath',
       author: 'reader',
       subreddit: 'singularity',
       url: 'https://fortune.com/2026/05/09/dario-amodei',
-      permalink: '/r/singularity/comments/sp6-amb',
+      permalink: '/r/singularity/comments/sp5-5-amb',
       is_self: false,
       selftext: '',
       selftext_html: null,
@@ -525,7 +525,7 @@ describe('RedditCrawler.fetch', () => {
     fetchMock.mockResolvedValue(jsonResponse(listingOf(ambiguous)));
 
     const crawler = new RedditCrawler(
-      { id: 'sp6-amb', url: null, identifier: 'singularity' },
+      { id: 'sp5-5-amb', url: null, identifier: 'singularity' },
       'ai-hot-news-bot/0.1 (by /u/test)',
     );
     const [item] = await crawler.fetch();
@@ -534,14 +534,14 @@ describe('RedditCrawler.fetch', () => {
     expect(item!.trustedSource).toBeFalsy();
   });
 
-  it('SP-6: cross-post link to www.reddit.com is LOW (Sam Altman texts screenshot variant)', async () => {
+  it('SP-5.5: cross-post link to www.reddit.com is LOW (Sam Altman texts screenshot variant)', async () => {
     const crossPost = {
-      id: 'sp6-x',
+      id: 'sp5-5-x',
       title: 'Sam Altman texts Mira Murati [screenshot]',
       author: 'sharer',
       subreddit: 'OpenAI',
       url: 'https://www.reddit.com/r/OpenAI/comments/abc/another_thread/',
-      permalink: '/r/OpenAI/comments/sp6-x',
+      permalink: '/r/OpenAI/comments/sp5-5-x',
       is_self: false,
       selftext: '',
       selftext_html: null,
@@ -557,7 +557,7 @@ describe('RedditCrawler.fetch', () => {
     fetchMock.mockResolvedValue(jsonResponse(listingOf(crossPost)));
 
     const crawler = new RedditCrawler(
-      { id: 'sp6-x', url: null, identifier: 'OpenAI' },
+      { id: 'sp5-5-x', url: null, identifier: 'OpenAI' },
       'ai-hot-news-bot/0.1 (by /u/test)',
     );
     const [item] = await crawler.fetch();

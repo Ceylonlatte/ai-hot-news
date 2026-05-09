@@ -3,14 +3,14 @@ export const FILTER_REASONS = {
   REDDIT_LOW_ENGAGEMENT: 'reddit_low_engagement',
   HN_LOW_ENGAGEMENT: 'hn_low_engagement',
   TITLE_TOO_SHORT: 'title_too_short',
-  // SP-6 (2026-05-09): replaces engagement-based filtering on Reddit.
+  // SP-5.5 (2026-05-09): replaces engagement-based filtering on Reddit.
   // See `checkRedditDomainSignal` below for rationale.
   REDDIT_LOW_SIGNAL_LINK: 'reddit_low_signal_link',
   REDDIT_TINY_SELFPOST: 'reddit_tiny_selfpost',
 } as const;
 export type FilterReason = (typeof FILTER_REASONS)[keyof typeof FILTER_REASONS];
 
-// SP-6 (2026-05-09): SP-5 v3.3 raised these thresholds (5/2/0.5 → 10/5/0.7)
+// SP-5.5 (2026-05-09): SP-5 v3.3 raised these thresholds (5/2/0.5 → 10/5/0.7)
 // to fight memes, but empirical analysis of 688 hot posts across 7 AI subs
 // found engagement is *anti*-correlated with content value on Reddit —
 // the highest-engagement posts (s=13103, s=8376, s=5870…) are pure memes
@@ -90,7 +90,7 @@ export function checkUniversalQuality(item: UniversalQualityInput): FilterReason
   return null;
 }
 
-// SP-6 (2026-05-09): Reddit content-value classification by out-bound link.
+// SP-5.5 (2026-05-09): Reddit content-value classification by out-bound link.
 //
 // Empirical foundation (data: 688 hot posts × 7 AI-native subreddits, 2026-05-09):
 //   - 34% of hot posts link to LOW domains (i.redd.it / v.redd.it / imgur /
