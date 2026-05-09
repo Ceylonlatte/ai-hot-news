@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   REDDIT_BUNDLE_ID,
   REDDIT_BUNDLE_URL,
+  REDDIT_BUNDLE_NAME,
   REDDIT_INTERVAL_BUNDLE,
 } from '../scripts/consolidate-sp5-sources';
 
@@ -36,5 +37,9 @@ describe('seed.ts inlined Reddit bundle constants', () => {
     expect(extractNumberLiteral('REDDIT_INTERVAL_BUNDLE')).toBe(
       REDDIT_INTERVAL_BUNDLE,
     );
+  });
+
+  it('REDDIT_BUNDLE_NAME matches consolidate-sp5-sources export (SP-6)', () => {
+    expect(extractStringLiteral('REDDIT_BUNDLE_NAME')).toBe(REDDIT_BUNDLE_NAME);
   });
 });

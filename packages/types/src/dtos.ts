@@ -30,9 +30,20 @@ export interface RawCrawledItem {
    * and IngestionService runs `checkUniversalQuality` as a fallback.
    *
    * Known values (extend `FILTER_REASONS` in `quality.ts` to add more):
-   *   `reddit_low_ratio` | `reddit_low_engagement` | `hn_low_engagement` | `title_too_short`
+   *   `reddit_low_ratio` | `reddit_low_engagement` | `reddit_low_signal_link` |
+   *   `reddit_tiny_selfpost` | `hn_low_engagement` | `title_too_short`
    */
   filterReason?: string | null;
+  /**
+   * SP-6 (2026-05-09): Crawler-set positive content-value signal. When `true`,
+   * IngestionService bypasses the `matchesAiTopic` keyword gate — the crawler
+   * has already classified this item as substantive (e.g. Reddit link-post to
+   * arxiv.org / huggingface.co / openai.com / major tech press).
+   *
+   * Set by `reddit.crawler.toRaw()` via `checkRedditDomainSignal`. Other
+   * crawlers leave it `undefined` (treated as `false`).
+   */
+  trustedSource?: boolean;
 }
 
 export interface HotNewsListItemDto {

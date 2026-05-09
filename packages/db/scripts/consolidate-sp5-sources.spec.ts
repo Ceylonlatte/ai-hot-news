@@ -83,7 +83,10 @@ describe('consolidate-sp5-sources', () => {
     });
     expect(bundle.enabled).toBe(true);
     expect(bundle.crawlInterval).toBe(7200);
-    expect(bundle.url).toContain('/r/ChatGPT+OpenAI+singularity+');
+    // SP-6: ChatGPT removed from bundle; URL now begins with /r/OpenAI+...
+    expect(bundle.url).toContain('/r/OpenAI+singularity+');
+    expect(bundle.url).not.toContain('ChatGPT+');
+    expect(bundle.name).toBe('AI Subreddit Bundle (12 subs hot)');
 
     const hn = await prisma.sourceConfig.findMany({
       where: { platform: Platform.HACKERNEWS },

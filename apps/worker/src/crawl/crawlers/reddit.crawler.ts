@@ -1,7 +1,19 @@
-import { stripHtml, checkRedditQuality } from '@ai-hot-news/utils';
+import {
+  stripHtml,
+  checkRedditQuality,
+  checkRedditDomainSignal,
+  FILTER_REASONS,
+  type FilterReason,
+} from '@ai-hot-news/utils';
 import type { RawCrawledItem } from '@ai-hot-news/types';
 import type { Crawler } from './crawler.interface';
 import type { RedditListingResponse, RedditPost } from './reddit.types';
+
+// SP-6 (2026-05-09): a self-post with effectively no body text is almost
+// always a one-line vent / question / meme caption. Threshold tuned to
+// drop "idk help" / "is this normal" / single-emoji posts while keeping
+// bench reports / setup logs / discussions that wrote *anything*.
+const TINY_SELFPOST_MIN_CHARS = 50;
 
 const HOT_LIMIT = 25;
 
@@ -77,17 +89,48 @@ export class RedditCrawler implements Crawler {
     const isSelfPost = !!p.is_self;
     const selftextHtml = (p.selftext_html ?? '').trim();
     const subreddit = subredditHint ?? p.subreddit ?? 'unknown';
+    const externalUrl = isSelfPost ? null : (p.url ?? null);
+    const contentText = isSelfPost ? stripHtml(selftextHtml || p.title) : p.title;
 
-    // SP-4: dimension-2 quality verdict
-    const filterReason = checkRedditQuality({
-      upvote_ratio: p.upvote_ratio ?? null,
-      score: p.score ?? 0,
-      num_comments: p.num_comments ?? 0,
-    });
+    // SP-6 (2026-05-09): content-value pipeline. Order matters and supersedes
+    // engagement-based rules — see `quality.ts` for empirical justification.
+    //
+    //   1. HIGH-domain link (arxiv / huggingface / github / lab blogs / press)
+    //      → trustedSource=true, filterReason=null. Bypasses the keyword and
+    //      engagement gates downstream. Catches paper/release/announcement
+    //      links that are inherently substantive but may have low first-crawl
+    //      score.
+    //   2. LOW-domain link (i.redd.it / v.redd.it / imgur / youtube / x.com /
+    //      cross-post reddit.com) → reddit_low_signal_link. Drops memes and
+    //      reaction videos regardless of engagement — viral memes routinely
+    //      score 5000+.
+    //   3. Tiny self-post (<50 chars body) → reddit_tiny_selfpost. Drops
+    //      one-line vents / help requests where the title is the entire signal.
+    //   4. Otherwise → SP-3/SP-4 engagement check (rolled back to 5/2/0.5
+    //      noise floor — engagement is no longer the primary signal).
+    const domainSignal = checkRedditDomainSignal(externalUrl);
+    let filterReason: FilterReason | null = null;
+    let trustedSource = false;
+    if (domainSignal === 'high') {
+      trustedSource = true;
+    } else if (domainSignal === 'low') {
+      filterReason = FILTER_REASONS.REDDIT_LOW_SIGNAL_LINK;
+    } else if (
+      isSelfPost &&
+      stripHtml(selftextHtml).trim().length < TINY_SELFPOST_MIN_CHARS
+    ) {
+      filterReason = FILTER_REASONS.REDDIT_TINY_SELFPOST;
+    } else {
+      filterReason = checkRedditQuality({
+        upvote_ratio: p.upvote_ratio ?? null,
+        score: p.score ?? 0,
+        num_comments: p.num_comments ?? 0,
+      });
+    }
 
     return {
       title: p.title,
-      contentText: isSelfPost ? stripHtml(selftextHtml || p.title) : p.title,
+      contentText,
       rawHtml: isSelfPost && selftextHtml ? selftextHtml : null,
       sourceUrl: `https://www.reddit.com/r/${subreddit}/comments/${p.id}`,
       author: p.author && p.author !== '[deleted]' ? p.author : null,
@@ -95,12 +138,13 @@ export class RedditCrawler implements Crawler {
       interactionData: {
         score: p.score ?? 0,
         comments: p.num_comments ?? 0,
-        externalUrl: isSelfPost ? null : (p.url ?? null),
+        externalUrl,
         redditId: p.id,
         redditSubreddit: subreddit,
         redditUpvoteRatio: p.upvote_ratio ?? null,
       },
       filterReason,
+      trustedSource,
     };
   }
 
