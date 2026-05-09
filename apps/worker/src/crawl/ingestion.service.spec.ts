@@ -229,4 +229,73 @@ describe('IngestionService', () => {
       expect(result.failed).toBe(0);
     });
   });
+
+  describe('SP-6 trustedSource bypass', () => {
+    it('admits a non-AI-keyword title when trustedSource=true (Reddit HIGH-domain link)', async () => {
+      // Title alone would fail matchesAiTopic — "DS4" / "MacBooks" don't
+      // hit any keyword. But the crawler set trustedSource=true (link is
+      // github.com → HIGH), so IngestionService bypasses the keyword gate.
+      const result = await service.ingest(
+        [
+          {
+            title: 'DS4: a flash specific inference engine for 128gb MacBooks',
+            contentText: 'DS4: a flash specific inference engine for 128gb MacBooks',
+            rawHtml: null,
+            sourceUrl: 'https://www.reddit.com/r/LocalLLaMA/comments/sp6-trust',
+            author: 'researcher',
+            publishedAt: new Date('2026-05-06T00:00:00Z'),
+            filterReason: null,
+            trustedSource: true,
+          },
+        ],
+        { id: 's3', platform: Platform.REDDIT, url: null, identifier: 'LocalLLaMA', name: 'r/LocalLLaMA' },
+      );
+
+      expect(result.inserted).toBe(1);
+      expect(result.skipped).toBe(0);
+      expect(result.skippedNonAi).toBe(0);
+      expect(prismaMock.hotNews.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('still drops on quality failure even when trustedSource=true (quality is checked first)', async () => {
+      const result = await service.ingest(
+        [
+          {
+            title: 'a',
+            contentText: 'a',
+            rawHtml: null,
+            sourceUrl: 'https://www.reddit.com/r/LocalLLaMA/comments/sp6-trust-q',
+            author: null,
+            publishedAt: new Date('2026-05-06T00:00:00Z'),
+            filterReason: 'title_too_short',
+            trustedSource: true,
+          },
+        ],
+        { id: 's3', platform: Platform.REDDIT, url: null, identifier: 'LocalLLaMA', name: 'r/LocalLLaMA' },
+      );
+
+      expect(result.inserted).toBe(0);
+      expect(result.skippedQuality).toBe(1);
+    });
+
+    it('falls back to nonAi check when trustedSource is undefined (backwards compat)', async () => {
+      const result = await service.ingest(
+        [
+          {
+            title: 'Cricket India vs Pakistan score',
+            contentText: 'Cricket India vs Pakistan score',
+            rawHtml: null,
+            sourceUrl: 'https://news.ycombinator.com/item?id=50000099',
+            author: null,
+            publishedAt: new Date('2026-05-06T00:00:00Z'),
+            filterReason: null,
+            // trustedSource intentionally undefined
+          },
+        ],
+        { id: 's2', platform: Platform.HACKERNEWS, url: null, identifier: 'top', name: 'HN' },
+      );
+
+      expect(result.skippedNonAi).toBe(1);
+    });
+  });
 });

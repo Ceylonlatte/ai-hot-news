@@ -304,4 +304,264 @@ describe('RedditCrawler.fetch', () => {
     expect(items).toHaveLength(1);
     expect(items[0]!.filterReason).toBe('reddit_low_engagement');
   });
+
+  // === SP-6: domain-signal pipeline ===
+  // Order: HIGH bypass > LOW reject > tiny-selfpost > engagement check.
+
+  it('SP-6: HIGH-signal link → trustedSource=true, filterReason=null (even with cold engagement)', async () => {
+    // Paper link with tiny score should still be admitted.
+    const coldHighLink = {
+      id: 'sp6-hi',
+      title: '[R] DeepSeek V4 paper full version is out',
+      author: 'researcher',
+      subreddit: 'MachineLearning',
+      url: 'https://arxiv.org/abs/2604.12345',
+      permalink: '/r/MachineLearning/comments/sp6-hi',
+      is_self: false,
+      selftext: '',
+      selftext_html: null,
+      created_utc: 1746230700,
+      score: 1,
+      ups: 1,
+      downs: 0,
+      num_comments: 0,
+      upvote_ratio: null,
+      stickied: false,
+      over_18: false,
+    };
+    fetchMock.mockResolvedValue(jsonResponse(listingOf(coldHighLink)));
+
+    const crawler = new RedditCrawler(
+      { id: 'sp6-hi', url: null, identifier: 'MachineLearning' },
+      'ai-hot-news-bot/0.1 (by /u/test)',
+    );
+    const [item] = await crawler.fetch();
+
+    expect(item!.filterReason).toBeNull();
+    expect(item!.trustedSource).toBe(true);
+  });
+
+  it('SP-6: HIGH-signal subdomain (alignment.anthropic.com) is recognized', async () => {
+    const subdomainHighLink = {
+      id: 'sp6-sub',
+      title: 'Anthropic researchers detail "model spec midtraining"',
+      author: 'researcher',
+      subreddit: 'artificial',
+      url: 'https://alignment.anthropic.com/2026/midtraining',
+      permalink: '/r/artificial/comments/sp6-sub',
+      is_self: false,
+      selftext: '',
+      selftext_html: null,
+      created_utc: 1746230710,
+      score: 16,
+      ups: 16,
+      downs: 0,
+      num_comments: 2,
+      upvote_ratio: 0.95,
+      stickied: false,
+      over_18: false,
+    };
+    fetchMock.mockResolvedValue(jsonResponse(listingOf(subdomainHighLink)));
+
+    const crawler = new RedditCrawler(
+      { id: 'sp6-sub', url: null, identifier: 'artificial' },
+      'ai-hot-news-bot/0.1 (by /u/test)',
+    );
+    const [item] = await crawler.fetch();
+
+    expect(item!.filterReason).toBeNull();
+    expect(item!.trustedSource).toBe(true);
+  });
+
+  it('SP-6: LOW-signal link (i.redd.it) → filterReason="reddit_low_signal_link" regardless of viral engagement', async () => {
+    // Top-scoring meme on r/ChatGPT (s=13103) is still rejected.
+    const memePost = {
+      id: 'sp6-lo',
+      title: 'Like dis if you cry everytim',
+      author: 'meme_lord',
+      subreddit: 'ChatGPT',
+      url: 'https://i.redd.it/abcdef.png',
+      permalink: '/r/ChatGPT/comments/sp6-lo',
+      is_self: false,
+      selftext: '',
+      selftext_html: null,
+      created_utc: 1746230800,
+      score: 13103,
+      ups: 13103,
+      downs: 0,
+      num_comments: 823,
+      upvote_ratio: 0.98,
+      stickied: false,
+      over_18: false,
+    };
+    fetchMock.mockResolvedValue(jsonResponse(listingOf(memePost)));
+
+    const crawler = new RedditCrawler(
+      { id: 'sp6-lo', url: null, identifier: 'ChatGPT' },
+      'ai-hot-news-bot/0.1 (by /u/test)',
+    );
+    const [item] = await crawler.fetch();
+
+    expect(item!.filterReason).toBe('reddit_low_signal_link');
+    expect(item!.trustedSource).toBeFalsy();
+  });
+
+  it('SP-6: v.redd.it video is also LOW (Boston Dynamics meme variant)', async () => {
+    const videoMeme = {
+      id: 'sp6-vid',
+      title: 'New Boston Dynamics Atlas trick',
+      author: 'someone',
+      subreddit: 'singularity',
+      url: 'https://v.redd.it/xyz',
+      permalink: '/r/singularity/comments/sp6-vid',
+      is_self: false,
+      selftext: '',
+      selftext_html: null,
+      created_utc: 1746230810,
+      score: 4805,
+      ups: 4805,
+      downs: 0,
+      num_comments: 469,
+      upvote_ratio: 0.97,
+      stickied: false,
+      over_18: false,
+    };
+    fetchMock.mockResolvedValue(jsonResponse(listingOf(videoMeme)));
+
+    const crawler = new RedditCrawler(
+      { id: 'sp6-vid', url: null, identifier: 'singularity' },
+      'ai-hot-news-bot/0.1 (by /u/test)',
+    );
+    const [item] = await crawler.fetch();
+
+    expect(item!.filterReason).toBe('reddit_low_signal_link');
+  });
+
+  it('SP-6: tiny selfpost (selftext < 50 chars) → filterReason="reddit_tiny_selfpost"', async () => {
+    const tinySelf = {
+      id: 'sp6-tiny',
+      title: 'Why does ChatGPT keep doing this?',
+      author: 'venter',
+      subreddit: 'ChatGPT',
+      url: 'https://www.reddit.com/r/ChatGPT/comments/sp6-tiny/',
+      permalink: '/r/ChatGPT/comments/sp6-tiny',
+      is_self: true,
+      selftext: 'idk help',
+      selftext_html: '<p>idk help</p>',
+      created_utc: 1746230900,
+      score: 8,
+      ups: 8,
+      downs: 0,
+      num_comments: 3,
+      upvote_ratio: 0.95,
+      stickied: false,
+      over_18: false,
+    };
+    fetchMock.mockResolvedValue(jsonResponse(listingOf(tinySelf)));
+
+    const crawler = new RedditCrawler(
+      { id: 'sp6-tiny', url: null, identifier: 'ChatGPT' },
+      'ai-hot-news-bot/0.1 (by /u/test)',
+    );
+    const [item] = await crawler.fetch();
+
+    expect(item!.filterReason).toBe('reddit_tiny_selfpost');
+  });
+
+  it('SP-6: substantive selfpost (selftext >= 50 chars) goes through engagement check', async () => {
+    const substantiveSelf = {
+      id: 'sp6-self-ok',
+      title: 'Hi everyone, I built a benchmark',
+      author: 'researcher',
+      subreddit: 'LocalLLaMA',
+      url: 'https://www.reddit.com/r/LocalLLaMA/comments/sp6-self-ok/',
+      permalink: '/r/LocalLLaMA/comments/sp6-self-ok',
+      is_self: true,
+      selftext:
+        'I spent the last two weeks running 12 open-weight models head-to-head on math tasks; here are the takeaways I think actually matter for picking a daily-driver below 70B.',
+      selftext_html:
+        '<p>I spent the last two weeks running 12 open-weight models head-to-head on math tasks; here are the takeaways I think actually matter for picking a daily-driver below 70B.</p>',
+      created_utc: 1746230910,
+      score: 50,
+      ups: 50,
+      downs: 0,
+      num_comments: 12,
+      upvote_ratio: 0.95,
+      stickied: false,
+      over_18: false,
+    };
+    fetchMock.mockResolvedValue(jsonResponse(listingOf(substantiveSelf)));
+
+    const crawler = new RedditCrawler(
+      { id: 'sp6-self-ok', url: null, identifier: 'LocalLLaMA' },
+      'ai-hot-news-bot/0.1 (by /u/test)',
+    );
+    const [item] = await crawler.fetch();
+
+    expect(item!.filterReason).toBeNull();
+    expect(item!.trustedSource).toBeFalsy();
+  });
+
+  it('SP-6: ambiguous outbound (fortune.com) falls through to engagement check', async () => {
+    const ambiguous = {
+      id: 'sp6-amb',
+      title: 'Dario Amodei spent last year warning of AI white-collar bloodbath',
+      author: 'reader',
+      subreddit: 'singularity',
+      url: 'https://fortune.com/2026/05/09/dario-amodei',
+      permalink: '/r/singularity/comments/sp6-amb',
+      is_self: false,
+      selftext: '',
+      selftext_html: null,
+      created_utc: 1746230920,
+      score: 500,
+      ups: 500,
+      downs: 0,
+      num_comments: 240,
+      upvote_ratio: 0.94,
+      stickied: false,
+      over_18: false,
+    };
+    fetchMock.mockResolvedValue(jsonResponse(listingOf(ambiguous)));
+
+    const crawler = new RedditCrawler(
+      { id: 'sp6-amb', url: null, identifier: 'singularity' },
+      'ai-hot-news-bot/0.1 (by /u/test)',
+    );
+    const [item] = await crawler.fetch();
+
+    expect(item!.filterReason).toBeNull();
+    expect(item!.trustedSource).toBeFalsy();
+  });
+
+  it('SP-6: cross-post link to www.reddit.com is LOW (Sam Altman texts screenshot variant)', async () => {
+    const crossPost = {
+      id: 'sp6-x',
+      title: 'Sam Altman texts Mira Murati [screenshot]',
+      author: 'sharer',
+      subreddit: 'OpenAI',
+      url: 'https://www.reddit.com/r/OpenAI/comments/abc/another_thread/',
+      permalink: '/r/OpenAI/comments/sp6-x',
+      is_self: false,
+      selftext: '',
+      selftext_html: null,
+      created_utc: 1746230930,
+      score: 4041,
+      ups: 4041,
+      downs: 0,
+      num_comments: 982,
+      upvote_ratio: 0.96,
+      stickied: false,
+      over_18: false,
+    };
+    fetchMock.mockResolvedValue(jsonResponse(listingOf(crossPost)));
+
+    const crawler = new RedditCrawler(
+      { id: 'sp6-x', url: null, identifier: 'OpenAI' },
+      'ai-hot-news-bot/0.1 (by /u/test)',
+    );
+    const [item] = await crawler.fetch();
+
+    expect(item!.filterReason).toBe('reddit_low_signal_link');
+  });
 });

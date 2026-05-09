@@ -97,11 +97,20 @@ export class IngestionService {
           continue;
         }
 
-        const aiTopicProbe = `${cleanTitle}\n${cleanContent.slice(0, 500)}`;
-        if (!matchesAiTopic(aiTopicProbe)) {
-          result.skipped += 1;
-          result.skippedNonAi += 1;
-          continue;
+        // SP-6 (2026-05-09): crawler-set positive content-value signal. When
+        // the platform-specific crawler has already classified the item as
+        // substantive (e.g. Reddit link-post to arxiv.org / huggingface.co /
+        // openai.com / major press), bypass the AI-keyword gate. This admits
+        // model releases / papers / lab blogs whose Reddit titles use bare
+        // model-version names ("DS4", "Qwen 35B-A3B") that don't hit the
+        // keyword regex but are objectively in-scope.
+        if (!raw.trustedSource) {
+          const aiTopicProbe = `${cleanTitle}\n${cleanContent.slice(0, 500)}`;
+          if (!matchesAiTopic(aiTopicProbe)) {
+            result.skipped += 1;
+            result.skippedNonAi += 1;
+            continue;
+          }
         }
 
         try {
