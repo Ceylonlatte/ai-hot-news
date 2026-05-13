@@ -36,13 +36,16 @@ SP-4.5 上线后，三件事被发现：
 
 ## 3. 关键技术发现（决定方案的事实）
 
-| 候选 RSS（Claude Code Changelog） | URL 形态 | 问题 |
-|---|---|---|
-| 官方 Mintlify | `https://code.claude.com/docs/en/changelog/rss.xml`，每 item `<link>` = `.../changelog#2-1-126` | item.link 仅靠 `#fragment` 区分版本 |
-| 官方 Mintlify "What's new" | `.../whats-new/rss.xml` | 周报形式，单条覆盖多版本，颗粒度不符；issue #49513 报告 content links 漏 `/docs` 前缀 |
-| 第三方 stevenmenke worker | item link = `.../CHANGELOG.md#21126` | 同样 anchor URL；非官方依赖 |
+
+| 候选 RSS（Claude Code Changelog） | URL 形态                                                                                        | 问题                                                            |
+| ----------------------------- | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| 官方 Mintlify                   | `https://code.claude.com/docs/en/changelog/rss.xml`，每 item `<link>` = `.../changelog#2-1-126` | item.link 仅靠 `#fragment` 区分版本                                 |
+| 官方 Mintlify "What's new"      | `.../whats-new/rss.xml`                                                                       | 周报形式，单条覆盖多版本，颗粒度不符；issue #49513 报告 content links 漏 `/docs` 前缀 |
+| 第三方 stevenmenke worker        | item link = `.../CHANGELOG.md#21126`                                                          | 同样 anchor URL；非官方依赖                                           |
+
 
 而我们的去重栈是：
+
 - `normalizeUrl` (packages/utils/src/url.ts:62) **会** `parsed.hash = ''`，剥掉 fragment。
 - `HotNews.sourceUrl` 在 `schema.prisma:65` 上是 `@unique`。
 - `IngestionService` 在 `ingestion.service.ts:67-74` 写库前会 `sourceUrl = normalizeUrl(raw.sourceUrl)`，再算 `dedupeHash = sha256(sourceUrl + cleanTitle)`。
@@ -55,12 +58,14 @@ SP-4.5 上线后，三件事被发现：
 
 ### 4.1 数据源变更（声明式目标状态）
 
-| name | platform | url | enabled | crawlInterval |
-|---|---|---|---|---|
-| Anthropic News | RSS | `https://raw.githubusercontent.com/Olshansk/rss-feeds/main/feeds/feed_anthropic_news.xml` | `true` | 86400 |
-| Cursor Blog | RSS | `https://raw.githubusercontent.com/Olshansk/rss-feeds/main/feeds/feed_cursor.xml` | `true` | 86400 |
-| Claude Blog | RSS | `https://raw.githubusercontent.com/Olshansk/rss-feeds/main/feeds/feed_claude.xml` | `true` | 86400 |
-| Claude Code Changelog | RSS | `https://code.claude.com/docs/en/changelog/rss.xml` | `true` | 86400 |
+
+| name                  | platform | url                                                                                       | enabled | crawlInterval |
+| --------------------- | -------- | ----------------------------------------------------------------------------------------- | ------- | ------------- |
+| Anthropic News        | RSS      | `https://raw.githubusercontent.com/Olshansk/rss-feeds/main/feeds/feed_anthropic_news.xml` | `true`  | 86400         |
+| Cursor Blog           | RSS      | `https://raw.githubusercontent.com/Olshansk/rss-feeds/main/feeds/feed_cursor.xml`         | `true`  | 86400         |
+| Claude Blog           | RSS      | `https://raw.githubusercontent.com/Olshansk/rss-feeds/main/feeds/feed_claude.xml`         | `true`  | 86400         |
+| Claude Code Changelog | RSS      | `https://code.claude.com/docs/en/changelog/rss.xml`                                       | `true`  | 86400         |
+
 
 `crawlInterval = 86400` 沿用 SP-4.5 约定（RSS 1 天一抓）。
 
@@ -182,18 +187,20 @@ SELECT gen_random_uuid()::text, 'RSS', 'Claude Code Changelog',
 2. 推 PR、merge 到 main，CI 全绿。
 3. 生产：**主路径是重 deploy → 在 worker 里跑 `pnpm db:seed`**（依赖 Prisma 客户端生成 cuid 主键，跟现有 SP-4.5 部署形态一致）。SQL 脚本（`packages/db/scripts/sp4.6-add-rss-sources.sql`）作为**应急回放**保留——例如 deploy 失败需要立即恢复 RSS 源时手动 `psql -f`。
 4. 等 1 个 24h 周期或手动触发抓取，烟测：
-   - 每个新源在 `hot_news` 里至少 1 条 `sourcePlatform='RSS'` 行；Claude Code Changelog 必须有**多条**（验证 fragment 保留生效）。
-   - `/api/hot-news?platforms=RSS` 看到这 4 个源新文章。
+  - 每个新源在 `hot_news` 里至少 1 条 `sourcePlatform='RSS'` 行；Claude Code Changelog 必须有**多条**（验证 fragment 保留生效）。
+  - `/api/hot-news?platforms=RSS` 看到这 4 个源新文章。
 
 ## 5. 风险与缓解
 
-| 风险 | 缓解 |
-|---|---|
-| Olshansk 镜像 feed 哪天不维护 | 监控调度器 `failureCount` 字段；本次不引入 fallback，单源失败时已有 SP-3 容错；后续如需 SLA 提升再独立 SP |
-| Mintlify changelog item 顺序内含 v1.x 几十条历史版本 | SP-4.5 的 `RSS_INGEST_WINDOW_MS = 7d` 守卫已经把 publishedAt 早于 7d 的全部 skip；不需要新增逻辑 |
-| `normalizeUrl` 白名单未来误覆盖 | `pathname === entry.pathname` 严格相等而非 `startsWith`；测试里有"sibling paths 仍被剥"的 negative 断言；将来如需扩展，必须新增白名单条目并附带测试 |
-| Anthropic 旧 disabled row 残留 | seedRss() 改为按 name 查找 → update url（不会新建第二行）；生产用 SQL 同样按 name update |
-| 第三方镜像 feed 内容跟官网延迟 1-2 天 | 用户已知 trade-off；权威媒体 7d 窗口对 1-2 天延迟不敏感 |
+
+| 风险                                        | 缓解                                                                                                           |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| Olshansk 镜像 feed 哪天不维护                    | 监控调度器 `failureCount` 字段；本次不引入 fallback，单源失败时已有 SP-3 容错；后续如需 SLA 提升再独立 SP                                     |
+| Mintlify changelog item 顺序内含 v1.x 几十条历史版本 | SP-4.5 的 `RSS_INGEST_WINDOW_MS = 7d` 守卫已经把 publishedAt 早于 7d 的全部 skip；不需要新增逻辑                                |
+| `normalizeUrl` 白名单未来误覆盖                   | `pathname === entry.pathname` 严格相等而非 `startsWith`；测试里有"sibling paths 仍被剥"的 negative 断言；将来如需扩展，必须新增白名单条目并附带测试 |
+| Anthropic 旧 disabled row 残留               | seedRss() 改为按 name 查找 → update url（不会新建第二行）；生产用 SQL 同样按 name update                                          |
+| 第三方镜像 feed 内容跟官网延迟 1-2 天                  | 用户已知 trade-off；权威媒体 7d 窗口对 1-2 天延迟不敏感                                                                        |
+
 
 ## 6. 测试与验证
 
@@ -221,10 +228,10 @@ SELECT gen_random_uuid()::text, 'RSS', 'Claude Code Changelog',
 
 ## 8. 完成定义（DoD）
 
-- [ ] `seed.ts` 改完，本地 `pnpm db:seed` 后 `source_configs` 里 RSS 7 行匹配 4.1 表（含 OpenAI / Google 两个 + 本次 4 个 + 一个 DeepMind），全部 enabled。
-- [ ] `url.ts` + `url.spec.ts` 改完，`pnpm turbo run test` 全绿。
-- [ ] PR 合并到 main，CI 全绿。
-- [ ] 生产应用 SQL（或 `pnpm db:seed`）后，`source_configs` 状态等价于 4.1 表。
-- [ ] 24h 内生产侧每个新源至少 1 条 hot_news；Claude Code Changelog ≥ 2 条不同版本。
-- [ ] decomposition design doc 加 SP-4.6 状态行 + 部署凭据。
+- `seed.ts` 改完，本地 `pnpm db:seed` 后 `source_configs` 里 RSS 7 行匹配 4.1 表（含 OpenAI / Google 两个 + 本次 4 个 + 一个 DeepMind），全部 enabled。
+- `url.ts` + `url.spec.ts` 改完，`pnpm turbo run test` 全绿。
+- PR 合并到 main，CI 全绿。
+- 生产应用 SQL（或 `pnpm db:seed`）后，`source_configs` 状态等价于 4.1 表。
+- 24h 内生产侧每个新源至少 1 条 hot_news；Claude Code Changelog ≥ 2 条不同版本。
+- decomposition design doc 加 SP-4.6 状态行 + 部署凭据。
 
