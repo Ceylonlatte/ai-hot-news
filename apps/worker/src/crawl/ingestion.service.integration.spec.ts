@@ -472,7 +472,10 @@ describe('IngestionService (integration)', () => {
           rawHtml: null,
           sourceUrl: 'https://lab.example.com/post/sp4_short',
           author: null,
-          publishedAt: new Date('2026-05-04T00:00:00Z'),
+          // SP-4.5 RSS 7d window — same fix as commit 269dfda for makeItem().
+          // A fixed publishedAt drifts past the cutoff once we're more than
+          // 7 days after the literal date, breaking the suite on a schedule.
+          publishedAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
         },
       ];
 
@@ -496,7 +499,7 @@ describe('IngestionService (integration)', () => {
           rawHtml: null,
           sourceUrl: 'https://lab.example.com/post/sp4_clean',
           author: null,
-          publishedAt: new Date('2026-05-04T00:00:00Z'),
+          publishedAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
         },
       ];
 
@@ -517,7 +520,7 @@ describe('IngestionService (integration)', () => {
           rawHtml: null,
           sourceUrl: 'https://lab.example.com/post/sp4_content',
           author: null,
-          publishedAt: new Date('2026-05-04T00:00:00Z'),
+          publishedAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
         },
       ];
 
