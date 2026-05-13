@@ -35,7 +35,7 @@ export interface RawCrawledItem {
    */
   filterReason?: string | null;
   /**
-   * SP-6 (2026-05-09): Crawler-set positive content-value signal. When `true`,
+   * SP-5.5 (2026-05-09): Crawler-set positive content-value signal. When `true`,
    * IngestionService bypasses the `matchesAiTopic` keyword gate — the crawler
    * has already classified this item as substantive (e.g. Reddit link-post to
    * arxiv.org / huggingface.co / openai.com / major tech press).

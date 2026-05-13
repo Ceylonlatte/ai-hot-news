@@ -5,7 +5,7 @@ import {
   REDDIT_BUNDLE_NAME,
   REDDIT_BUNDLE_URL,
 } from './consolidate-sp5-sources';
-import { runSp6SourceMigrations } from './sp6-source-migrations';
+import { runSp5_5SourceMigrations } from './sp5-5-source-migrations';
 
 const prisma = getPrisma();
 
@@ -60,7 +60,7 @@ async function reset() {
   });
 }
 
-describe('sp6-source-migrations', () => {
+describe('sp5-5-source-migrations', () => {
   beforeEach(reset);
 
   afterAll(async () => {
@@ -76,7 +76,7 @@ describe('sp6-source-migrations', () => {
   });
 
   it('disables ONLY r/StableDiffusion and r/ChatGPT (other 6 stay enabled)', async () => {
-    const result = await runSp6SourceMigrations();
+    const result = await runSp5_5SourceMigrations();
 
     expect(result.redditDisabled).toBe(2);
 
@@ -98,8 +98,8 @@ describe('sp6-source-migrations', () => {
     expect(enabledMap.singularity).toBe(true);
   });
 
-  it('refreshes bundle name + url to the SP-6 12-sub values', async () => {
-    const result = await runSp6SourceMigrations();
+  it('refreshes bundle name + url to the SP-5.5 12-sub values', async () => {
+    const result = await runSp5_5SourceMigrations();
 
     expect(result.bundlePresent).toBe(true);
     expect(result.bundleUpdated).toBe(true);
@@ -119,7 +119,7 @@ describe('sp6-source-migrations', () => {
       data: { enabled: false, status: 'FAILED', crawlInterval: 7200 },
     });
 
-    await runSp6SourceMigrations();
+    await runSp5_5SourceMigrations();
 
     const bundle = await prisma.sourceConfig.findUniqueOrThrow({
       where: { id: REDDIT_BUNDLE_ID },
@@ -130,8 +130,8 @@ describe('sp6-source-migrations', () => {
   });
 
   it('is idempotent: second run disables 0 and bundle stays put', async () => {
-    await runSp6SourceMigrations();
-    const second = await runSp6SourceMigrations();
+    await runSp5_5SourceMigrations();
+    const second = await runSp5_5SourceMigrations();
 
     expect(second.redditDisabled).toBe(0);
     expect(second.bundleUpdated).toBe(false);
@@ -140,7 +140,7 @@ describe('sp6-source-migrations', () => {
   it('returns bundlePresent=false (and bundleUpdated=false) when bundle row missing', async () => {
     await prisma.sourceConfig.delete({ where: { id: REDDIT_BUNDLE_ID } });
 
-    const result = await runSp6SourceMigrations();
+    const result = await runSp5_5SourceMigrations();
     expect(result.bundlePresent).toBe(false);
     expect(result.bundleUpdated).toBe(false);
     // Disable still works on individual rows.
@@ -149,7 +149,7 @@ describe('sp6-source-migrations', () => {
 
   it('does NOT touch hot_news rows', async () => {
     const before = await prisma.hotNews.count();
-    await runSp6SourceMigrations();
+    await runSp5_5SourceMigrations();
     const after = await prisma.hotNews.count();
     expect(after).toBe(before);
   });

@@ -97,7 +97,7 @@ export class IngestionService {
           continue;
         }
 
-        // SP-6 (2026-05-09): crawler-set positive content-value signal. When
+        // SP-5.5 (2026-05-09): crawler-set positive content-value signal. When
         // the platform-specific crawler has already classified the item as
         // substantive (e.g. Reddit link-post to arxiv.org / huggingface.co /
         // openai.com / major press), bypass the AI-keyword gate. This admits

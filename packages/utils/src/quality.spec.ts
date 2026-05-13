@@ -8,7 +8,7 @@ import {
 } from './quality';
 
 describe('FILTER_REASONS constants', () => {
-  it('exposes the 6 known reason strings (SP-6 added LOW_SIGNAL_LINK + TINY_SELFPOST)', () => {
+  it('exposes the 6 known reason strings (SP-5.5 added LOW_SIGNAL_LINK + TINY_SELFPOST)', () => {
     expect(FILTER_REASONS.REDDIT_LOW_RATIO).toBe('reddit_low_ratio');
     expect(FILTER_REASONS.REDDIT_LOW_ENGAGEMENT).toBe('reddit_low_engagement');
     expect(FILTER_REASONS.HN_LOW_ENGAGEMENT).toBe('hn_low_engagement');
@@ -18,13 +18,13 @@ describe('FILTER_REASONS constants', () => {
   });
 });
 
-// SP-6 (2026-05-09): SP-5 v3.3 raised Reddit thresholds to fight memes,
+// SP-5.5 (2026-05-09): SP-5 v3.3 raised Reddit thresholds to fight memes,
 // but empirical analysis (688 hot posts across 7 AI subs) showed engagement
 // is *anti*-correlated with content value on Reddit — memes routinely score
 // 5000+ while a paper announcement may score 50. Quality is now governed by
 // `checkRedditDomainSignal` (HIGH bypass / LOW reject) so engagement is
 // rolled back to SP-3 baseline (5/2/0.5) as a noise-floor only.
-describe('checkRedditQuality (SP-6 reverted to SP-3 baseline)', () => {
+describe('checkRedditQuality (SP-5.5 reverted to SP-3 baseline)', () => {
   it('returns REDDIT_LOW_RATIO when upvote_ratio < 0.5', () => {
     expect(
       checkRedditQuality({ upvote_ratio: 0.4, score: 100, num_comments: 50 }),
@@ -37,7 +37,7 @@ describe('checkRedditQuality (SP-6 reverted to SP-3 baseline)', () => {
     ).toBeNull();
   });
 
-  it('returns null when upvote_ratio = 0.6 (was rejected pre-SP-6)', () => {
+  it('returns null when upvote_ratio = 0.6 (was rejected pre-SP-5.5)', () => {
     expect(
       checkRedditQuality({ upvote_ratio: 0.6, score: 100, num_comments: 50 }),
     ).toBeNull();
@@ -171,7 +171,7 @@ describe('checkUniversalQuality', () => {
   });
 });
 
-// SP-6 (2026-05-09): Empirical analysis of 688 hot Reddit posts across 7
+// SP-5.5 (2026-05-09): Empirical analysis of 688 hot Reddit posts across 7
 // AI-native subs found that *out-bound link domain* is a far stronger
 // content-value signal than engagement or keyword match. 34% of hot
 // posts link to i.redd.it / v.redd.it / imgur (memes); 3.5% link to

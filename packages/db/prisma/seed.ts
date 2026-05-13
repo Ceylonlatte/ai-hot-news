@@ -2,7 +2,7 @@ import { getPrisma } from '@ai-hot-news/db';
 
 const prisma = getPrisma();
 
-// Reddit bundle identity for SP-5 v3.2 (SP-6 dropped r/ChatGPT 2026-05-09).
+// Reddit bundle identity for SP-5 v3.2 (SP-5.5 dropped r/ChatGPT 2026-05-09).
 //
 // These four constants are the source of truth for the prod migration script
 // (`packages/db/scripts/consolidate-sp5-sources.ts`). They are duplicated here
@@ -56,7 +56,7 @@ const hnCandidates: HnCandidate[] = [
   { name: 'HackerNews Show', identifier: 'show', enabled: true, crawlInterval: 14400 },
 ];
 
-// SP-6 (2026-05-09): r/ChatGPT and r/StableDiffusion removed from
+// SP-5.5 (2026-05-09): r/ChatGPT and r/StableDiffusion removed from
 // candidates — operator decision based on 688-post value-signal analysis.
 // r/ChatGPT had 80/98 hot posts on i.redd.it/v.redd.it (memes) and zero
 // HIGH-signal links; r/StableDiffusion is no longer in scope. Existing prod
