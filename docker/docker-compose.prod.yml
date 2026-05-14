@@ -64,6 +64,19 @@ services:
       SUMMARY_MODEL: ${SUMMARY_MODEL:-deepseek/deepseek-v3.2}
       LLM_BASE_URL: ${LLM_BASE_URL:-https://openrouter.ai/api/v1}
       SUMMARY_CONCURRENCY: ${SUMMARY_CONCURRENCY:-3}
+      # SP-6 heat scoring. All optional; loadHeatConfig() falls back to safe
+      # defaults if any of these are unset/invalid (HEAT_DECAY_TAU_HOURS=48,
+      # HEAT_CRON_INTERVAL_MIN=30, HEAT_BATCH_SIZE=500, HEAT_CONCURRENCY=2,
+      # INTERACTION_MAX_HN=500, INTERACTION_MAX_REDDIT=5000,
+      # INTERACTION_MAX_TWITTER=100000). Listed explicitly so compose passes
+      # them through when set in .env (SP-4.7 lesson).
+      HEAT_DECAY_TAU_HOURS: ${HEAT_DECAY_TAU_HOURS:-48}
+      HEAT_CRON_INTERVAL_MIN: ${HEAT_CRON_INTERVAL_MIN:-30}
+      HEAT_BATCH_SIZE: ${HEAT_BATCH_SIZE:-500}
+      HEAT_CONCURRENCY: ${HEAT_CONCURRENCY:-2}
+      INTERACTION_MAX_HN: ${INTERACTION_MAX_HN:-500}
+      INTERACTION_MAX_REDDIT: ${INTERACTION_MAX_REDDIT:-5000}
+      INTERACTION_MAX_TWITTER: ${INTERACTION_MAX_TWITTER:-100000}
     depends_on:
       postgres:
         condition: service_healthy

@@ -10,6 +10,7 @@ describe('IngestionService', () => {
     hotNews: {
       create: ReturnType<typeof vi.fn>;
       update: ReturnType<typeof vi.fn>;
+      findFirst: ReturnType<typeof vi.fn>;
     };
   };
 
@@ -18,12 +19,14 @@ describe('IngestionService', () => {
       hotNews: {
         create: vi.fn().mockResolvedValue({ id: 'mock-id' }),
         update: vi.fn().mockResolvedValue({}),
+        findFirst: vi.fn().mockResolvedValue(null),
       },
     };
     vi.spyOn(dbModule, 'getPrisma').mockReturnValue(
       prismaMock as unknown as ReturnType<typeof dbModule.getPrisma>,
     );
     service = new IngestionService(
+      { add: vi.fn().mockResolvedValue(undefined) } as unknown as Queue,
       { add: vi.fn().mockResolvedValue(undefined) } as unknown as Queue,
       { add: vi.fn().mockResolvedValue(undefined) } as unknown as Queue,
     );
@@ -121,7 +124,8 @@ describe('IngestionService', () => {
       const summaryQueueAdd = vi.fn().mockResolvedValue(undefined);
       const summaryQueue = { add: summaryQueueAdd } as unknown as Queue;
       const extractQueue = { add: vi.fn().mockResolvedValue(undefined) } as unknown as Queue;
-      service = new IngestionService(summaryQueue, extractQueue);
+      const heatQueue = { add: vi.fn().mockResolvedValue(undefined) } as unknown as Queue;
+      service = new IngestionService(summaryQueue, extractQueue, heatQueue);
 
       const result = await service.ingest(
         [
@@ -141,6 +145,7 @@ describe('IngestionService', () => {
       expect(result).toEqual({
         fetched: 1,
         inserted: 1,
+        upserted: 0,
         skipped: 0,
         skippedQuality: 0,
         skippedNonAi: 0,
@@ -296,6 +301,129 @@ describe('IngestionService', () => {
       );
 
       expect(result.skippedNonAi).toBe(1);
+    });
+  });
+
+  describe('SP-6 upsert + heat queue push', () => {
+    let heatQueueAdd: ReturnType<typeof vi.fn>;
+    let summaryQueueAdd: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+      heatQueueAdd = vi.fn().mockResolvedValue(undefined);
+      summaryQueueAdd = vi.fn().mockResolvedValue(undefined);
+      const summaryQueue = { add: summaryQueueAdd } as unknown as Queue;
+      const extractQueue = {
+        add: vi.fn().mockResolvedValue(undefined),
+      } as unknown as Queue;
+      const heatQueue = { add: heatQueueAdd } as unknown as Queue;
+      service = new IngestionService(summaryQueue, extractQueue, heatQueue);
+    });
+
+    it('pushes heat:<id> after a successful INSERT', async () => {
+      prismaMock.hotNews.create.mockResolvedValue({ id: 'h-new' });
+      await service.ingest(
+        [
+          {
+            title: 'A new HN post about GPT-5',
+            contentText: 'A new HN post about GPT-5',
+            rawHtml: null,
+            sourceUrl: 'https://news.ycombinator.com/item?id=99001',
+            author: 'researcher',
+            publishedAt: new Date('2026-05-09T12:00:00Z'),
+            interactionData: { score: 100, comments: 20 },
+          },
+        ],
+        {
+          id: 's1',
+          platform: Platform.HACKERNEWS,
+          url: null,
+          identifier: 'top',
+          name: 'HN Top',
+        },
+      );
+      expect(heatQueueAdd).toHaveBeenCalledWith(
+        'heat',
+        { hotNewsId: 'h-new' },
+        expect.objectContaining({ jobId: 'heat-h-new' }),
+      );
+    });
+
+    it('on duplicate sourceUrl: UPDATEs interactionData (preserves title/content) and pushes heat:<id>', async () => {
+      prismaMock.hotNews.create.mockRejectedValue(
+        Object.assign(new Error('Unique constraint'), { code: 'P2002' }),
+      );
+      prismaMock.hotNews.findFirst.mockResolvedValue({ id: 'h-existing' });
+      prismaMock.hotNews.update.mockResolvedValue({ id: 'h-existing' });
+
+      const result = await service.ingest(
+        [
+          {
+            title: 'Stale GPT-5 title — should NOT overwrite existing',
+            contentText: 'Stale GPT-5 body — should NOT overwrite existing',
+            rawHtml: null,
+            sourceUrl: 'https://news.ycombinator.com/item?id=99002',
+            author: 'researcher',
+            publishedAt: new Date('2026-05-09T12:00:00Z'),
+            interactionData: { score: 250, comments: 50 },
+          },
+        ],
+        {
+          id: 's1',
+          platform: Platform.HACKERNEWS,
+          url: null,
+          identifier: 'top',
+          name: 'HN Top',
+        },
+      );
+
+      expect(result.skippedDedupe).toBe(0);
+      expect(result.upserted).toBe(1);
+
+      const updateArgs = prismaMock.hotNews.update.mock.calls[0]![0]!;
+      expect(updateArgs.where).toEqual({ id: 'h-existing' });
+      expect(updateArgs.data).toEqual({
+        interactionData: { score: 250, comments: 50 },
+      });
+
+      expect(heatQueueAdd).toHaveBeenCalledWith(
+        'heat',
+        { hotNewsId: 'h-existing' },
+        expect.objectContaining({ jobId: 'heat-h-existing' }),
+      );
+
+      expect(summaryQueueAdd).not.toHaveBeenCalled();
+    });
+
+    it('upsert with raw.interactionData=null is a no-op for that field (does NOT clobber existing data)', async () => {
+      prismaMock.hotNews.create.mockRejectedValue(
+        Object.assign(new Error('Unique constraint'), { code: 'P2002' }),
+      );
+      prismaMock.hotNews.findFirst.mockResolvedValue({ id: 'h-existing' });
+
+      const result = await service.ingest(
+        [
+          {
+            title: 'Claude 4 launches new agentic abilities',
+            contentText: 'Claude 4 launches new agentic abilities',
+            rawHtml: null,
+            sourceUrl: 'https://news.ycombinator.com/item?id=99003',
+            author: null,
+            publishedAt: new Date('2026-05-09T12:00:00Z'),
+            interactionData: null,
+          },
+        ],
+        {
+          id: 's1',
+          platform: Platform.HACKERNEWS,
+          url: null,
+          identifier: 'top',
+          name: 'HN Top',
+        },
+      );
+
+      expect(prismaMock.hotNews.update).not.toHaveBeenCalled();
+      expect(result.upserted).toBe(0);
+      expect(result.skippedDedupe).toBe(1);
     });
   });
 });

@@ -15,11 +15,13 @@ import { processCrawlJob, type CrawlJobData } from './crawl.processor';
 import { RedisModule } from '../redis/redis.module';
 import { SummarizeModule } from '../summarize/summarize.module';
 import { ExtractModule } from '../extract/extract.module';
+import { HeatModule } from '../heat/heat.module';
 import { SUMMARY_QUEUE } from '../summarize/summarize.queue';
 import { EXTRACT_QUEUE } from '../extract/extract.queue';
+import { HEAT_QUEUE } from '../heat/heat.queue';
 
 @Module({
-  imports: [RedisModule, SummarizeModule, ExtractModule],
+  imports: [RedisModule, SummarizeModule, ExtractModule, HeatModule],
   providers: [
     queueProvider,
     {
@@ -45,9 +47,9 @@ import { EXTRACT_QUEUE } from '../extract/extract.queue';
     },
     {
       provide: IngestionService,
-      useFactory: (summaryQueue: Queue, extractQueue: Queue) =>
-        new IngestionService(summaryQueue, extractQueue),
-      inject: [SUMMARY_QUEUE, EXTRACT_QUEUE],
+      useFactory: (summaryQueue: Queue, extractQueue: Queue, heatQueue: Queue) =>
+        new IngestionService(summaryQueue, extractQueue, heatQueue),
+      inject: [SUMMARY_QUEUE, EXTRACT_QUEUE, HEAT_QUEUE],
     },
     CrawlerFactory,
     CrawlScheduler,
