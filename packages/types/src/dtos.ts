@@ -75,6 +75,23 @@ export interface HotNewsListItemDto {
   author: string | null;
   publishedAt: string;
   crawledAt: string;
+  /**
+   * SP-6 (2026-05-09): Heat score 0-100 (V1 caps at 0-72.5; reaches 0-100
+   * once SP-7's crossPlatformScore lands). Always 0 for RSS rows (excluded
+   * from heat ranking; see HotNewsService heat-sort path). DTO type allows
+   * null for forward-compat: if V2 schema makes the column nullable to
+   * distinguish "uncomputed" vs "computed=0", DTO needn't change.
+   */
+  heatScore: number | null;
+  /**
+   * SP-6 (2026-05-09): Categorical heat tier from NTILE(20)→4-way bucket
+   * over the 48h non-RSS VISIBLE window. BURST=top 5% / HOT=next 15% /
+   * NORMAL=next 30% / LOW=bottom 50%. Recalculated globally on the
+   * 30-min cron; single-row writes do NOT refresh heatLevel (see spec
+   * §3.1 weak-consistency trade-off). Frontend uses for color coding
+   * (Aurora SP-8 / Dashboard SP-9).
+   */
+  heatLevel: 'BURST' | 'HOT' | 'NORMAL' | 'LOW' | null;
 }
 
 export interface HotNewsListResponseDto {

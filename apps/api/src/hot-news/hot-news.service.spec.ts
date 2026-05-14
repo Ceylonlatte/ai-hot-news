@@ -183,4 +183,93 @@ describe('HotNewsService', () => {
       expect(countWhere).toEqual(findManyWhere);
     });
   });
+
+  describe('SP-6 sort + heat field passthrough', () => {
+    it('defaults to orderBy publishedAt desc when sort is undefined', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-05-10T12:00:00Z'));
+      await service.list(1, 20);
+      const findManyArgs = prismaMock.hotNews.findMany.mock.calls[0]![0]!;
+      expect(findManyArgs.orderBy).toEqual([{ publishedAt: 'desc' }]);
+      vi.useRealTimers();
+    });
+
+    it('uses orderBy [heatScore desc, publishedAt desc] when sort=heat', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-05-10T12:00:00Z'));
+      await service.list(1, 20, ['HACKERNEWS', 'REDDIT'], 'heat');
+      const findManyArgs = prismaMock.hotNews.findMany.mock.calls[0]![0]!;
+      expect(findManyArgs.orderBy).toEqual([
+        { heatScore: 'desc' },
+        { publishedAt: 'desc' },
+      ]);
+      vi.useRealTimers();
+    });
+
+    it('filters out RSS from platforms when sort=heat (SP-6 §0 Q1/Q2)', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-05-10T12:00:00Z'));
+      await service.list(1, 20, ['RSS', 'HACKERNEWS', 'REDDIT'], 'heat');
+      const findManyArgs = prismaMock.hotNews.findMany.mock.calls[0]![0]!;
+      const platformsInOr = findManyArgs.where.OR.map(
+        (c: { sourcePlatform: string }) => c.sourcePlatform,
+      );
+      expect(platformsInOr).not.toContain('RSS');
+      expect(platformsInOr).toEqual(['HACKERNEWS', 'REDDIT']);
+      vi.useRealTimers();
+    });
+
+    it('returns empty result when sort=heat AND only RSS platform requested', async () => {
+      const result = await service.list(1, 20, ['RSS'], 'heat');
+      expect(result.items).toEqual([]);
+      expect(result.total).toBe(0);
+      expect(prismaMock.hotNews.findMany).not.toHaveBeenCalled();
+    });
+
+    it('keeps RSS in platforms when sort=time (default)', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-05-10T12:00:00Z'));
+      await service.list(1, 20, ['RSS', 'HACKERNEWS'], 'time');
+      const findManyArgs = prismaMock.hotNews.findMany.mock.calls[0]![0]!;
+      const platformsInOr = findManyArgs.where.OR.map(
+        (c: { sourcePlatform: string }) => c.sourcePlatform,
+      );
+      expect(platformsInOr).toContain('RSS');
+      vi.useRealTimers();
+    });
+
+    it('selects heatScore + heatLevel from prisma', async () => {
+      await service.list(1, 20);
+      const findManyArgs = prismaMock.hotNews.findMany.mock.calls[0]![0]!;
+      expect(findManyArgs.select).toMatchObject({
+        heatScore: true,
+        heatLevel: true,
+      });
+    });
+
+    it('passes heatScore + heatLevel through to DTO', async () => {
+      prismaMock.hotNews.findMany.mockResolvedValueOnce([
+        {
+          id: 'h1',
+          title: 'Anthropic launches Claude 5',
+          titleZh: 'Anthropic 发布 Claude 5',
+          summary: 'Anthropic 发布了 Claude 5。',
+          aiTags: ['company:anthropic'],
+          sourceUrl: 'https://example.com/h1',
+          sourcePlatform: 'REDDIT',
+          author: 'r/anthropic_user',
+          publishedAt: new Date('2026-05-10T10:00:00Z'),
+          crawledAt: new Date('2026-05-10T10:01:00Z'),
+          heatScore: 67.4,
+          heatLevel: 'HOT',
+        },
+      ]);
+      prismaMock.hotNews.count.mockResolvedValueOnce(1);
+
+      const result = await service.list(1, 20, ['REDDIT'], 'heat');
+
+      expect(result.items[0]!.heatScore).toBe(67.4);
+      expect(result.items[0]!.heatLevel).toBe('HOT');
+    });
+  });
 });
