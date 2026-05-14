@@ -9,6 +9,11 @@ export class HotNewsController {
 
   @Get()
   list(@Query() query: ListHotNewsQuery): Promise<HotNewsListResponseDto> {
-    return this.service.list(query.page, query.pageSize, query.platforms);
+    return this.service.list(
+      query.page,
+      query.pageSize,
+      query.platforms,
+      query.sort,
+    );
   }
 }

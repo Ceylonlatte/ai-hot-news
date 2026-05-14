@@ -4,6 +4,9 @@ import { IsArray, IsIn, IsInt, IsOptional, Max, Min } from 'class-validator';
 const ALLOWED_PLATFORMS = ['RSS', 'HACKERNEWS', 'REDDIT'] as const;
 type AllowedPlatform = (typeof ALLOWED_PLATFORMS)[number];
 
+const ALLOWED_SORTS = ['time', 'heat'] as const;
+type AllowedSort = (typeof ALLOWED_SORTS)[number];
+
 export class ListHotNewsQuery {
   @Type(() => Number)
   @IsOptional()
@@ -31,4 +34,11 @@ export class ListHotNewsQuery {
   @IsArray()
   @IsIn(ALLOWED_PLATFORMS, { each: true })
   platforms?: AllowedPlatform[];
+
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim().toLowerCase() : value,
+  )
+  @IsIn(ALLOWED_SORTS)
+  sort?: AllowedSort;
 }

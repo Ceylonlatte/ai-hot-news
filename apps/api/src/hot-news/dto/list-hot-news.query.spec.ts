@@ -38,4 +38,35 @@ describe('ListHotNewsQuery', () => {
     const { errors } = await validateRaw({ platforms: 'TIKTOK' });
     expect(errors.length).toBeGreaterThan(0);
   });
+
+  describe('sort field (SP-6)', () => {
+    it('defaults to undefined when sort is omitted', async () => {
+      const { dto, errors } = await validateRaw({});
+      expect(errors).toEqual([]);
+      expect(dto.sort).toBeUndefined();
+    });
+
+    it('accepts "time" lowercased', async () => {
+      const { dto, errors } = await validateRaw({ sort: 'time' });
+      expect(errors).toEqual([]);
+      expect(dto.sort).toBe('time');
+    });
+
+    it('accepts "heat" lowercased', async () => {
+      const { dto, errors } = await validateRaw({ sort: 'heat' });
+      expect(errors).toEqual([]);
+      expect(dto.sort).toBe('heat');
+    });
+
+    it('lowercases " HEAT " (mixed case + whitespace)', async () => {
+      const { dto, errors } = await validateRaw({ sort: ' HEAT ' });
+      expect(errors).toEqual([]);
+      expect(dto.sort).toBe('heat');
+    });
+
+    it('rejects "popularity" (not in allowlist)', async () => {
+      const { errors } = await validateRaw({ sort: 'popularity' });
+      expect(errors.length).toBeGreaterThan(0);
+    });
+  });
 });
