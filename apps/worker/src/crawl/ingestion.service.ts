@@ -12,10 +12,18 @@ import {
 import type { RawCrawledItem } from '@ai-hot-news/types';
 import { SUMMARY_QUEUE } from '../summarize/summarize.queue';
 import { EXTRACT_QUEUE } from '../extract/extract.queue';
+import { HEAT_QUEUE } from '../heat/heat.queue';
 
 export interface IngestResult {
   fetched: number;
   inserted: number;
+  /**
+   * SP-6: rows whose `interactionData` was refreshed on duplicate sourceUrl
+   * (P2002 → UPDATE). Distinct from `skippedDedupe`, which now only counts
+   * the case where there's nothing to refresh (raw.interactionData == null)
+   * or the existing row vanished mid-flight.
+   */
+  upserted: number;
   skipped: number;
   skippedQuality: number;
   skippedNonAi: number;
@@ -54,6 +62,7 @@ export class IngestionService {
   constructor(
     @Inject(SUMMARY_QUEUE) private readonly summaryQueue: Queue,
     @Inject(EXTRACT_QUEUE) private readonly extractQueue: Queue,
+    @Inject(HEAT_QUEUE) private readonly heatQueue: Queue,
   ) {}
 
   async ingest(items: RawCrawledItem[], source: SourceLike): Promise<IngestResult> {
@@ -61,6 +70,7 @@ export class IngestionService {
     const result: IngestResult = {
       fetched: items.length,
       inserted: 0,
+      upserted: 0,
       skipped: 0,
       skippedQuality: 0,
       skippedNonAi: 0,
@@ -132,6 +142,21 @@ export class IngestionService {
             },
           });
           result.inserted += 1;
+
+          // SP-6: push heat:<id> for every successful INSERT so the new
+          // row picks up a real score before the next 30-min cron tick.
+          await this.heatQueue.add(
+            'heat',
+            { hotNewsId: created.id },
+            {
+              jobId: `heat-${created.id}`,
+              attempts: 3,
+              backoff: { type: 'exponential', delay: 10_000 },
+              removeOnComplete: { count: 100 },
+              removeOnFail: { count: 100 },
+            },
+          );
+
           await this.summaryQueue.add(
             'summarize',
             { hotNewsId: created.id },
@@ -169,8 +194,47 @@ export class IngestionService {
           }
         } catch (createErr) {
           if ((createErr as { code?: string }).code === 'P2002') {
-            result.skipped += 1;
-            result.skippedDedupe += 1;
+            // SP-6: upsert interactionData on duplicate sourceUrl so the heat
+            // formula sees fresh engagement numbers. Title/content/publishedAt
+            // are intentionally preserved — they were good enough on first
+            // ingest, downstream summary/extract jobs may already reference
+            // them, and rewriting them invites churn for zero benefit.
+            // When raw.interactionData is null there's nothing to refresh,
+            // so we fall back to the legacy "skip dedupe" path.
+            if (raw.interactionData != null) {
+              const existing = await prisma.hotNews.findFirst({
+                where: { sourceUrl },
+                select: { id: true },
+              });
+              if (existing) {
+                await prisma.hotNews.update({
+                  where: { id: existing.id },
+                  data: {
+                    interactionData: raw.interactionData as Prisma.InputJsonValue,
+                  },
+                });
+                result.upserted += 1;
+                await this.heatQueue.add(
+                  'heat',
+                  { hotNewsId: existing.id },
+                  {
+                    jobId: `heat-${existing.id}`,
+                    attempts: 3,
+                    backoff: { type: 'exponential', delay: 10_000 },
+                    removeOnComplete: { count: 100 },
+                    removeOnFail: { count: 100 },
+                  },
+                );
+              } else {
+                // Race: P2002 fired but findFirst missed (rare; usually means
+                // a concurrent writer deleted the row). Treat as legacy skip.
+                result.skipped += 1;
+                result.skippedDedupe += 1;
+              }
+            } else {
+              result.skipped += 1;
+              result.skippedDedupe += 1;
+            }
           } else {
             throw createErr;
           }
@@ -184,7 +248,7 @@ export class IngestionService {
     }
     this.logger.log(
       `[Ingest] ${source.platform} ${source.name}: ` +
-        `fetched=${result.fetched} inserted=${result.inserted} ` +
+        `fetched=${result.fetched} inserted=${result.inserted} upserted=${result.upserted} ` +
         `skipped=${result.skipped} (quality=${result.skippedQuality} ` +
         `nonAi=${result.skippedNonAi} dedupe=${result.skippedDedupe}) ` +
         `failed=${result.failed}`,
