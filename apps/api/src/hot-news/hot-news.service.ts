@@ -69,10 +69,31 @@ export class HotNewsService {
           crawledAt: true,
           heatScore: true,
           heatLevel: true,
+          groupId: true,
         },
       }),
       prisma.hotNews.count({ where }),
     ]);
+
+    // SP-7: aggregate groupSize via one groupBy query for all non-null
+    // groupIds on this page. Counts every VISIBLE member across all
+    // platforms (not just members within the current window/platform
+    // filter), so "🔗 N 个平台报道" reflects the true cross-platform reach.
+    const groupIds = Array.from(
+      new Set(rows.map((r) => r.groupId).filter((g): g is string => g !== null)),
+    );
+    const sizeMap = new Map<string, number>();
+    if (groupIds.length > 0) {
+      const counts = await prisma.hotNews.groupBy({
+        by: ['groupId'],
+        where: { groupId: { in: groupIds }, status: ContentStatus.VISIBLE },
+        _count: { _all: true },
+      });
+      for (const c of counts) {
+        if (c.groupId) sizeMap.set(c.groupId, c._count._all);
+      }
+    }
+
     return {
       items: rows.map((r) => ({
         id: r.id,
@@ -87,6 +108,8 @@ export class HotNewsService {
         crawledAt: r.crawledAt.toISOString(),
         heatScore: r.heatScore,
         heatLevel: r.heatLevel,
+        groupId: r.groupId,
+        groupSize: r.groupId ? (sizeMap.get(r.groupId) ?? 1) : 1,
       })),
       page,
       pageSize,

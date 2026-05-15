@@ -36,7 +36,7 @@ export function NewsItem({ item }: { item: HotNewsListItemDto }) {
           {item.summary}
         </p>
       ) : null}
-      <div className="mt-1 flex items-center gap-2 text-xs text-gray-500">
+      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-500">
         <span>{item.author ?? '匿名'}</span>
         <span>·</span>
         <span className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${badgeCls}`}>
@@ -44,6 +44,17 @@ export function NewsItem({ item }: { item: HotNewsListItemDto }) {
         </span>
         <span>·</span>
         <LocalTime iso={item.publishedAt} />
+        {item.groupSize > 1 ? (
+          <>
+            <span>·</span>
+            <span
+              className="rounded bg-purple-50 px-1.5 py-0.5 text-[11px] font-medium text-purple-700"
+              title="同一事件被多个平台同时报道（基于 SP-7 跨平台聚类）"
+            >
+              🔗 {item.groupSize} 个平台报道
+            </span>
+          </>
+        ) : null}
       </div>
     </li>
   );
