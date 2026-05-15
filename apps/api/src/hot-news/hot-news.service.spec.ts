@@ -8,6 +8,7 @@ describe('HotNewsService', () => {
     hotNews: {
       findMany: ReturnType<typeof vi.fn>;
       count: ReturnType<typeof vi.fn>;
+      groupBy: ReturnType<typeof vi.fn>;
     };
     $transaction: ReturnType<typeof vi.fn>;
   };
@@ -17,6 +18,7 @@ describe('HotNewsService', () => {
       hotNews: {
         findMany: vi.fn().mockResolvedValue([]),
         count: vi.fn().mockResolvedValue(0),
+        groupBy: vi.fn().mockResolvedValue([]),
       },
       $transaction: vi.fn().mockImplementation(async (calls: Promise<unknown>[]) => {
         return Promise.all(calls);
@@ -120,6 +122,7 @@ describe('HotNewsService', () => {
       titleZh: true,
       summary: true,
       aiTags: true,
+      groupId: true,
     });
   });
 
@@ -262,6 +265,7 @@ describe('HotNewsService', () => {
           crawledAt: new Date('2026-05-10T10:01:00Z'),
           heatScore: 67.4,
           heatLevel: 'HOT',
+          groupId: null,
         },
       ]);
       prismaMock.hotNews.count.mockResolvedValueOnce(1);
@@ -270,6 +274,121 @@ describe('HotNewsService', () => {
 
       expect(result.items[0]!.heatScore).toBe(67.4);
       expect(result.items[0]!.heatLevel).toBe('HOT');
+    });
+  });
+
+  describe('SP-7 cross-platform groupId / groupSize', () => {
+    it('singleton row (groupId=null) maps to groupSize=1 and skips the groupBy query', async () => {
+      prismaMock.hotNews.findMany.mockResolvedValueOnce([
+        {
+          id: 'a',
+          title: 'Singleton',
+          titleZh: null,
+          summary: 's',
+          aiTags: [],
+          sourceUrl: 'https://example.com/a',
+          sourcePlatform: 'HACKERNEWS',
+          author: null,
+          publishedAt: new Date('2026-05-10T10:00:00Z'),
+          crawledAt: new Date('2026-05-10T10:00:00Z'),
+          heatScore: 0,
+          heatLevel: null,
+          groupId: null,
+        },
+      ]);
+      prismaMock.hotNews.count.mockResolvedValueOnce(1);
+
+      const result = await service.list(1, 20);
+
+      expect(result.items[0]!.groupId).toBeNull();
+      expect(result.items[0]!.groupSize).toBe(1);
+      expect(prismaMock.hotNews.groupBy).not.toHaveBeenCalled();
+    });
+
+    it('cross-platform group of 3 → every member receives groupSize=3 via ONE groupBy query', async () => {
+      prismaMock.hotNews.findMany.mockResolvedValueOnce([
+        {
+          id: 'r1', title: 'a', titleZh: null, summary: 's', aiTags: [],
+          sourceUrl: 'https://example.com/r1', sourcePlatform: 'HACKERNEWS',
+          author: null,
+          publishedAt: new Date('2026-05-10T10:00:00Z'),
+          crawledAt: new Date('2026-05-10T10:00:00Z'),
+          heatScore: 0, heatLevel: null,
+          groupId: 'grp-shared',
+        },
+        {
+          id: 'r2', title: 'b', titleZh: null, summary: 's', aiTags: [],
+          sourceUrl: 'https://example.com/r2', sourcePlatform: 'REDDIT',
+          author: null,
+          publishedAt: new Date('2026-05-10T09:00:00Z'),
+          crawledAt: new Date('2026-05-10T09:00:00Z'),
+          heatScore: 0, heatLevel: null,
+          groupId: 'grp-shared',
+        },
+      ]);
+      prismaMock.hotNews.count.mockResolvedValueOnce(2);
+      prismaMock.hotNews.groupBy.mockResolvedValueOnce([
+        { groupId: 'grp-shared', _count: { _all: 3 } },
+      ]);
+
+      const result = await service.list(1, 20);
+
+      expect(prismaMock.hotNews.groupBy).toHaveBeenCalledTimes(1);
+      const groupByArgs = prismaMock.hotNews.groupBy.mock.calls[0]![0]!;
+      expect(groupByArgs).toMatchObject({
+        by: ['groupId'],
+        where: { groupId: { in: ['grp-shared'] }, status: 'VISIBLE' },
+        _count: { _all: true },
+      });
+      expect(result.items[0]!.groupSize).toBe(3);
+      expect(result.items[1]!.groupSize).toBe(3);
+      expect(result.items[0]!.groupId).toBe('grp-shared');
+    });
+
+    it('groupSize falls back to 1 if groupBy returns no row for a groupId (rare race)', async () => {
+      prismaMock.hotNews.findMany.mockResolvedValueOnce([
+        {
+          id: 'r1', title: 'a', titleZh: null, summary: 's', aiTags: [],
+          sourceUrl: 'https://example.com/r1', sourcePlatform: 'HACKERNEWS',
+          author: null,
+          publishedAt: new Date('2026-05-10T10:00:00Z'),
+          crawledAt: new Date('2026-05-10T10:00:00Z'),
+          heatScore: 0, heatLevel: null,
+          groupId: 'grp-ghost',
+        },
+      ]);
+      prismaMock.hotNews.count.mockResolvedValueOnce(1);
+      prismaMock.hotNews.groupBy.mockResolvedValueOnce([]); // no count row
+
+      const result = await service.list(1, 20);
+
+      expect(result.items[0]!.groupId).toBe('grp-ghost');
+      expect(result.items[0]!.groupSize).toBe(1);
+    });
+
+    it('issues exactly ONE groupBy query regardless of how many rows share groupIds', async () => {
+      prismaMock.hotNews.findMany.mockResolvedValueOnce(
+        Array.from({ length: 10 }, (_, i) => ({
+          id: `r${i}`, title: 't', titleZh: null, summary: 's', aiTags: [],
+          sourceUrl: `https://example.com/r${i}`, sourcePlatform: 'HACKERNEWS',
+          author: null,
+          publishedAt: new Date('2026-05-10T10:00:00Z'),
+          crawledAt: new Date('2026-05-10T10:00:00Z'),
+          heatScore: 0, heatLevel: null,
+          groupId: i < 5 ? 'grp-A' : 'grp-B',
+        })),
+      );
+      prismaMock.hotNews.count.mockResolvedValueOnce(10);
+      prismaMock.hotNews.groupBy.mockResolvedValueOnce([
+        { groupId: 'grp-A', _count: { _all: 5 } },
+        { groupId: 'grp-B', _count: { _all: 5 } },
+      ]);
+
+      await service.list(1, 20);
+
+      expect(prismaMock.hotNews.groupBy).toHaveBeenCalledTimes(1);
+      const groupByArgs = prismaMock.hotNews.groupBy.mock.calls[0]![0]!;
+      expect((groupByArgs.where.groupId.in as string[]).sort()).toEqual(['grp-A', 'grp-B']);
     });
   });
 });

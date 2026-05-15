@@ -92,6 +92,20 @@ export interface HotNewsListItemDto {
    * (Aurora SP-8 / Dashboard SP-9).
    */
   heatLevel: 'BURST' | 'HOT' | 'NORMAL' | 'LOW' | null;
+  /**
+   * SP-7 (2026-05-08): Cross-platform group identifier assigned by the
+   * embed worker (`apps/worker/src/embed/group.service.ts`) when this
+   * row's embedding has cosine ≥ 0.85 (or ≥ 0.78 with a `+0.07` tag
+   * boost) against another row within the last 7d. Null for singletons
+   * and for rows the worker hasn't processed yet. Form: `grp-<base36>`.
+   */
+  groupId: string | null;
+  /**
+   * SP-7: Total VISIBLE members in the same cross-platform group. `1` for
+   * singleton rows (groupId === null) and for groups of size 1. Used by
+   * `news-item.tsx` to render a "🔗 N 个平台报道" badge when > 1.
+   */
+  groupSize: number;
 }
 
 export interface HotNewsListResponseDto {
