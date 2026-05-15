@@ -77,6 +77,12 @@ services:
       INTERACTION_MAX_HN: ${INTERACTION_MAX_HN:-500}
       INTERACTION_MAX_REDDIT: ${INTERACTION_MAX_REDDIT:-5000}
       INTERACTION_MAX_TWITTER: ${INTERACTION_MAX_TWITTER:-100000}
+      # SP-7: OpenAI direct API for embeddings (separate from OpenRouter for
+      # SP-5 summary). Compose only substitutes variables explicitly declared
+      # here; SP-4.7 PR #3 lesson — listing in .env is not sufficient.
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      EMBED_MODEL: ${EMBED_MODEL:-text-embedding-3-small}
+      EMBED_CONCURRENCY: ${EMBED_CONCURRENCY:-2}
     depends_on:
       postgres:
         condition: service_healthy
