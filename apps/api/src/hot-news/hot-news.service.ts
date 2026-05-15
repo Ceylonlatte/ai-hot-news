@@ -75,22 +75,30 @@ export class HotNewsService {
       prisma.hotNews.count({ where }),
     ]);
 
-    // SP-7: aggregate groupSize via one groupBy query for all non-null
-    // groupIds on this page. Counts every VISIBLE member across all
-    // platforms (not just members within the current window/platform
-    // filter), so "🔗 N 个平台报道" reflects the true cross-platform reach.
+    // SP-7-C: aggregate groupSize + per-platform breakdown via one groupBy
+    // over (groupId, sourcePlatform) for all non-null groupIds on this page.
+    // Counts every VISIBLE member across all platforms (not just members
+    // within the current window/platform filter), so the cross-platform
+    // badge reflects the group's true reach. Both `groupSize` and
+    // `groupPlatforms` derive from the same query so they cannot drift.
     const groupIds = Array.from(
       new Set(rows.map((r) => r.groupId).filter((g): g is string => g !== null)),
     );
+    const breakdownMap = new Map<string, Partial<Record<Platform, number>>>();
     const sizeMap = new Map<string, number>();
     if (groupIds.length > 0) {
       const counts = await prisma.hotNews.groupBy({
-        by: ['groupId'],
+        by: ['groupId', 'sourcePlatform'],
         where: { groupId: { in: groupIds }, status: ContentStatus.VISIBLE },
         _count: { _all: true },
       });
       for (const c of counts) {
-        if (c.groupId) sizeMap.set(c.groupId, c._count._all);
+        if (!c.groupId) continue;
+        const n = c._count._all;
+        sizeMap.set(c.groupId, (sizeMap.get(c.groupId) ?? 0) + n);
+        const bd = breakdownMap.get(c.groupId) ?? {};
+        bd[c.sourcePlatform as Platform] = n;
+        breakdownMap.set(c.groupId, bd);
       }
     }
 
@@ -110,6 +118,7 @@ export class HotNewsService {
         heatLevel: r.heatLevel,
         groupId: r.groupId,
         groupSize: r.groupId ? (sizeMap.get(r.groupId) ?? 1) : 1,
+        groupPlatforms: r.groupId ? (breakdownMap.get(r.groupId) ?? {}) : {},
       })),
       page,
       pageSize,

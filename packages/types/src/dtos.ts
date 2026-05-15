@@ -103,9 +103,24 @@ export interface HotNewsListItemDto {
   /**
    * SP-7: Total VISIBLE members in the same cross-platform group. `1` for
    * singleton rows (groupId === null) and for groups of size 1. Used by
-   * `news-item.tsx` to render a "🔗 N 个平台报道" badge when > 1.
+   * `news-item.tsx` to render the `🔗 N 篇` count in the cross-platform
+   * badge when > 1.
    */
   groupSize: number;
+  /**
+   * SP-7-C (2026-05-15): Per-platform breakdown of the group's VISIBLE
+   * members, e.g. `{ REDDIT: 10, HACKERNEWS: 2 }` means 10 Reddit rows +
+   * 2 HN rows in this group. Empty object `{}` for singletons.
+   *
+   * Sum of values always equals `groupSize` (both come from the same
+   * `groupBy(['groupId', 'sourcePlatform'])` query so they cannot drift).
+   *
+   * Why needed: the original v3 badge displayed "🔗 N 个平台报道", but the
+   * project only has 4 Platform enum values total (RSS/HN/Reddit/Twitter),
+   * so "12 个平台" was misleading — it meant "12 articles". This field
+   * lets the UI render the truthful "🔗 12 篇 · Reddit 10 / HN 2" form.
+   */
+  groupPlatforms: Partial<Record<Platform, number>>;
 }
 
 export interface HotNewsListResponseDto {
