@@ -5,8 +5,20 @@ import { getPrisma, Prisma } from '@ai-hot-news/db';
 // SP-7 tuning constants. Centralized so a future PR can env-override these
 // at module load (right now they're hard-coded because V1 has only 1k rows
 // of prod data and we want stable behavior before opening knobs).
-export const COSINE_THRESHOLD = 0.85;
-export const TAG_BOOST = 0.07;
+//
+// SP-7-A v3 (2026-05-15) re-tuned for nvidia/llama-nemotron-embed-vl-1b-v2 — the
+// observed cosine distribution on a 9-sample 中英 AI-news matrix is more
+// compressed than OpenAI v3-small: same-event cross-lingual ~0.70, unrelated
+// AI events 0.14-0.22, completely unrelated 0.01-0.13. So thresholds tighten
+// down (0.85 → 0.55) and tag boost widens (0.07 → 0.10) to preserve recall on
+// same-event-cross-platform while still rejecting unrelated noise.
+//   * 0.55 sits ~0.33 above the highest unrelated cosine seen (0.22), safely
+//     in the "signal" band.
+//   * 0.10 tag boost ensures candidates sharing a company:/model: tag clear
+//     0.55 even with cosine as low as 0.45 — useful when SP-5 summary
+//     phrasing differs but tags agree.
+export const COSINE_THRESHOLD = 0.55;
+export const TAG_BOOST = 0.10;
 export const WINDOW_DAYS = 7;
 export const CANDIDATE_LIMIT = 5;
 

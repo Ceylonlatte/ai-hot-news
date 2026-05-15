@@ -4,24 +4,45 @@ export interface EmbedResult {
   durationMs: number;
 }
 
+/** Default embedding dimension. Matches `HotNews.embedding vector(N)` in
+ *  schema.prisma. SP-7-A v3 bumped this from 1536 (OpenAI v3-small) to
+ *  2048 (NVIDIA Nemotron VL-1B). Override with `EMBED_DIM` env if you
+ *  swap models again; the spec/plan doc has the canonical model→dim table. */
+export const EMBED_DIM_DEFAULT = 2048;
+
 /**
  * Call OpenRouter `/api/v1/embeddings` for a single text input.
  *
- * SP-7-A v2 (2026-05-15) switched provider from OpenAI direct → OpenRouter:
- * OpenRouter exposes a 100% OpenAI-compatible embeddings endpoint that
- * forwards to the OpenAI provider with no markup ($0.020 / 1M tokens, same
- * as direct), and we reuse the same `OPENROUTER_API_KEY` already used by
- * SP-5 summary. Model id gains the `openai/` prefix per OpenRouter routing
- * convention. Response shape is identical to OpenAI's
- * (`data[0].embedding` + `usage.prompt_tokens`), so callers see no diff.
+ * SP-7-A v3 (2026-05-15): provider stays at OpenRouter (one key shared with
+ * SP-5 summary) but the model switched from `openai/text-embedding-3-small`
+ * to `nvidia/llama-nemotron-embed-vl-1b-v2:free`.
  *
- * App attribution headers (HTTP-Referer / X-OpenRouter-Title) are optional
- * but help with OpenRouter's leaderboard / rate-limit fairness.
+ * Background: v2 (also OpenRouter) routed `openai/text-embedding-3-small`
+ * — that endpoint returns HTTP 403 "violation of provider Terms of Service"
+ * because OpenRouter ToS blocks OpenAI's and Google's embedding models
+ * (chat/completions work; embeddings don't). Verified 2026-05-15 in prod
+ * with a real `curl` against `openai/{text-embedding-3-small,large,ada-002}`
+ * and `google/gemini-embedding-2-preview` — all 403. Six non-OpenAI/Google
+ * candidates returned vectors; Nemotron VL-1B-free had the best cosine
+ * signal-to-noise on a 9-sample matrix (gap 0.489 vs BGE-M3 0.343) and is
+ * free, so it wins.
+ *
+ * Trade-offs accepted:
+ * - Vision-language model used for text-only — the spec author's intent was
+ *   multimodal, but text-only behaviour was empirically excellent.
+ * - Free tier: OpenRouter free models cap at roughly $1/day worth of
+ *   requests. Our ~165 rows/day × ~80 tokens is well under any reasonable
+ *   limit, but if we start hitting 429 we fall back to BGE-M3 ($0.01/M).
+ *
+ * Response shape stays OpenAI-compatible (`data[0].embedding` +
+ * `usage.prompt_tokens`), so downstream parsing is unchanged.
  */
 export async function callEmbed(text: string): Promise<EmbedResult> {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) throw new Error('OPENROUTER_API_KEY not configured');
-  const model = process.env.EMBED_MODEL ?? 'openai/text-embedding-3-small';
+  const model =
+    process.env.EMBED_MODEL ?? 'nvidia/llama-nemotron-embed-vl-1b-v2:free';
+  const expectedDim = Number(process.env.EMBED_DIM ?? EMBED_DIM_DEFAULT);
 
   const start = Date.now();
   const res = await fetch('https://openrouter.ai/api/v1/embeddings', {
@@ -46,9 +67,9 @@ export async function callEmbed(text: string): Promise<EmbedResult> {
     usage: { prompt_tokens: number };
   };
   const vector = json.data[0]?.embedding;
-  if (!vector || vector.length !== 1536) {
+  if (!vector || vector.length !== expectedDim) {
     throw new Error(
-      `OpenRouter embeddings returned invalid vector (len=${vector?.length ?? 'undef'})`,
+      `OpenRouter embeddings returned invalid vector (len=${vector?.length ?? 'undef'}, expected ${expectedDim})`,
     );
   }
   return {

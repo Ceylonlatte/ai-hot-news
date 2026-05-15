@@ -78,7 +78,7 @@ describe('EmbedService.run', () => {
       summary: '中文摘要',
       status: 'VISIBLE',
     });
-    const vec = Array.from({ length: 1536 }, () => 0.1);
+    const vec = Array.from({ length: 2048 }, () => 0.1);
     callEmbedMock.mockResolvedValueOnce({ vector: vec, tokensIn: 30, durationMs: 200 });
     const { svc, groupService } = makeService();
     (groupService.assignGroup as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
@@ -101,7 +101,7 @@ describe('EmbedService.run', () => {
       summary: 'sum',
       status: 'VISIBLE',
     });
-    const vec = Array.from({ length: 1536 }, () => 0);
+    const vec = Array.from({ length: 2048 }, () => 0);
     callEmbedMock.mockResolvedValueOnce({ vector: vec, tokensIn: 5, durationMs: 10 });
     const { svc } = makeService();
     await svc.run('a');
@@ -116,9 +116,9 @@ describe('EmbedService.run', () => {
       summary: 's',
       status: 'VISIBLE',
     });
-    callEmbedMock.mockRejectedValueOnce(new Error('OpenAI 503'));
+    callEmbedMock.mockRejectedValueOnce(new Error('OpenRouter 503'));
     const { svc } = makeService();
-    await expect(svc.run('a')).rejects.toThrow(/OpenAI 503/);
+    await expect(svc.run('a')).rejects.toThrow(/OpenRouter 503/);
     expect(mockPrisma.$executeRaw).not.toHaveBeenCalled();
   });
 });

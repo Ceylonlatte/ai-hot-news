@@ -42,22 +42,25 @@ describe('GroupService.assignGroup', () => {
   });
 
   it('returns null when best candidate score below threshold and no tag boost', async () => {
+    // v3 threshold = 0.55; an unrelated-AI pair sits around 0.40-0.50 cosine.
     mockPrisma.hotNews.findUnique.mockResolvedValueOnce({ aiTags: ['company:openai'] });
     mockPrisma.$queryRaw.mockResolvedValueOnce([
-      { id: 'a', groupId: null, aiTags: ['company:anthropic'], cosine: 0.8 },
+      { id: 'a', groupId: null, aiTags: ['company:anthropic'], cosine: 0.5 },
     ]);
     const r = await svc.assignGroup('me');
     expect(r.groupId).toBeNull();
     expect(mockPrisma.$transaction).not.toHaveBeenCalled();
   });
 
-  it('applies tag boost (+0.07) to push cosine 0.79 over threshold', async () => {
-    expect(0.79 + 0.07).toBeGreaterThanOrEqual(COSINE_THRESHOLD);
+  it('applies tag boost (+0.10) to push cosine 0.48 over threshold (0.55)', async () => {
+    // v3: cosine 0.48 alone < 0.55, but +0.10 for shared company:openai tag
+    // gives score 0.58 > 0.55 → join group.
+    expect(0.48 + 0.10).toBeGreaterThanOrEqual(COSINE_THRESHOLD);
     mockPrisma.hotNews.findUnique.mockResolvedValueOnce({
       aiTags: ['company:openai', 'model:gpt-5'],
     });
     mockPrisma.$queryRaw.mockResolvedValueOnce([
-      { id: 'a', groupId: null, aiTags: ['company:openai'], cosine: 0.79 },
+      { id: 'a', groupId: null, aiTags: ['company:openai'], cosine: 0.48 },
     ]);
     const r = await svc.assignGroup('me');
     expect(r.groupId).toMatch(/^grp-/);
@@ -67,16 +70,17 @@ describe('GroupService.assignGroup', () => {
   it('does NOT apply tag boost when shared tag is not company:/model: prefixed', async () => {
     mockPrisma.hotNews.findUnique.mockResolvedValueOnce({ aiTags: ['tech:rag', 'category:Release'] });
     mockPrisma.$queryRaw.mockResolvedValueOnce([
-      { id: 'a', groupId: null, aiTags: ['tech:rag', 'category:Release'], cosine: 0.79 },
+      { id: 'a', groupId: null, aiTags: ['tech:rag', 'category:Release'], cosine: 0.48 },
     ]);
     const r = await svc.assignGroup('me');
     expect(r.groupId).toBeNull();
   });
 
   it('reuses existing groupId when best candidate already in a group', async () => {
+    // v3: same-event cross-lingual cosine ~0.70, well above 0.55 threshold.
     mockPrisma.hotNews.findUnique.mockResolvedValueOnce({ aiTags: [] });
     mockPrisma.$queryRaw.mockResolvedValueOnce([
-      { id: 'a', groupId: 'grp-existing-xyz', aiTags: [], cosine: 0.9 },
+      { id: 'a', groupId: 'grp-existing-xyz', aiTags: [], cosine: 0.7 },
     ]);
     const r = await svc.assignGroup('me');
     expect(r.groupId).toBe('grp-existing-xyz');
@@ -87,7 +91,7 @@ describe('GroupService.assignGroup', () => {
   it('promotes singleton candidate to new group + propagates groupId to both rows in one transaction', async () => {
     mockPrisma.hotNews.findUnique.mockResolvedValueOnce({ aiTags: [] });
     mockPrisma.$queryRaw.mockResolvedValueOnce([
-      { id: 'singleton', groupId: null, aiTags: [], cosine: 0.92 },
+      { id: 'singleton', groupId: null, aiTags: [], cosine: 0.75 },
     ]);
     const r = await svc.assignGroup('me');
     expect(r.groupId).toMatch(/^grp-/);
