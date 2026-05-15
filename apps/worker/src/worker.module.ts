@@ -5,6 +5,7 @@ import { LivenessService } from './liveness.service';
 import { CrawlModule } from './crawl/crawl.module';
 import { ExtractModule } from './extract/extract.module';
 import { SummarizeModule } from './summarize/summarize.module';
+import { EmbedModule } from './embed/embed.module';
 import { HeatModule } from './heat/heat.module';
 
 // Worker reads the monorepo root .env (DATABASE_URL, REDIS_URL, ...) — its own
@@ -19,6 +20,7 @@ const APP_ENV = join(__dirname, '..', '.env');
     ConfigModule.forRoot({ isGlobal: true, envFilePath: [APP_ENV, ROOT_ENV] }),
     SummarizeModule,
     ExtractModule,
+    EmbedModule,
     HeatModule,
     CrawlModule,
   ],
