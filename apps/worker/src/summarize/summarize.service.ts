@@ -1,4 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject } from '@nestjs/common';
+import { Queue } from 'bullmq';
 import { getPrisma } from '@ai-hot-news/db';
 import {
   buildSystemPrompt,
@@ -7,12 +8,16 @@ import {
 } from '@ai-hot-news/prompts';
 import { callLlm } from './llm-client';
 import { SummarizationStrategy } from './strategies/strategy.interface';
+import { EMBED_QUEUE } from '../embed/embed.queue';
 
 @Injectable()
 export class SummarizeService {
   private readonly logger = new Logger(SummarizeService.name);
 
-  constructor(private readonly strategy: SummarizationStrategy) {}
+  constructor(
+    private readonly strategy: SummarizationStrategy,
+    @Inject(EMBED_QUEUE) private readonly embedQueue: Queue,
+  ) {}
 
   async run(hotNewsId: string): Promise<void> {
     const prisma = getPrisma();
@@ -73,6 +78,21 @@ export class SummarizeService {
           aiTags: parsed.aiTags,
         },
       });
+      // SP-7: enqueue embedding job after the summary write succeeds.
+      // Same retry / backoff / removeOn* policy as summary jobs. EmbedService
+      // is defensive about missing rows + null summary, so a race between
+      // ingest delete and this enqueue is harmless (Job will skip cleanly).
+      await this.embedQueue.add(
+        'embed',
+        { hotNewsId },
+        {
+          jobId: `embed-${hotNewsId}`,
+          attempts: 3,
+          backoff: { type: 'exponential', delay: 30_000 },
+          removeOnComplete: { count: 100 },
+          removeOnFail: { count: 100 },
+        },
+      );
     } catch (err) {
       if ((err as { code?: string }).code === 'P2025') return;
       throw err;

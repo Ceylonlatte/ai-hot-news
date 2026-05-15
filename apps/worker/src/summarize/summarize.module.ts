@@ -10,6 +10,8 @@ import { Queue, Worker } from 'bullmq';
 import { getPrisma } from '@ai-hot-news/db';
 import { REDIS_CONNECTION } from '../crawl/queue.provider';
 import { RedisModule } from '../redis/redis.module';
+import { EmbedModule } from '../embed/embed.module';
+import { EMBED_QUEUE } from '../embed/embed.queue';
 import { SummarizeService } from './summarize.service';
 import {
   SUMMARY_QUEUE,
@@ -24,7 +26,10 @@ import { SummarizeAllVisibleStrategy } from './strategies/summarize-all-visible.
 const STRATEGY_TOKEN = Symbol('SUMMARIZATION_STRATEGY');
 
 @Module({
-  imports: [RedisModule],
+  // SP-7: depend on EmbedModule so SummarizeService can inject EMBED_QUEUE.
+  // RedisModule provider is dedupe'd by Nest across both imports — one
+  // shared IORedis connection survives.
+  imports: [RedisModule, EmbedModule],
   providers: [
     summaryQueueProvider,
     {
@@ -33,8 +38,9 @@ const STRATEGY_TOKEN = Symbol('SUMMARIZATION_STRATEGY');
     },
     {
       provide: SummarizeService,
-      useFactory: (strategy: SummarizationStrategy) => new SummarizeService(strategy),
-      inject: [STRATEGY_TOKEN],
+      useFactory: (strategy: SummarizationStrategy, embedQueue: Queue) =>
+        new SummarizeService(strategy, embedQueue),
+      inject: [STRATEGY_TOKEN, EMBED_QUEUE],
     },
     {
       provide: SUMMARY_WORKER,

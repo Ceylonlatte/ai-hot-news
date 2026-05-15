@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Queue } from 'bullmq';
 
 const mockPrisma = {
   hotNews: {
@@ -42,9 +43,14 @@ const baseRow = {
 
 describe('SummarizeService.run', () => {
   let service: SummarizeService;
+  let embedQueue: { add: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
-    service = new SummarizeService(new SummarizeAllVisibleStrategy());
+    embedQueue = { add: vi.fn().mockResolvedValue(undefined) };
+    service = new SummarizeService(
+      new SummarizeAllVisibleStrategy(),
+      embedQueue as unknown as Queue,
+    );
     mockPrisma.hotNews.findUnique.mockReset();
     mockPrisma.hotNews.update.mockReset();
     callLlmMock.mockReset();
@@ -150,5 +156,57 @@ describe('SummarizeService.run', () => {
     mockPrisma.hotNews.update.mockRejectedValue(p2025);
 
     await expect(service.run('cm-1')).resolves.toBeUndefined();
+  });
+
+  it('SP-7: enqueues embed:<id> after a successful summary write', async () => {
+    mockPrisma.hotNews.findUnique.mockResolvedValue(baseRow);
+    callLlmMock.mockResolvedValue({
+      text: goodLlmResponse,
+      tokensIn: 200,
+      tokensOut: 80,
+      durationMs: 1500,
+    });
+    mockPrisma.hotNews.update.mockResolvedValue({});
+
+    await service.run('cm-1');
+
+    expect(embedQueue.add).toHaveBeenCalledWith(
+      'embed',
+      { hotNewsId: 'cm-1' },
+      expect.objectContaining({
+        jobId: 'embed-cm-1',
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 30_000 },
+      }),
+    );
+  });
+
+  it('SP-7: does NOT enqueue embed when summary write fails with P2025 (row deleted mid-flight)', async () => {
+    mockPrisma.hotNews.findUnique.mockResolvedValue(baseRow);
+    callLlmMock.mockResolvedValue({
+      text: goodLlmResponse,
+      tokensIn: 200,
+      tokensOut: 80,
+      durationMs: 1500,
+    });
+    const p2025 = Object.assign(new Error('not found'), { code: 'P2025' });
+    mockPrisma.hotNews.update.mockRejectedValue(p2025);
+
+    await service.run('cm-1');
+    expect(embedQueue.add).not.toHaveBeenCalled();
+  });
+
+  it('SP-7: does NOT enqueue embed when LLM parse fails (no DB write happened)', async () => {
+    mockPrisma.hotNews.findUnique.mockResolvedValue(baseRow);
+    callLlmMock.mockResolvedValue({
+      text: 'sorry I cannot help',
+      tokensIn: 50,
+      tokensOut: 5,
+      durationMs: 500,
+    });
+
+    await service.run('cm-1');
+    expect(mockPrisma.hotNews.update).not.toHaveBeenCalled();
+    expect(embedQueue.add).not.toHaveBeenCalled();
   });
 });
