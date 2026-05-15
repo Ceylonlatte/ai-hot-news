@@ -147,7 +147,7 @@ describe('backfillEmbeddings', () => {
     ]);
     const embedFn = vi
       .fn()
-      .mockRejectedValueOnce(new Error('OpenAI 503'))
+      .mockRejectedValueOnce(new Error('OpenRouter 503'))
       .mockResolvedValueOnce({ vector: vec(), tokensIn: 10, durationMs: 1 });
     const assignGroupFn = vi.fn().mockResolvedValue({ groupId: null, cosine: 0 });
 

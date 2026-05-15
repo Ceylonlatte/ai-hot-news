@@ -1,12 +1,58 @@
 # SP-7 — pgvector 跨平台热点合并
 
-- **状态**：spec 待用户审阅
+- **状态**：PR-α 实现完成，等 prod 部署 + backfill smoke；PR-β 本地代码就绪
 - **依赖**：
   - SP-5 v3.4 已完成（titleZh + summary 是 embedding 输入源）
   - SP-4.7（ArticleExtractor + antibot 兜底，确保 content 不污染）
   - 一次性脚本范式（SP-4 §10 决策 11）
 - **本文件**：`docs/superpowers/specs/2026-05-08-sp7-pgvector-cross-platform-merge-design.md`
 - **预计工作量**：~2 天（embed worker 模块 + group 算法 + backfill 脚本 + UI 列表 group badge + 集成测试）
+
+---
+
+> **🛠️ ADR v2（2026-05-15）— Embedding provider 改为 OpenRouter 路由**
+>
+> 原 spec 选 **OpenAI direct `/v1/embeddings`** 作为 embedding provider，理由（§0
+> 表 row 1 + §6 风险表 row 3）写的是 "OpenRouter 不暴露 embeddings 接口"。
+> **该陈述在 spec 起草时（2026-05-08）正确，但在 PR-α 实现完成、准备上线阶段
+> （2026-05-15）核查发现 OpenRouter 现已上线 OpenAI-compatible embeddings 端点**：
+>
+> - 端点：`POST https://openrouter.ai/api/v1/embeddings`
+> - 模型 ID：`openai/text-embedding-3-small`（前缀 `openai/` 是 OpenRouter 路由约定）
+> - 价格：**$0.020 / 1M input tokens，与 OpenAI direct 完全一致（无 markup）**
+> - Schema：100% OpenAI-compatible（`input` / `model` / `dimensions` / `encoding_format`
+>   请求 + `data[0].embedding` / `usage.prompt_tokens` 响应）
+> - 来源：[OpenRouter embeddings API ref](https://openrouter.ai/docs/api/api-reference/embeddings/create-embeddings)
+>   + [openai/text-embedding-3-small pricing](https://openrouter.ai/openai/text-embedding-3-small)
+>
+> **决策**：放弃 OpenAI direct，全 SP-7 链路（worker `callEmbed` + backfill 脚本
+> 的 `callEmbedInline`）切到 OpenRouter，复用 SP-5 已经在用的 `OPENROUTER_API_KEY`。
+>
+> **理由**：
+>
+> 1. **运维简化**：去掉 OpenAI Platform 账号注册 + 充值 + 第二个 key 轮换 +
+>    `.env.example` 多列一个变量的整套负担 —— 一份 credit，一份 key，一套 rate
+>    limit。
+> 2. **零功能损失**：价格、维度、schema、模型本身（OpenRouter 把请求转发给 OpenAI）
+>    全部 byte-equivalent。
+> 3. **零代码额外复杂度**：只改 `embed-client.ts` 的 base URL + env var name + model
+>    prefix，4 行 diff；spec 列出的所有阈值（COSINE_THRESHOLD=0.85 / TAG_BOOST=0.07
+>    等）一字未动。
+>
+> **trade-off**：增加一跳网络（client → OpenRouter → OpenAI），p50 延迟可能多
+> 10–30ms。SP-7 是异步队列消费，单次 embed 30s timeout，10ms 完全 negligible。
+>
+> **本 spec 下文凡是出现 `OPENAI_API_KEY` / `api.openai.com/v1/embeddings` /
+> "OpenRouter 不支持 embeddings" / "$0.02 per 1M" 字样，均以本 ADR 为准**，请把心
+> 智模型替换为：
+>
+> - env：`OPENROUTER_API_KEY`（已在 prod `.env`，复用 SP-5）
+> - URL：`https://openrouter.ai/api/v1/embeddings`
+> - model：`openai/text-embedding-3-small`（注意 `openai/` 前缀）
+> - cost：$0.020 / 1M input tokens（不变）
+>
+> 风险表 §6 row 3 ("OpenAI direct 而非 OpenRouter") 标记为 **OBSOLETE（OpenRouter
+> 现已支持，已切换）**。
 
 ---
 

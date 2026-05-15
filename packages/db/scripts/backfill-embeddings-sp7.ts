@@ -98,7 +98,8 @@ export async function backfillEmbeddings(opts: BackfillOpts): Promise<BackfillSt
     stats.multiPlatformGroups = Number(result[0]?.count ?? 0);
   }
 
-  // text-embedding-3-small: $0.02 per 1M tokens
+  // openai/text-embedding-3-small via OpenRouter: $0.020 per 1M input tokens
+  // (no OpenRouter markup; same as direct OpenAI rate).
   stats.costUsd = `$${((stats.totalTokens / 1_000_000) * 0.02).toFixed(4)}`;
   return stats;
 }
@@ -165,22 +166,24 @@ async function assignGroupInline(hotNewsId: string): Promise<{ groupId: string |
 }
 
 async function callEmbedInline(text: string): Promise<{ vector: number[]; tokensIn: number; durationMs: number }> {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) throw new Error('OPENAI_API_KEY not configured');
-  const model = process.env.EMBED_MODEL ?? 'text-embedding-3-small';
+  const apiKey = process.env.OPENAI_API_KEY ?? process.env.OPENROUTER_API_KEY;
+  if (!apiKey) throw new Error('OPENROUTER_API_KEY not configured');
+  const model = process.env.EMBED_MODEL ?? 'openai/text-embedding-3-small';
   const start = Date.now();
-  const res = await fetch('https://api.openai.com/v1/embeddings', {
+  const res = await fetch('https://openrouter.ai/api/v1/embeddings', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${apiKey}`,
+      'HTTP-Referer': 'https://github.com/Ceylonlatte/ai-hot-news',
+      'X-OpenRouter-Title': 'ai-hot-news',
     },
     body: JSON.stringify({ model, input: text }),
     signal: AbortSignal.timeout(30_000),
   });
   if (!res.ok) {
     const err = await res.text().catch(() => '<no body>');
-    throw new Error(`OpenAI embeddings ${res.status}: ${err.slice(0, 300)}`);
+    throw new Error(`OpenRouter embeddings ${res.status}: ${err.slice(0, 300)}`);
   }
   const json = (await res.json()) as {
     data: Array<{ embedding: number[] }>;
@@ -188,7 +191,7 @@ async function callEmbedInline(text: string): Promise<{ vector: number[]; tokens
   };
   const vector = json.data[0]?.embedding;
   if (!vector || vector.length !== 1536) {
-    throw new Error(`OpenAI returned invalid vector (len=${vector?.length ?? 'undef'})`);
+    throw new Error(`OpenRouter returned invalid vector (len=${vector?.length ?? 'undef'})`);
   }
   return { vector, tokensIn: json.usage.prompt_tokens, durationMs: Date.now() - start };
 }

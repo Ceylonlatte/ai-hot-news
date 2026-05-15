@@ -2,7 +2,18 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 让"同一事件的多平台报道"在 `/news` 列表上可视化合并。新增 `apps/worker/src/embed/` 模块（OpenAI `text-embedding-3-small`、1536 维），SP-5 摘要完成后自动 push `embed:<id>`，EmbedService 拿到 row 后写 embedding + 跑 GroupService 用 pgvector 余弦相似度 + tag 加成 + 7d 候选窗口分配 `groupId`。API 在 `findMany` 后用单次 `groupBy` 聚合 `groupSize`，Web 列表卡片底部渲染 `🔗 N 个平台报道` badge。一次性 backfill 脚本把历史 165 行 embedding 灌入 + 建 ivfflat 索引。
+> **🛠️ ADR v2（2026-05-15）— Embedding provider 改为 OpenRouter 路由**
+>
+> 本 plan 文档凡引用 `OPENAI_API_KEY` / `api.openai.com/v1/embeddings` /
+> "OpenRouter 不暴露 embeddings 接口" 字样，**均以 spec 顶部同名 ADR 为准**：
+> embedding 已切到 OpenRouter，复用 SP-5 `OPENROUTER_API_KEY`、URL
+> `https://openrouter.ai/api/v1/embeddings`、model `openai/text-embedding-3-small`、
+> 价格 $0.020 / 1M tokens 不变。详见
+> `docs/superpowers/specs/2026-05-08-sp7-pgvector-cross-platform-merge-design.md`
+> 顶部 ADR note。Task 6.1 prod `.env` 步骤简化为：只追加 `EMBED_MODEL` +
+> `EMBED_CONCURRENCY`（`OPENROUTER_API_KEY` 已存在），不用申请 OpenAI key。
+
+**Goal:** 让"同一事件的多平台报道"在 `/news` 列表上可视化合并。新增 `apps/worker/src/embed/` 模块（OpenRouter routes `openai/text-embedding-3-small`、1536 维），SP-5 摘要完成后自动 push `embed:<id>`，EmbedService 拿到 row 后写 embedding + 跑 GroupService 用 pgvector 余弦相似度 + tag 加成 + 7d 候选窗口分配 `groupId`。API 在 `findMany` 后用单次 `groupBy` 聚合 `groupSize`，Web 列表卡片底部渲染 `🔗 N 个平台报道` badge。一次性 backfill 脚本把历史 165 行 embedding 灌入 + 建 ivfflat 索引。
 
 **Architecture:** 2 个独立 PR-α / PR-β 串行（α 是 backend full-stack，β 是 API+UI 暴露）：
 - **PR-α** `feat/sp7-A-embed-worker` — 新模块 + SP-5 push hook + backfill 脚本 + env 透传 + ivfflat index migration（可选）。落地后 prod 已开始算 embedding + groupId，但 API/UI 还看不见。
