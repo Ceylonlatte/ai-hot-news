@@ -277,8 +277,8 @@ describe('HotNewsService', () => {
     });
   });
 
-  describe('SP-7 cross-platform groupId / groupSize', () => {
-    it('singleton row (groupId=null) maps to groupSize=1 and skips the groupBy query', async () => {
+  describe('SP-7 cross-platform groupId / groupSize / groupPlatforms', () => {
+    it('singleton row (groupId=null) maps to groupSize=1, groupPlatforms={}, and skips the groupBy query', async () => {
       prismaMock.hotNews.findMany.mockResolvedValueOnce([
         {
           id: 'a',
@@ -302,10 +302,11 @@ describe('HotNewsService', () => {
 
       expect(result.items[0]!.groupId).toBeNull();
       expect(result.items[0]!.groupSize).toBe(1);
+      expect(result.items[0]!.groupPlatforms).toEqual({});
       expect(prismaMock.hotNews.groupBy).not.toHaveBeenCalled();
     });
 
-    it('cross-platform group of 3 → every member receives groupSize=3 via ONE groupBy query', async () => {
+    it('cross-platform group of 3 → every member receives groupSize=3 + per-platform breakdown via ONE groupBy', async () => {
       prismaMock.hotNews.findMany.mockResolvedValueOnce([
         {
           id: 'r1', title: 'a', titleZh: null, summary: 's', aiTags: [],
@@ -327,8 +328,11 @@ describe('HotNewsService', () => {
         },
       ]);
       prismaMock.hotNews.count.mockResolvedValueOnce(2);
+      // SP-7-C: groupBy now buckets by (groupId, sourcePlatform); the same group
+      // appears once per platform that contributed members.
       prismaMock.hotNews.groupBy.mockResolvedValueOnce([
-        { groupId: 'grp-shared', _count: { _all: 3 } },
+        { groupId: 'grp-shared', sourcePlatform: 'HACKERNEWS', _count: { _all: 1 } },
+        { groupId: 'grp-shared', sourcePlatform: 'REDDIT', _count: { _all: 2 } },
       ]);
 
       const result = await service.list(1, 20);
@@ -336,16 +340,24 @@ describe('HotNewsService', () => {
       expect(prismaMock.hotNews.groupBy).toHaveBeenCalledTimes(1);
       const groupByArgs = prismaMock.hotNews.groupBy.mock.calls[0]![0]!;
       expect(groupByArgs).toMatchObject({
-        by: ['groupId'],
+        by: ['groupId', 'sourcePlatform'],
         where: { groupId: { in: ['grp-shared'] }, status: 'VISIBLE' },
         _count: { _all: true },
       });
       expect(result.items[0]!.groupSize).toBe(3);
       expect(result.items[1]!.groupSize).toBe(3);
       expect(result.items[0]!.groupId).toBe('grp-shared');
+      expect(result.items[0]!.groupPlatforms).toEqual({
+        HACKERNEWS: 1,
+        REDDIT: 2,
+      });
+      expect(result.items[1]!.groupPlatforms).toEqual({
+        HACKERNEWS: 1,
+        REDDIT: 2,
+      });
     });
 
-    it('groupSize falls back to 1 if groupBy returns no row for a groupId (rare race)', async () => {
+    it('groupSize falls back to 1 + groupPlatforms={} if groupBy returns no row for a groupId (rare race)', async () => {
       prismaMock.hotNews.findMany.mockResolvedValueOnce([
         {
           id: 'r1', title: 'a', titleZh: null, summary: 's', aiTags: [],
@@ -364,6 +376,7 @@ describe('HotNewsService', () => {
 
       expect(result.items[0]!.groupId).toBe('grp-ghost');
       expect(result.items[0]!.groupSize).toBe(1);
+      expect(result.items[0]!.groupPlatforms).toEqual({});
     });
 
     it('issues exactly ONE groupBy query regardless of how many rows share groupIds', async () => {
@@ -379,9 +392,12 @@ describe('HotNewsService', () => {
         })),
       );
       prismaMock.hotNews.count.mockResolvedValueOnce(10);
+      // SP-7-C: 4 rows after (groupId, sourcePlatform) bucketing — both
+      // groups only have HACKERNEWS in the mock, but a real run could yield
+      // more buckets without changing the query count.
       prismaMock.hotNews.groupBy.mockResolvedValueOnce([
-        { groupId: 'grp-A', _count: { _all: 5 } },
-        { groupId: 'grp-B', _count: { _all: 5 } },
+        { groupId: 'grp-A', sourcePlatform: 'HACKERNEWS', _count: { _all: 5 } },
+        { groupId: 'grp-B', sourcePlatform: 'HACKERNEWS', _count: { _all: 5 } },
       ]);
 
       await service.list(1, 20);
