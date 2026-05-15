@@ -72,7 +72,7 @@ model HotNews {
   matchedKeywords String[]      @default([])
   heatScore       Float         @default(0)
   heatLevel       HeatLevel     @default(LOW)
-  embedding       Unsupported("vector(1536)")?
+  embedding       Unsupported("vector(2048)")?
 
   dedupeHash      String        @unique
   groupId         String?

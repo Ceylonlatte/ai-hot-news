@@ -37,7 +37,7 @@ beforeEach(() => {
 afterEach(() => vi.resetAllMocks());
 
 function vec(): number[] {
-  return Array.from({ length: 1536 }, () => 0.05);
+  return Array.from({ length: 2048 }, () => 0.05);
 }
 
 describe('backfillEmbeddings', () => {
@@ -127,7 +127,8 @@ describe('backfillEmbeddings', () => {
     expect(mockPrisma.$queryRawUnsafe).toHaveBeenCalledTimes(1);
   });
 
-  it('reports cost in dollars based on totalTokens (0.02 per 1M)', async () => {
+  it('reports $0 cost on free Nemotron path (no OPENAI_API_KEY set)', async () => {
+    delete process.env.OPENAI_API_KEY;
     mockPrisma.$queryRawUnsafe.mockResolvedValueOnce([
       { id: 'a', title: 't', titleZh: null, summary: 's' },
     ]);
@@ -137,7 +138,25 @@ describe('backfillEmbeddings', () => {
     const stats = await backfillEmbeddings({ embedFn, assignGroupFn, batchSize: 10 });
 
     expect(stats.totalTokens).toBe(1_000_000);
-    expect(stats.costUsd).toBe('$0.0200');
+    expect(stats.costUsd).toBe('$0.0000 (Nemotron free)');
+  });
+
+  it('falls back to OpenAI v3-small pricing when OPENAI_API_KEY is set', async () => {
+    process.env.OPENAI_API_KEY = 'sk-test';
+    try {
+      mockPrisma.$queryRawUnsafe.mockResolvedValueOnce([
+        { id: 'a', title: 't', titleZh: null, summary: 's' },
+      ]);
+      const embedFn = vi.fn(async () => ({ vector: vec(), tokensIn: 1_000_000, durationMs: 1 }));
+      const assignGroupFn = vi.fn().mockResolvedValue({ groupId: null, cosine: 0 });
+
+      const stats = await backfillEmbeddings({ embedFn, assignGroupFn, batchSize: 10 });
+
+      expect(stats.totalTokens).toBe(1_000_000);
+      expect(stats.costUsd).toBe('$0.0200');
+    } finally {
+      delete process.env.OPENAI_API_KEY;
+    }
   });
 
   it('records failed count when embedFn rejects, keeps processing the rest', async () => {

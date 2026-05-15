@@ -10,7 +10,76 @@
 
 ---
 
-> **🛠️ ADR v2（2026-05-15）— Embedding provider 改为 OpenRouter 路由**
+> **🛠️ ADR v3（2026-05-15 晚 — Nemotron VL-1B free 替换 OpenAI v3-small；阈值 retune；vector(1536) → vector(2048)）**
+>
+> ADR v2 假设了"OpenRouter 现已支持 embeddings 端点"是有效的可调用路径。**实证为否**：
+> v2 部署到 prod 后第一个真实请求即返回 HTTP 403 `"violation of provider Terms of
+> Service"`。逐一验证后：
+>
+> | 模型 | HTTP | 结论 |
+> |---|---|---|
+> | `openai/text-embedding-3-small` | 403 | ❌ ToS hard block |
+> | `openai/text-embedding-3-large` | 403 | ❌ ToS hard block |
+> | `openai/text-embedding-ada-002` | 403 | ❌ ToS hard block |
+> | `google/gemini-embedding-2-preview` | 403 | ❌ ToS hard block |
+> | `baai/bge-m3` | 200 | ✅ 可用 |
+> | `qwen/qwen3-embedding-{8b,4b}` | 200 | ✅ 可用 |
+> | `mistralai/mistral-embed` | 200 | ✅ 可用 |
+> | `thenlper/gte-base` | 200 | ✅ 可用 |
+> | `nvidia/llama-nemotron-embed-vl-1b-v2:free` | 200 | ✅ 可用（最终选用）|
+>
+> **结论**：OpenRouter ToS 对 `openai/*` 和 `google/*` 系列 embedding 模型有硬封禁
+> （chat/completions 不受影响 —— SP-5 summary 始终正常）。ADR v2 关于"OpenRouter
+> 暴露 embeddings 端点"的事实陈述本身正确，但**"我们这个账号能成功调到这些
+> OpenAI/Google 模型"是错的**。docs vs reality 差距，下次换 provider 必须先发真请求
+> 验证。
+>
+> **v3 选型决策**：基于 9-sample 中英 AI 新闻 cosine 实测矩阵 ——
+>
+> | 指标 | Nemotron-VL-1B | BGE-M3 | OpenAI v3-small (理论) |
+> |---|---|---|---|
+> | 维度 | 2048 | 1024 | 1536 |
+> | 同事件跨语言 | 0.704 | 0.863 | ~0.90 |
+> | 不同 AI 事件 | 0.14–0.22 | 0.40–0.52 | 0.5–0.7 |
+> | 完全无关 | 0.01–0.13 | 0.29–0.40 | 0.2–0.4 |
+> | **signal-to-noise gap** | **0.489** | 0.343 | ~0.3 |
+> | 价格 | **$0**（free tier）| $0.01/M | $0.02/M |
+>
+> Nemotron 区分度最高（gap 0.489 > BGE 0.343），且完全免费 —— 这两条决定选 A。BGE-M3
+> 作为 fallback 候选记录在案，未来若 Nemotron 限流或下架，env 一行切换即可。
+>
+> **schema 改动**：`HotNews.embedding` 从 `vector(1536)` 改为 `vector(2048)`。Prod
+> 当时 0 行有 embedding（v2 client 全部 403），所以 DROP+ADD migration 无损。
+>
+> **阈值改动**（基于 v3 cosine 分布重新校准）：
+>
+> | 常量 | v1/v2 (OpenAI v3-small) | v3 (Nemotron) | 理由 |
+> |---|---|---|---|
+> | `COSINE_THRESHOLD` | 0.85 | **0.55** | Nemotron 同事件 cosine ≈ 0.70；0.55 留 0.15 buffer 抵御 cross-lingual variance，且离最高 unrelated cosine (0.22) 还有 0.33 信号带 |
+> | `TAG_BOOST` | 0.07 | **0.10** | 增大 boost 让"cosine 0.45+ 共享 company:/model: tag"也能 promote 到 0.55 阈值之上，弥补 Nemotron 文本召回偏弱 |
+> | `WINDOW_DAYS` | 7 | 7 | 不变 |
+> | `CANDIDATE_LIMIT` | 5 | 5 | 不变 |
+>
+> **影响范围**（已在 PR `feat/sp7-A-nemotron-v3` 中实现）：
+>
+> - `apps/worker/src/embed/embed-client.ts`：default model + dim 验证 (1536→2048)
+> - `apps/worker/src/embed/embed.service.ts`：`::vector(2048)` cast
+> - `apps/worker/src/embed/group.service.ts`：`COSINE_THRESHOLD=0.55` / `TAG_BOOST=0.10`
+> - `packages/db/scripts/backfill-embeddings-sp7.ts`：inline 三处同步
+> - `packages/db/prisma/schema.prisma`：`vector(1536)` → `vector(2048)`
+> - `packages/db/prisma/migrations/20260515220000_sp7_v3_embedding_2048/migration.sql`：DROP + ADD
+> - 4 个 spec 文件维度断言 + cost case 拆分（free vs OpenAI-fallback）
+> - 新一次性脚本 `packages/db/scripts/wipe-hot-news-non-rss-sp7.ts` + spec：在 v3 验证完成
+>   后用于 reset 历史 HN/Reddit 数据，让 prod 从 RSS-only 起点重新进入 v3 pipeline
+>
+> **追加教训**：换 provider 前必须先用 prod key curl 真实请求，不要只看 docs / OpenAPI
+> spec / pricing 页 / model list 这些**元数据信号** —— 它们和**账号实际能调通的子集**
+> 是两个集合。"OpenRouter 对外 advertise 这个端点"不等于"我的账号 + 这个具体模型组合
+> 能通过 ToS 检查"。
+>
+> ---
+>
+> **🛠️ ADR v2（2026-05-15）— Embedding provider 改为 OpenRouter 路由** *(**SUPERSEDED by v3 above** —— v2 假定 OpenRouter 能调 `openai/*` embedding 模型，实测 403。保留全文作为决策历史。)*
 >
 > 原 spec 选 **OpenAI direct `/v1/embeddings`** 作为 embedding provider，理由（§0
 > 表 row 1 + §6 风险表 row 3）写的是 "OpenRouter 不暴露 embeddings 接口"。

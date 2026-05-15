@@ -36,11 +36,12 @@ export class EmbedService {
     const result = await callEmbed(input);
 
     // pgvector cast: Postgres accepts a string literal like '[0.1,0.2,...]'
-    // and `::vector(1536)` coerces it. Prisma binds the literal as text;
-    // the cast happens server-side.
+    // and `::vector(2048)` coerces it. Prisma binds the literal as text;
+    // the cast happens server-side. Dim must match schema.prisma's
+    // `Unsupported("vector(2048)")` (see SP-7-A v3 ADR / EMBED_DIM_DEFAULT).
     const literal = `[${result.vector.join(',')}]`;
     await prisma.$executeRaw(
-      Prisma.sql`UPDATE hot_news SET embedding = ${literal}::vector(1536) WHERE id = ${hotNewsId}`,
+      Prisma.sql`UPDATE hot_news SET embedding = ${literal}::vector(2048) WHERE id = ${hotNewsId}`,
     );
 
     const { groupId, cosine } = await this.groupService.assignGroup(hotNewsId);

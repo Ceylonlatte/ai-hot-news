@@ -68,7 +68,7 @@ export async function backfillEmbeddings(opts: BackfillOpts): Promise<BackfillSt
         stats.totalTokens += tokensIn;
         const literal = `[${vector.join(',')}]`;
         await prisma.$executeRawUnsafe(
-          `UPDATE hot_news SET embedding = $1::vector(1536) WHERE id = $2`,
+          `UPDATE hot_news SET embedding = $1::vector(2048) WHERE id = $2`,
           literal,
           r.id,
         );
@@ -98,9 +98,14 @@ export async function backfillEmbeddings(opts: BackfillOpts): Promise<BackfillSt
     stats.multiPlatformGroups = Number(result[0]?.count ?? 0);
   }
 
-  // openai/text-embedding-3-small via OpenRouter: $0.020 per 1M input tokens
-  // (no OpenRouter markup; same as direct OpenAI rate).
-  stats.costUsd = `$${((stats.totalTokens / 1_000_000) * 0.02).toFixed(4)}`;
+  // SP-7-A v3: model is nvidia/llama-nemotron-embed-vl-1b-v2:free, which is
+  // a free OpenRouter model (no per-token charge). Report $0 always to make
+  // it obvious in the JSON stats; the legacy fallback (OPENAI_API_KEY set)
+  // would silently still be priced at OpenAI v3-small rate.
+  stats.costUsd =
+    process.env.OPENAI_API_KEY != null
+      ? `$${((stats.totalTokens / 1_000_000) * 0.02).toFixed(4)}`
+      : '$0.0000 (Nemotron free)';
   return stats;
 }
 
@@ -108,10 +113,12 @@ export async function backfillEmbeddings(opts: BackfillOpts): Promise<BackfillSt
 // this script is self-contained (worker image only COPYs apps/worker/dist,
 // not src; SP-4 §10 decision 11 requires one-shot scripts to depend solely
 // on packages, not on app source). If you tune these values, update both.
-const COSINE_THRESHOLD = 0.85;
-const TAG_BOOST = 0.07;
+// v3 (2026-05-15): retuned for Nemotron VL-1B's compressed cosine distribution.
+const COSINE_THRESHOLD = 0.55;
+const TAG_BOOST = 0.10;
 const WINDOW_DAYS = 7;
 const CANDIDATE_LIMIT = 5;
+const EMBED_DIM = 2048;
 
 function makeGroupId(): string {
   return `grp-${randomBytes(9).toString('base64url').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 14)}`;
@@ -166,9 +173,11 @@ async function assignGroupInline(hotNewsId: string): Promise<{ groupId: string |
 }
 
 async function callEmbedInline(text: string): Promise<{ vector: number[]; tokensIn: number; durationMs: number }> {
-  const apiKey = process.env.OPENAI_API_KEY ?? process.env.OPENROUTER_API_KEY;
+  const apiKey = process.env.OPENROUTER_API_KEY ?? process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error('OPENROUTER_API_KEY not configured');
-  const model = process.env.EMBED_MODEL ?? 'openai/text-embedding-3-small';
+  const model =
+    process.env.EMBED_MODEL ?? 'nvidia/llama-nemotron-embed-vl-1b-v2:free';
+  const expectedDim = Number(process.env.EMBED_DIM ?? EMBED_DIM);
   const start = Date.now();
   const res = await fetch('https://openrouter.ai/api/v1/embeddings', {
     method: 'POST',
@@ -190,8 +199,10 @@ async function callEmbedInline(text: string): Promise<{ vector: number[]; tokens
     usage: { prompt_tokens: number };
   };
   const vector = json.data[0]?.embedding;
-  if (!vector || vector.length !== 1536) {
-    throw new Error(`OpenRouter returned invalid vector (len=${vector?.length ?? 'undef'})`);
+  if (!vector || vector.length !== expectedDim) {
+    throw new Error(
+      `OpenRouter returned invalid vector (len=${vector?.length ?? 'undef'}, expected ${expectedDim})`,
+    );
   }
   return { vector, tokensIn: json.usage.prompt_tokens, durationMs: Date.now() - start };
 }

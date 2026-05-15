@@ -2,7 +2,24 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-> **🛠️ ADR v2（2026-05-15）— Embedding provider 改为 OpenRouter 路由**
+> **🛠️ ADR v3（2026-05-15 晚）— Nemotron VL-1B free + 阈值 retune + 2048 dim**
+>
+> v2 OpenRouter 切换在 prod 上被 ToS 403 击穿（OpenRouter 禁 `openai/*` embeddings）。
+> v3 改用 `nvidia/llama-nemotron-embed-vl-1b-v2:free`（2048 维、完全免费），
+> 阈值 `COSINE_THRESHOLD` 0.85→0.55、`TAG_BOOST` 0.07→0.10。完整决策依据见
+> [spec 顶部 ADR v3](../specs/2026-05-08-sp7-pgvector-cross-platform-merge-design.md)。
+>
+> 本 plan 中所有引用 `text-embedding-3-small` / `vector(1536)` / `0.85` / `0.07` /
+> "$0.020/1M tokens" 字样的 task 都以 ADR v3 为准（新模型 / 2048 / 0.55 / 0.10 / $0）。
+> Task 6.1 prod `.env` 步骤进一步简化为：只追加 `EMBED_MODEL=nvidia/llama-nemotron-embed-vl-1b-v2:free`
+> + `EMBED_CONCURRENCY=2`（`OPENROUTER_API_KEY` 已存在），不用任何付费账号。
+>
+> **新增**：Task 8 "wipe non-RSS reset"（一次性脚本 `wipe-hot-news-non-rss-sp7.ts`，
+> 在 backfill smoke + 用户验收 v3 cosine 分布合理后执行）。
+>
+> ---
+>
+> **🛠️ ADR v2（2026-05-15）— Embedding provider 改为 OpenRouter 路由** *(SUPERSEDED by v3 above)*
 >
 > 本 plan 文档凡引用 `OPENAI_API_KEY` / `api.openai.com/v1/embeddings` /
 > "OpenRouter 不暴露 embeddings 接口" 字样，**均以 spec 顶部同名 ADR 为准**：
