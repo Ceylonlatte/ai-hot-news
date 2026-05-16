@@ -62,6 +62,27 @@ const hnCandidates: HnCandidate[] = [
 // HIGH-signal links; r/StableDiffusion is no longer in scope. Existing prod
 // rows are disabled (not deleted) by `consolidate-sp5-sources.ts` for
 // historical traceability.
+//
+// SP-7-D-prep (2026-05-16): All 6 single-sub Reddit sources keep
+// `enabled: false` because `reddit-ai-bundle-v1` (below) already covers
+// them in one fetch. Specifically the bundle URL contains:
+//   {OpenAI, singularity, ArtificialInteligence, artificial, ClaudeAI,
+//    PromptEngineering, AI_Agents, vibecoding, LLMDevs, cursor, agi, LangChain}
+// and 4 of the 6 single-sub identifiers (artificial / ClaudeAI / OpenAI /
+// singularity) overlap with that bundle. r/LocalLLaMA and r/MachineLearning
+// are NOT in the bundle but still kept disabled — bundle's 100-post hot
+// window already captures the high-signal items from those subs (which
+// post less frequently than the trend-heavy ones). If a future operator
+// decides to weight them independently for SP-6 heat scoring or SP-7
+// per-sub recall, flip `enabled: true` on the row WITHOUT enabling
+// duplicates already covered by the bundle, OR remove that sub from
+// the bundle URL — never both, to keep dedupe invariant.
+//
+// Seed update path (line ~156) intentionally does NOT touch `enabled`
+// to preserve operator overrides, so re-running seed will not undo
+// manual flips. Snapshot 2026-05-16 prod state (after the chore
+// disable): bundle + LocalLLaMA + MachineLearning enabled = 3 active
+// Reddit fetchers per cron tick.
 const redditCandidates: RedditCandidate[] = [
   { name: 'r/LocalLLaMA',       identifier: 'LocalLLaMA',       url: null, enabled: false, crawlInterval: 3600 },
   { name: 'r/MachineLearning',  identifier: 'MachineLearning',  url: null, enabled: false, crawlInterval: 3600 },
