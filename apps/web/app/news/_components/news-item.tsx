@@ -37,6 +37,19 @@ const PLATFORM_BADGE_CLASS: Record<string, string> = {
   TWITTER:    'bg-gray-100 text-gray-700',
 };
 
+/** SP-7-E (2026-05-16): build the "byline" prefix shown before the
+ *  platform badge. For Reddit rows we surface `r/<sub>` instead of the
+ *  Reddit username — the user is browsing by sub value, not by user.
+ *  HN / RSS / X behavior is unchanged. */
+function formatByline(
+  platform: string,
+  author: string | null,
+  subreddit: string | null,
+): string {
+  if (platform === 'REDDIT' && subreddit) return `r/${subreddit}`;
+  return author ?? '匿名';
+}
+
 export function NewsItem({ item }: { item: HotNewsListItemDto }) {
   const label = PLATFORM_LABEL[item.sourcePlatform] ?? item.sourcePlatform;
   const badgeCls = PLATFORM_BADGE_CLASS[item.sourcePlatform] ?? 'bg-gray-100 text-gray-700';
@@ -44,6 +57,7 @@ export function NewsItem({ item }: { item: HotNewsListItemDto }) {
   const tooltip = item.titleZh && item.titleZh !== item.title ? item.title : undefined;
   const crossPlatformBadge = formatCrossPlatformBadge(item.groupSize, item.groupPlatforms);
   const hasMembers = item.groupMembers.length > 0;
+  const byline = formatByline(item.sourcePlatform, item.author, item.subreddit);
   return (
     <li className="py-3">
       <a
@@ -61,7 +75,12 @@ export function NewsItem({ item }: { item: HotNewsListItemDto }) {
         </p>
       ) : null}
       <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-500">
-        <span>{item.author ?? '匿名'}</span>
+        <span
+          className={item.sourcePlatform === 'REDDIT' && item.subreddit ? 'font-medium text-red-700' : ''}
+          title={item.sourcePlatform === 'REDDIT' && item.author ? `posted by ${item.author}` : undefined}
+        >
+          {byline}
+        </span>
         <span>·</span>
         <span className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${badgeCls}`}>
           {label}
@@ -93,6 +112,7 @@ export function NewsItem({ item }: { item: HotNewsListItemDto }) {
                 PLATFORM_BADGE_CLASS[m.sourcePlatform] ?? 'bg-gray-100 text-gray-700';
               const mTitle = m.titleZh ?? m.title;
               const mTooltip = m.titleZh && m.titleZh !== m.title ? m.title : undefined;
+              const mByline = formatByline(m.sourcePlatform, m.author, m.subreddit);
               return (
                 <li key={m.id} className="text-xs">
                   <a
@@ -105,7 +125,12 @@ export function NewsItem({ item }: { item: HotNewsListItemDto }) {
                     {mTitle}
                   </a>
                   <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] text-gray-400">
-                    <span>{m.author ?? '匿名'}</span>
+                    <span
+                      className={m.sourcePlatform === 'REDDIT' && m.subreddit ? 'font-medium text-red-600' : ''}
+                      title={m.sourcePlatform === 'REDDIT' && m.author ? `posted by ${m.author}` : undefined}
+                    >
+                      {mByline}
+                    </span>
                     <span>·</span>
                     <span className={`rounded px-1 py-0.5 font-medium ${mBadgeCls}`}>
                       {mLabel}

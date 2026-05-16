@@ -137,6 +137,28 @@ export interface HotNewsListItemDto {
    * full group set on the UI is `[item, ...item.groupMembers]`.
    */
   groupMembers: GroupMemberDto[];
+  /**
+   * SP-7-E (2026-05-16): For `sourcePlatform === 'REDDIT'`, the
+   * subreddit name (without the `r/` prefix). Surfaced as a separate
+   * field rather than buried in `interactionData` so the list UI can
+   * render it without parsing JSON every row.
+   *
+   * Why this exists: the user wants to spot which subreddit produced
+   * the most valuable items at a glance, but the platform badge alone
+   * just says "Reddit" — opaque across r/LocalLLaMA (technical depth)
+   * vs r/agi (news aggregator) vs r/ClaudeAI (product-specific). The
+   * UI uses this to render `r/<name>` in the author slot for Reddit
+   * rows.
+   *
+   * `null` for any non-Reddit row, AND for legacy Reddit rows whose
+   * crawler predates SP-3 (the `interactionData.redditSubreddit`
+   * write-path). `null` is also the value during the brief
+   * pre-summary window where ingestion has the row but the worker
+   * has not yet refreshed `interactionData` — but since
+   * `redditSubreddit` is set on initial INSERT (not after summary),
+   * this case is effectively unreachable in practice.
+   */
+  subreddit: string | null;
 }
 
 /**
@@ -155,6 +177,13 @@ export interface GroupMemberDto {
   sourcePlatform: Platform;
   author: string | null;
   publishedAt: string;
+  /**
+   * SP-7-E (2026-05-16): Same semantics as
+   * `HotNewsListItemDto.subreddit` — present so the disclosure UI can
+   * render `r/<sub>` for each grouped Reddit member without fetching
+   * the row separately. `null` for non-Reddit and legacy rows.
+   */
+  subreddit: string | null;
 }
 
 export interface HotNewsListResponseDto {

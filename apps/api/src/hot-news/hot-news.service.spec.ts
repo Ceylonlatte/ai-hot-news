@@ -610,4 +610,174 @@ describe('HotNewsService', () => {
       expect(prismaMock.hotNews.groupBy).not.toHaveBeenCalled();
     });
   });
+
+  describe('SP-7-E subreddit field passthrough', () => {
+    /** Reuse fold-path stager since subreddit is also relevant for fold groupMembers. */
+    function stageFoldQueries(repIds: string[], total: number) {
+      prismaMock.$queryRaw
+        .mockResolvedValueOnce(repIds.map((id) => ({ id })))
+        .mockResolvedValueOnce([{ total: BigInt(total) }]);
+    }
+
+    it('Reddit rep row → subreddit pulled from interactionData.redditSubreddit', async () => {
+      stageFoldQueries(['r1'], 1);
+      prismaMock.hotNews.findMany.mockResolvedValueOnce([
+        {
+          id: 'r1', title: 't', titleZh: null, summary: 's', aiTags: [],
+          sourceUrl: 'https://reddit.com/r/agi/x', sourcePlatform: 'REDDIT',
+          author: 'user1',
+          publishedAt: new Date('2026-05-10T10:00:00Z'),
+          crawledAt: new Date('2026-05-10T10:00:00Z'),
+          heatScore: 0, heatLevel: null, groupId: null,
+          interactionData: { redditSubreddit: 'agi', redditId: 'abc123' },
+        },
+      ]);
+
+      const result = await service.list(1, 20, ['REDDIT']);
+
+      expect(result.items[0]!.subreddit).toBe('agi');
+      // The full JSONB is NOT exposed — only the derived field.
+      expect(result.items[0]).not.toHaveProperty('interactionData');
+    });
+
+    it('HN row → subreddit is null even if interactionData has random fields', async () => {
+      stageFoldQueries(['h1'], 1);
+      prismaMock.hotNews.findMany.mockResolvedValueOnce([
+        {
+          id: 'h1', title: 't', titleZh: null, summary: null, aiTags: [],
+          sourceUrl: 'https://news.ycombinator.com/item?id=1', sourcePlatform: 'HACKERNEWS',
+          author: 'alice',
+          publishedAt: new Date('2026-05-10T10:00:00Z'),
+          crawledAt: new Date('2026-05-10T10:00:00Z'),
+          heatScore: 0, heatLevel: null, groupId: null,
+          interactionData: { hnId: 44000001, hnPosition: 3 },
+        },
+      ]);
+
+      const result = await service.list(1, 20, ['HACKERNEWS']);
+      expect(result.items[0]!.subreddit).toBeNull();
+    });
+
+    it('legacy Reddit row missing interactionData entirely → subreddit = null (not throw)', async () => {
+      stageFoldQueries(['r-legacy'], 1);
+      prismaMock.hotNews.findMany.mockResolvedValueOnce([
+        {
+          id: 'r-legacy', title: 't', titleZh: null, summary: null, aiTags: [],
+          sourceUrl: 'https://reddit.com/r/?', sourcePlatform: 'REDDIT',
+          author: 'oldsoul',
+          publishedAt: new Date('2026-05-10T10:00:00Z'),
+          crawledAt: new Date('2026-05-10T10:00:00Z'),
+          heatScore: 0, heatLevel: null, groupId: null,
+          interactionData: null,
+        },
+      ]);
+
+      const result = await service.list(1, 20, ['REDDIT']);
+      expect(result.items[0]!.subreddit).toBeNull();
+    });
+
+    it('Reddit row with interactionData but no redditSubreddit field → null (corrupt-tolerant)', async () => {
+      stageFoldQueries(['r-corrupt'], 1);
+      prismaMock.hotNews.findMany.mockResolvedValueOnce([
+        {
+          id: 'r-corrupt', title: 't', titleZh: null, summary: null, aiTags: [],
+          sourceUrl: 'https://reddit.com/r/?', sourcePlatform: 'REDDIT',
+          author: null,
+          publishedAt: new Date('2026-05-10T10:00:00Z'),
+          crawledAt: new Date('2026-05-10T10:00:00Z'),
+          heatScore: 0, heatLevel: null, groupId: null,
+          interactionData: { score: 100, comments: 5 },
+        },
+      ]);
+
+      const result = await service.list(1, 20, ['REDDIT']);
+      expect(result.items[0]!.subreddit).toBeNull();
+    });
+
+    it('Reddit row with non-string redditSubreddit (e.g. number from buggy migration) → null', async () => {
+      stageFoldQueries(['r-bad'], 1);
+      prismaMock.hotNews.findMany.mockResolvedValueOnce([
+        {
+          id: 'r-bad', title: 't', titleZh: null, summary: null, aiTags: [],
+          sourceUrl: 'https://reddit.com/r/?', sourcePlatform: 'REDDIT',
+          author: null,
+          publishedAt: new Date('2026-05-10T10:00:00Z'),
+          crawledAt: new Date('2026-05-10T10:00:00Z'),
+          heatScore: 0, heatLevel: null, groupId: null,
+          interactionData: { redditSubreddit: 12345 },
+        },
+      ]);
+
+      const result = await service.list(1, 20, ['REDDIT']);
+      expect(result.items[0]!.subreddit).toBeNull();
+    });
+
+    it('groupMembers also carry per-member subreddit', async () => {
+      stageFoldQueries(['rep'], 1);
+      prismaMock.hotNews.findMany.mockResolvedValueOnce([
+        {
+          id: 'rep', title: 'Rep', titleZh: null, summary: 's', aiTags: [],
+          sourceUrl: 'https://reddit.com/r/agi/rep', sourcePlatform: 'REDDIT',
+          author: null,
+          publishedAt: new Date('2026-05-10T12:00:00Z'),
+          crawledAt: new Date('2026-05-10T12:00:00Z'),
+          heatScore: 0, heatLevel: null, groupId: 'grp-mixed',
+          interactionData: { redditSubreddit: 'agi' },
+        },
+      ]);
+      prismaMock.hotNews.groupBy.mockResolvedValueOnce([
+        { groupId: 'grp-mixed', sourcePlatform: 'REDDIT', _count: { _all: 2 } },
+        { groupId: 'grp-mixed', sourcePlatform: 'HACKERNEWS', _count: { _all: 1 } },
+      ]);
+      prismaMock.hotNews.findMany.mockResolvedValueOnce([
+        {
+          id: 'm-reddit', title: 'M-R', titleZh: null,
+          sourceUrl: 'https://reddit.com/r/openai/x', sourcePlatform: 'REDDIT',
+          author: 'u/cross-poster',
+          publishedAt: new Date('2026-05-10T08:00:00Z'),
+          groupId: 'grp-mixed',
+          interactionData: { redditSubreddit: 'OpenAI' },
+        },
+        {
+          id: 'm-hn', title: 'M-HN', titleZh: null,
+          sourceUrl: 'https://news.ycombinator.com/item?id=2', sourcePlatform: 'HACKERNEWS',
+          author: 'bob',
+          publishedAt: new Date('2026-05-10T09:00:00Z'),
+          groupId: 'grp-mixed',
+          interactionData: { hnId: 99 },
+        },
+      ]);
+
+      const result = await service.list(1, 20);
+
+      expect(result.items[0]!.subreddit).toBe('agi');
+      expect(result.items[0]!.groupMembers).toHaveLength(2);
+      const reddit = result.items[0]!.groupMembers.find((m) => m.id === 'm-reddit')!;
+      const hn = result.items[0]!.groupMembers.find((m) => m.id === 'm-hn')!;
+      expect(reddit.subreddit).toBe('OpenAI');
+      expect(hn.subreddit).toBeNull();
+      // Members slice still does NOT include the raw JSONB.
+      expect(reddit).not.toHaveProperty('interactionData');
+    });
+
+    it('expand mode also populates subreddit on rep rows', async () => {
+      prismaMock.hotNews.findMany.mockResolvedValueOnce([
+        {
+          id: 'r1', title: 't', titleZh: null, summary: null, aiTags: [],
+          sourceUrl: 'https://reddit.com/r/LocalLLaMA/x', sourcePlatform: 'REDDIT',
+          author: 'someone',
+          publishedAt: new Date('2026-05-10T10:00:00Z'),
+          crawledAt: new Date('2026-05-10T10:00:00Z'),
+          heatScore: 0, heatLevel: null, groupId: null,
+          interactionData: { redditSubreddit: 'LocalLLaMA' },
+        },
+      ]);
+      prismaMock.hotNews.count.mockResolvedValueOnce(1);
+
+      const result = await service.list(1, 20, ['REDDIT'], 'time', 'expand');
+
+      expect(result.items[0]!.subreddit).toBe('LocalLLaMA');
+      expect(prismaMock.$queryRaw).not.toHaveBeenCalled();
+    });
+  });
 });

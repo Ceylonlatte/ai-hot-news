@@ -14,6 +14,28 @@ const PLATFORM_WINDOW_HOURS: Record<Platform, number> = {
 
 const DEFAULT_PLATFORMS: Platform[] = ['HACKERNEWS', 'REDDIT'];
 
+/**
+ * SP-7-E (2026-05-16): Pluck `redditSubreddit` out of the JSONB
+ * `interactionData` column so the UI can render `r/<sub>` without
+ * parsing JSON per row. Defensive against three real-world shapes:
+ *   - non-Reddit row → caller passes `platform != 'REDDIT'`, returns null
+ *   - legacy Reddit row pre-SP-3 → `interactionData` lacks the field
+ *   - corrupt / non-string field → returned as null instead of throwing
+ *
+ * Note we do NOT trim or validate the value beyond `typeof === 'string'`
+ * because Reddit's API is the source of truth for the canonical name
+ * and any normalization belongs upstream in the crawler, not here.
+ */
+function extractSubreddit(
+  platform: Platform,
+  interactionData: unknown,
+): string | null {
+  if (platform !== 'REDDIT') return null;
+  if (interactionData == null || typeof interactionData !== 'object') return null;
+  const sub = (interactionData as { redditSubreddit?: unknown }).redditSubreddit;
+  return typeof sub === 'string' && sub.length > 0 ? sub : null;
+}
+
 @Injectable()
 export class HotNewsService {
   async list(
@@ -88,6 +110,10 @@ export class HotNewsService {
       heatScore: true,
       heatLevel: true,
       groupId: true,
+      // SP-7-E: pulled in for `extractSubreddit()`. We do NOT widen the
+      // DTO surface to include the full JSONB blob — only the derived
+      // `subreddit` field is exposed.
+      interactionData: true,
     } as const;
 
     type HydratedRep = Prisma.HotNewsGetPayload<{ select: typeof fullSelect }>;
@@ -240,6 +266,9 @@ export class HotNewsService {
           author: true,
           publishedAt: true,
           groupId: true,
+          // SP-7-E: same reason as fullSelect — only `subreddit` is
+          // forwarded out, never the raw JSONB.
+          interactionData: true,
         },
       });
       for (const m of memberRows) {
@@ -253,6 +282,7 @@ export class HotNewsService {
           sourcePlatform: m.sourcePlatform,
           author: m.author,
           publishedAt: m.publishedAt.toISOString(),
+          subreddit: extractSubreddit(m.sourcePlatform, m.interactionData),
         });
         membersByGroup.set(m.groupId, arr);
       }
@@ -276,6 +306,7 @@ export class HotNewsService {
         groupSize: r.groupId ? (sizeMap.get(r.groupId) ?? 1) : 1,
         groupPlatforms: r.groupId ? (breakdownMap.get(r.groupId) ?? {}) : {},
         groupMembers: r.groupId ? (membersByGroup.get(r.groupId) ?? []) : [],
+        subreddit: extractSubreddit(r.sourcePlatform, r.interactionData),
       })),
       page,
       pageSize,
