@@ -6,6 +6,5 @@ export default defineConfig({
     globals: true,
     setupFiles: ['@testing-library/jest-dom/vitest'],
     include: ['src/**/*.spec.{ts,tsx}'],
-    passWithNoTests: true,
   },
 });
