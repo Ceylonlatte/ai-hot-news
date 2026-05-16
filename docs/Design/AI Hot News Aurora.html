@@ -12,58 +12,59 @@
 <style>
   *,*::before,*::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
-    --bg: #fdfbff;
-    --ink: #1a1f3a;
-    --ink-2: #4b5263;
-    --ink-3: #8b91a8;
-    --ink-4: #c8ccd8;
-    --line: rgba(124, 92, 255, 0.08);
-    --line-2: rgba(124, 92, 255, 0.16);
-    --c1: #7c5cff;
-    --c2: #db2777;
-    --c3: #f59e0b;
-    --c4: #06b6d4;
-    --grad: linear-gradient(135deg, #7c5cff 0%, #db2777 60%, #f59e0b 100%);
-    --grad-soft: linear-gradient(135deg, #c4b5fd, #fda4af, #fcd34d);
+    --bg: #f6f4ef;
+    --ink: #14131a;
+    --ink-2: #5a5763;
+    --ink-3: #9b97a3;
+    --ink-4: #d0ccd5;
+    --line: rgba(20, 19, 26, 0.06);
+    --line-2: rgba(20, 19, 26, 0.10);
+    --c1: #7e57f5;
+    --c2: #14131a;
+    --c3: #7e57f5;
+    --c4: #5a5763;
+    --accent: #7e57f5;
+    --accent-soft: rgba(126, 87, 245, 0.10);
+    --accent-soft-2: rgba(126, 87, 245, 0.18);
+    --grad: #14131a;
+    --grad-soft: linear-gradient(135deg, #e9e1ff, #f0e8ff, #f6efff);
   }
   html, body { background: var(--bg); color: var(--ink); font-family: 'Inter Tight', sans-serif; font-size: 14px; height: 100%; overflow: hidden; -webkit-font-smoothing: antialiased; }
   body {
     background-image:
-      radial-gradient(ellipse 80% 60% at 0% 0%, #ddd6fe 0%, transparent 50%),
-      radial-gradient(ellipse 60% 50% at 100% 0%, #fecdd3 0%, transparent 45%),
-      radial-gradient(ellipse 70% 50% at 100% 100%, #bfdbfe 0%, transparent 50%),
-      radial-gradient(ellipse 60% 40% at 0% 100%, #fef3c7 0%, transparent 45%);
+      radial-gradient(ellipse 70% 50% at 0% 0%, #ece4ff 0%, transparent 55%),
+      radial-gradient(ellipse 60% 50% at 100% 100%, #efe7ff 0%, transparent 50%);
     background-attachment: fixed;
   }
   #root { height: 100%; display: flex; }
   ::-webkit-scrollbar { width: 6px; height: 6px; }
-  ::-webkit-scrollbar-thumb { background: rgba(124,92,255,0.2); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb { background: rgba(20,19,26,0.15); border-radius: 3px; }
   ::-webkit-scrollbar-track { background: transparent; }
   button, input, select { font-family: inherit; color: inherit; outline: none; border: none; background: none; }
   button { cursor: pointer; }
   a { color: inherit; text-decoration: none; }
 
   .glass {
-    background: rgba(255,255,255,0.55);
+    background: rgba(255,255,255,0.7);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
-    border: 1px solid rgba(255,255,255,0.7);
+    border: 1px solid rgba(255,255,255,0.8);
     border-radius: 18px;
-    box-shadow: 0 1px 2px rgba(124,92,255,0.04), 0 8px 24px rgba(124,92,255,0.06);
+    box-shadow: 0 1px 2px rgba(20,19,26,0.03), 0 8px 24px rgba(20,19,26,0.04);
   }
-  .glass-soft { background: rgba(255,255,255,0.4); backdrop-filter: blur(16px); border: 1px solid rgba(255,255,255,0.6); border-radius: 14px; }
+  .glass-soft { background: rgba(255,255,255,0.55); backdrop-filter: blur(16px); border: 1px solid rgba(255,255,255,0.7); border-radius: 14px; }
   .glass-hover { transition: transform .3s cubic-bezier(0.2,0.8,0.2,1), box-shadow .3s, border-color .3s; }
-  .glass-hover:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(124,92,255,0.08), 0 16px 40px rgba(124,92,255,0.12); border-color: rgba(124,92,255,0.3); }
+  .glass-hover:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(20,19,26,0.05), 0 16px 40px rgba(20,19,26,0.08); border-color: rgba(126,87,245,0.25); }
 
-  .grad-text { background: var(--grad); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+  .grad-text { color: var(--ink); }
   .mono { font-family: 'JetBrains Mono', monospace; font-feature-settings: 'tnum'; }
   .display { font-family: 'Inter Tight', sans-serif; letter-spacing: -0.025em; }
 
   /* aurora floating blobs */
-  .aurora-blob { position: fixed; border-radius: 50%; filter: blur(80px); opacity: 0.5; pointer-events: none; z-index: 0; }
-  .ab-1 { width: 480px; height: 480px; background: #c4b5fd; top: -100px; left: 200px; animation: drift1 25s ease-in-out infinite; }
-  .ab-2 { width: 380px; height: 380px; background: #fda4af; top: 30%; right: -100px; animation: drift2 30s ease-in-out infinite; }
-  .ab-3 { width: 420px; height: 420px; background: #93c5fd; bottom: -100px; left: 30%; animation: drift3 35s ease-in-out infinite; }
+  .aurora-blob { position: fixed; border-radius: 50%; filter: blur(90px); opacity: 0.4; pointer-events: none; z-index: 0; }
+  .ab-1 { width: 480px; height: 480px; background: #d9ccff; top: -100px; left: 200px; animation: drift1 25s ease-in-out infinite; }
+  .ab-2 { width: 380px; height: 380px; background: #e8dcff; top: 30%; right: -100px; animation: drift2 30s ease-in-out infinite; }
+  .ab-3 { width: 420px; height: 420px; background: #ebe3ff; bottom: -100px; left: 30%; animation: drift3 35s ease-in-out infinite; }
   @keyframes drift1 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(120px, 80px); } }
   @keyframes drift2 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(-100px, 100px); } }
   @keyframes drift3 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(80px, -80px); } }
@@ -112,10 +113,10 @@ const KEYWORDS = [
 ];
 
 const PLAT = {
-  X: { label:"Twitter", color:"#7c5cff", bg:"rgba(124,92,255,0.1)" },
-  HN: { label:"HackerNews", color:"#f59e0b", bg:"rgba(245,158,11,0.1)" },
-  RD: { label:"Reddit", color:"#db2777", bg:"rgba(219,39,119,0.1)" },
-  RSS: { label:"RSS", color:"#06b6d4", bg:"rgba(6,182,212,0.1)" },
+  X: { label:"Twitter", color:"#7e57f5", bg:"rgba(126,87,245,0.10)" },
+  HN: { label:"HackerNews", color:"#14131a", bg:"rgba(20,19,26,0.06)" },
+  RD: { label:"Reddit", color:"#7e57f5", bg:"rgba(126,87,245,0.10)" },
+  RSS: { label:"RSS", color:"#5a5763", bg:"rgba(90,87,99,0.08)" },
 };
 
 // ─── Hooks ───────────────────────────────────────────────────
@@ -143,9 +144,9 @@ function Pill({ p }) {
 }
 
 function HeatBadge({ score }) {
-  const color = score>=90?"#db2777":score>=70?"#f59e0b":score>=50?"#06b6d4":"#8b91a8";
-  const bg = score>=90?"rgba(219,39,119,0.1)":score>=70?"rgba(245,158,11,0.1)":score>=50?"rgba(6,182,212,0.1)":"rgba(139,145,168,0.1)";
-  const label = score>=90?"🔥 爆发":score>=70?"⚡ 热门":score>=50?"💫 关注":"普通";
+  const color = score>=90?"#14131a":score>=70?"#7e57f5":score>=50?"#5a5763":"#9b97a3";
+  const bg = score>=90?"rgba(20,19,26,0.08)":score>=70?"rgba(126,87,245,0.10)":score>=50?"rgba(90,87,99,0.08)":"rgba(155,151,163,0.10)";
+  const label = score>=90?"爆发":score>=70?"热门":score>=50?"关注":"普通";
   return (
     <span style={{ display:"inline-flex", alignItems:"center", gap:6, padding:"4px 10px", borderRadius:99, background:bg, color, fontSize:12, fontWeight:600, border:`1px solid ${color}22` }}>
       <span style={{ fontFamily:"'Inter Tight',sans-serif", letterSpacing:"-0.02em" }}>{label} · {score}</span>
@@ -157,7 +158,7 @@ function Tag({ children, color="var(--c1)" }) {
   return <span style={{ fontSize:11, padding:"2px 9px", borderRadius:99, background:`${color}10`, color, border:`1px solid ${color}20`, fontWeight:500 }}>{children}</span>;
 }
 
-function MiniSpark({ data, color="#7c5cff", w=80, h=28 }) {
+function MiniSpark({ data, color="#7e57f5", w=80, h=28 }) {
   const max=Math.max(...data), min=Math.min(...data);
   const pts = data.map((v,i)=>`${i*(w/(data.length-1))},${h-((v-min)/(max-min||1))*h*0.85-h*0.075}`).join(" ");
   const last = pts.split(" ").pop().split(",");
@@ -181,7 +182,7 @@ function Sidebar({ page, setPage, notif }) {
   return (
     <div style={{ width:240, padding:"22px 16px", display:"flex", flexDirection:"column", gap:6, height:"100%", flexShrink:0, position:"relative", zIndex:2 }}>
       <div className="glass" style={{ padding:"16px 14px", display:"flex", alignItems:"center", gap:12, marginBottom:8 }}>
-        <div style={{ width:36, height:36, borderRadius:12, background:"var(--grad)", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:800, color:"#fff", fontSize:14, boxShadow:"0 4px 12px rgba(124,92,255,0.4)" }}>AI</div>
+        <div style={{ width:36, height:36, borderRadius:12, background:"var(--grad)", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:800, color:"#fff", fontSize:14, boxShadow:"0 4px 12px rgba(20,19,26,0.24)" }}>AI</div>
         <div>
           <div className="display" style={{ fontWeight:700, fontSize:14, lineHeight:1.1 }}>Hot News</div>
           <div style={{ fontSize:11, color:"var(--ink-3)", marginTop:2 }}>AI 信息聚合</div>
@@ -197,7 +198,7 @@ function Sidebar({ page, setPage, notif }) {
               padding:"11px 12px", display:"flex", alignItems:"center", gap:11, borderRadius:10, textAlign:"left",
               background: active ? "var(--grad)" : "transparent",
               color: active ? "#fff" : "var(--ink)",
-              boxShadow: active ? "0 4px 12px rgba(124,92,255,0.3)" : "none",
+              boxShadow: active ? "0 4px 12px rgba(126,87,245,0.3)" : "none",
               transition: "all .2s",
             }}
               onMouseEnter={e => !active && (e.currentTarget.style.background="rgba(255,255,255,0.6)")}
@@ -209,7 +210,7 @@ function Sidebar({ page, setPage, notif }) {
                 <div style={{ fontSize:10, opacity:0.7, marginTop:1 }} className="mono">{n.en}</div>
               </div>
               {n.id==="radar" && notif > 0 && (
-                <span style={{ fontSize:10, fontWeight:700, padding:"2px 7px", borderRadius:99, background: active?"rgba(255,255,255,0.25)":"#db2777", color:"#fff" }}>{notif}</span>
+                <span style={{ fontSize:10, fontWeight:700, padding:"2px 7px", borderRadius:99, background: active?"rgba(255,255,255,0.25)":"#14131a", color:"#fff" }}>{notif}</span>
               )}
             </button>
           );
@@ -270,7 +271,7 @@ function HomePage({ setPage, openItem }) {
         gradTitle="AI 信号潮汐"
         sub="过去 24 小时已聚合 2,847 条内容 · 7 个爆发事件 · 1,203 个关键词命中"
         action={
-          <button className="glass-hover" style={{ padding:"11px 20px", borderRadius:99, background:"var(--grad)", color:"#fff", fontWeight:600, fontSize:13, boxShadow:"0 4px 16px rgba(124,92,255,0.35)", display:"flex", alignItems:"center", gap:8 }}>
+          <button className="glass-hover" style={{ padding:"11px 20px", borderRadius:99, background:"var(--grad)", color:"#fff", fontWeight:600, fontSize:13, boxShadow:"0 4px 16px rgba(20,19,26,0.21)", display:"flex", alignItems:"center", gap:8 }}>
             ✨ 生成今日日报
           </button>
         }
@@ -329,16 +330,16 @@ function HomePage({ setPage, openItem }) {
                 <span className="mono" style={{ fontSize:10, color:"var(--ink-3)" }}>过去 24 小时</span>
               </div>
               {[
-                { kw:"Vibe Coding", g:320, c:"#db2777" },
-                { kw:"Claude 4", g:280, c:"#7c5cff" },
-                { kw:"AI Agent", g:145, c:"#06b6d4" },
-                { kw:"Local LLM", g:98, c:"#f59e0b" },
-                { kw:"Cursor", g:87, c:"#7c5cff" },
+                { kw:"Vibe Coding", g:320, c:"#14131a" },
+                { kw:"Claude 4", g:280, c:"#7e57f5" },
+                { kw:"AI Agent", g:145, c:"#5a5763" },
+                { kw:"Local LLM", g:98, c:"#7e57f5" },
+                { kw:"Cursor", g:87, c:"#7e57f5" },
               ].map((k, i) => (
                 <div key={k.kw} className="fade-up" style={{ padding:"8px 0", display:"flex", alignItems:"center", gap:12, animationDelay:`${0.3+i*0.05}s` }}>
                   <span style={{ fontSize:11, color:"var(--ink-3)", width:18 }}>#{i+1}</span>
                   <span style={{ flex:1, fontSize:13, fontWeight:500 }}>{k.kw}</span>
-                  <div style={{ flex:1.2, height:5, background:"rgba(124,92,255,0.08)", borderRadius:99, overflow:"hidden" }}>
+                  <div style={{ flex:1.2, height:5, background:"rgba(126,87,245,0.08)", borderRadius:99, overflow:"hidden" }}>
                     <div className="fill-bar" style={{ width:`${Math.min(k.g/3.5, 100)}%`, height:"100%", background:k.c, borderRadius:99, animationDelay:`${0.5+i*0.08}s` }}></div>
                   </div>
                   <span className="mono" style={{ fontSize:12, fontWeight:700, color:k.c, width:54, textAlign:"right" }}>+{k.g}%</span>
@@ -355,7 +356,7 @@ function HomePage({ setPage, openItem }) {
                     <Pill p={k} />
                     <span className="mono" style={{ fontSize:11, color:"var(--ink-2)", fontWeight:600 }}>{p}%</span>
                   </div>
-                  <div style={{ height:6, background:"rgba(124,92,255,0.06)", borderRadius:99, overflow:"hidden" }}>
+                  <div style={{ height:6, background:"rgba(126,87,245,0.06)", borderRadius:99, overflow:"hidden" }}>
                     <div className="fill-bar" style={{ width:`${p}%`, height:"100%", borderRadius:99, background:`linear-gradient(90deg, ${PLAT[k].color}, ${PLAT[k].color}aa)`, animationDelay:`${0.4+i*0.08}s` }}></div>
                   </div>
                 </div>
@@ -366,7 +367,7 @@ function HomePage({ setPage, openItem }) {
             <div className="glass fade-up" style={{ padding:"18px 20px", animationDelay:"0.4s" }}>
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
                 <h3 className="display" style={{ fontWeight:700, fontSize:15 }}>🔔 我的提醒</h3>
-                <span style={{ fontSize:10, fontWeight:700, padding:"2px 8px", borderRadius:99, background:"rgba(219,39,119,0.1)", color:"#db2777" }}>3 条新</span>
+                <span style={{ fontSize:10, fontWeight:700, padding:"2px 8px", borderRadius:99, background:"rgba(20,19,26,0.1)", color:"#14131a" }}>3 条新</span>
               </div>
               {KEYWORDS.filter(k=>k.on).slice(0,3).map(k => (
                 <div key={k.id} style={{ padding:"8px 0", display:"flex", alignItems:"center", gap:10, borderBottom:"1px solid var(--line)" }}>
@@ -374,7 +375,7 @@ function HomePage({ setPage, openItem }) {
                     <div style={{ fontSize:13, fontWeight:600 }}>{k.keyword}</div>
                     <div style={{ fontSize:11, color:"var(--ink-3)", marginTop:1 }}>命中 {k.today} · {k.last}</div>
                   </div>
-                  <MiniSpark data={[20,28,35,32,48,55,k.today/3+10].map(v=>v+Math.random()*5)} color={k.trend==="up"?"#10b981":"#8b91a8"} w={60} />
+                  <MiniSpark data={[20,28,35,32,48,55,k.today/3+10].map(v=>v+Math.random()*5)} color={k.trend==="up"?"#10b981":"#9b97a3"} w={60} />
                 </div>
               ))}
             </div>
@@ -404,15 +405,15 @@ function HeatCurve() {
       <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" style={{ display:"block" }}>
         <defs>
           <linearGradient id="hc-line" x1="0" x2="1" y1="0" y2="0">
-            <stop offset="0%" stopColor="#7c5cff"/><stop offset="50%" stopColor="#db2777"/><stop offset="100%" stopColor="#f59e0b"/>
+            <stop offset="0%" stopColor="#7e57f5"/><stop offset="50%" stopColor="#a584ff"/><stop offset="100%" stopColor="#7e57f5"/>
           </linearGradient>
           <linearGradient id="hc-fill" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="#7c5cff" stopOpacity="0.3"/><stop offset="100%" stopColor="#7c5cff" stopOpacity="0"/>
+            <stop offset="0%" stopColor="#7e57f5" stopOpacity="0.3"/><stop offset="100%" stopColor="#7e57f5" stopOpacity="0"/>
           </linearGradient>
         </defs>
         <path d={`M${pts[0]} ${pts.slice(1).join(" ")} L${w},${h} L0,${h} Z`} fill="url(#hc-fill)" />
         <polyline points={pts.join(" ")} fill="none" stroke="url(#hc-line)" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
-        {pts.map((p,i)=>{ if (i%4!==0) return null; const [x,y]=p.split(","); return <circle key={i} cx={x} cy={y} r="3" fill="#fff" stroke="#7c5cff" strokeWidth="1.5" />; })}
+        {pts.map((p,i)=>{ if (i%4!==0) return null; const [x,y]=p.split(","); return <circle key={i} cx={x} cy={y} r="3" fill="#fff" stroke="#7e57f5" strokeWidth="1.5" />; })}
       </svg>
       <div style={{ display:"flex", justifyContent:"space-between", marginTop:8 }} className="mono">
         {["00:00","04:00","08:00","12:00","16:00","20:00","现在"].map((t,i) => (
@@ -452,7 +453,7 @@ function FeedPage({ openItem }) {
             <div style={{ fontSize:16, fontWeight:600, marginBottom:10, lineHeight:1.4 }}>{n.title}</div>
             <div style={{ fontSize:13, color:"var(--ink-2)", lineHeight:1.65, marginBottom:14 }}>{n.summary}</div>
             <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:14 }}>
-              {n.tags.map((t, idx) => <Tag key={t} color={["#7c5cff","#db2777","#f59e0b","#06b6d4"][idx%4]}>{t}</Tag>)}
+              {n.tags.map((t, idx) => <Tag key={t} color={["#7e57f5","#14131a","#7e57f5","#5a5763"][idx%4]}>{t}</Tag>)}
             </div>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", paddingTop:12, borderTop:"1px solid var(--line)" }}>
               <div style={{ display:"flex", gap:14, fontSize:11, color:"var(--ink-3)" }}>
@@ -481,7 +482,7 @@ function Filter({ label, options, value, onChange }) {
               padding:"5px 14px", fontSize:12, fontWeight: a?600:500, borderRadius:99,
               color: a ? "#fff" : "var(--ink-2)",
               background: a ? "var(--grad)" : "transparent",
-              boxShadow: a ? "0 2px 8px rgba(124,92,255,0.3)" : "none",
+              boxShadow: a ? "0 2px 8px rgba(126,87,245,0.3)" : "none",
               transition:"all .2s",
             }}>{o}</button>
           );
@@ -505,10 +506,10 @@ function DetailPage({ item, setPage }) {
         <button onClick={() => setPage("feed")} className="glass-soft" style={{ padding:"7px 14px", borderRadius:99, fontSize:12, color:"var(--ink-2)", fontWeight:500 }}>← 返回</button>
         <span className="mono" style={{ fontSize:11, color:"var(--ink-3)" }}>SIGNAL #{String(item.id).padStart(4,'0')}</span>
         <div style={{ flex:1 }}></div>
-        <button onClick={() => setSaved(s=>!s)} className="glass-soft" style={{ padding:"7px 14px", borderRadius:99, fontSize:12, fontWeight:500, color:saved?"#db2777":"var(--ink-2)", background:saved?"rgba(219,39,119,0.1)":"" }}>
+        <button onClick={() => setSaved(s=>!s)} className="glass-soft" style={{ padding:"7px 14px", borderRadius:99, fontSize:12, fontWeight:500, color:saved?"#14131a":"var(--ink-2)", background:saved?"rgba(20,19,26,0.1)":"" }}>
           {saved?"⭐ 已收藏":"☆ 收藏"}
         </button>
-        <button style={{ padding:"7px 16px", borderRadius:99, fontSize:12, fontWeight:600, color:"#fff", background:"var(--grad)", boxShadow:"0 3px 10px rgba(124,92,255,0.3)" }}>查看原文 →</button>
+        <button style={{ padding:"7px 16px", borderRadius:99, fontSize:12, fontWeight:600, color:"#fff", background:"var(--grad)", boxShadow:"0 3px 10px rgba(20,19,26,0.18)" }}>查看原文 →</button>
       </div>
 
       <div style={{ flex:1, overflow:"auto", padding:"8px 36px 36px", display:"grid", gridTemplateColumns:"1fr 320px", gap:24 }}>
@@ -536,10 +537,10 @@ function DetailPage({ item, setPage }) {
             <p style={{ fontSize:15, lineHeight:1.85, color:"var(--ink)", marginBottom:18, position:"relative" }}>{item.summary}</p>
             <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:10 }}>
               {[
-                { l:"影响级别", v: item.heat>=90?"⚡ 关键":"🌟 重要", c:"#db2777" },
-                { l:"社区情绪", v: "😊 正面", c:"#10b981" },
-                { l:"跨平台", v: `${item.platform.length}/4 同步`, c:"#7c5cff" },
-                { l:"时效性", v: "🆕 最新", c:"#f59e0b" },
+                { l:"影响级别", v: item.heat>=90?"⚡ 关键":"🌟 重要", c:"#14131a" },
+                { l:"社区情绪", v: "😊 正面", c:"#7e57f5" },
+                { l:"跨平台", v: `${item.platform.length}/4 同步`, c:"#7e57f5" },
+                { l:"时效性", v: "🆕 最新", c:"#7e57f5" },
               ].map(s => (
                 <div key={s.l} className="glass-soft" style={{ padding:"12px 14px", borderRadius:12 }}>
                   <div style={{ fontSize:10, color:"var(--ink-3)", marginBottom:5, fontWeight:500, letterSpacing:"0.05em" }}>{s.l}</div>
@@ -553,7 +554,7 @@ function DetailPage({ item, setPage }) {
           <div className="fade-up" style={{ marginBottom:24, animationDelay:"0.2s" }}>
             <h3 className="display" style={{ fontWeight:700, fontSize:15, marginBottom:12 }}>🏷️ 关联标签</h3>
             <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-              {item.tags.concat(["AI 行业","Production"]).map((t, i) => <Tag key={t} color={["#7c5cff","#db2777","#f59e0b","#06b6d4","#10b981"][i%5]}>{t}</Tag>)}
+              {item.tags.concat(["AI 行业","Production"]).map((t, i) => <Tag key={t} color={["#7e57f5","#14131a","#7e57f5","#5a5763","#7e57f5"][i%5]}>{t}</Tag>)}
             </div>
           </div>
 
@@ -584,12 +585,12 @@ function DetailPage({ item, setPage }) {
             <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none">
               <defs>
                 <linearGradient id="d-fill" x1="0" x2="0" y1="0" y2="1">
-                  <stop offset="0%" stopColor="#db2777" stopOpacity="0.3"/><stop offset="100%" stopColor="#db2777" stopOpacity="0"/>
+                  <stop offset="0%" stopColor="#7e57f5" stopOpacity="0.25"/><stop offset="100%" stopColor="#7e57f5" stopOpacity="0"/>
                 </linearGradient>
               </defs>
               <path d={`M${pts[0]} ${pts.slice(1).join(" ")} L${w},${h} L0,${h} Z`} fill="url(#d-fill)" />
-              <polyline points={pts.join(" ")} fill="none" stroke="#db2777" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
-              {pts.map((p,i)=>{ const [x,y]=p.split(","); return <circle key={i} cx={x} cy={y} r="2.5" fill="#fff" stroke="#db2777" strokeWidth="1.5" />; })}
+              <polyline points={pts.join(" ")} fill="none" stroke="#7e57f5" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+              {pts.map((p,i)=>{ const [x,y]=p.split(","); return <circle key={i} cx={x} cy={y} r="2.5" fill="#fff" stroke="#7e57f5" strokeWidth="1.5" />; })}
             </svg>
             <div className="mono" style={{ fontSize:10, color:"var(--ink-3)", textAlign:"center", marginTop:6 }}>过去 12 小时</div>
           </div>
@@ -597,7 +598,7 @@ function DetailPage({ item, setPage }) {
           <div className="glass fade-up" style={{ padding:"18px", animationDelay:"0.25s" }}>
             <h3 className="display" style={{ fontWeight:700, fontSize:14, marginBottom:14 }}>💫 互动数据</h3>
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
-              {[ ["♡ 点赞", item.likes, "#db2777"], ["◌ 评论", item.comments, "#7c5cff"], ["↻ 转发", item.reposts, "#06b6d4"], ["🔥 热度", item.heat, "#f59e0b"] ].map(([l,v,c]) => (
+              {[ ["♡ 点赞", item.likes, "#14131a"], ["◌ 评论", item.comments, "#7e57f5"], ["↻ 转发", item.reposts, "#5a5763"], ["🔥 热度", item.heat, "#7e57f5"] ].map(([l,v,c]) => (
                 <div key={l} className="glass-soft" style={{ padding:"12px", borderRadius:12 }}>
                   <div style={{ fontSize:10, color:"var(--ink-3)", marginBottom:4 }}>{l}</div>
                   <div className="display" style={{ fontSize:22, fontWeight:700, color:c, lineHeight:1.1 }}>{v.toLocaleString()}</div>
@@ -616,7 +617,7 @@ function DetailPage({ item, setPage }) {
                     <Pill p={p} />
                     <span className="mono" style={{ fontSize:11, color:"var(--ink-2)", fontWeight:600 }}>{pct}%</span>
                   </div>
-                  <div style={{ height:5, borderRadius:99, background:"rgba(124,92,255,0.06)", overflow:"hidden" }}>
+                  <div style={{ height:5, borderRadius:99, background:"rgba(126,87,245,0.06)", overflow:"hidden" }}>
                     <div className="fill-bar" style={{ width:`${pct}%`, height:"100%", background:PLAT[p].color, borderRadius:99, animationDelay:`${0.4+i*0.1}s` }}></div>
                   </div>
                 </div>
@@ -624,7 +625,7 @@ function DetailPage({ item, setPage }) {
             })}
           </div>
 
-          <button style={{ padding:"14px", borderRadius:14, background:"var(--grad)", color:"#fff", fontWeight:600, fontSize:13, boxShadow:"0 6px 20px rgba(124,92,255,0.35)" }}>✨ 生成分享文案</button>
+          <button style={{ padding:"14px", borderRadius:14, background:"var(--grad)", color:"#fff", fontWeight:600, fontSize:13, boxShadow:"0 6px 20px rgba(20,19,26,0.21)" }}>✨ 生成分享文案</button>
         </div>
       </div>
     </div>
@@ -652,7 +653,7 @@ function RadarPage() {
         title="关键词"
         gradTitle="监控雷达"
         sub={`${list.filter(k=>k.on).length} 个监控中 · ${list.length} 个总计 · 24 小时内命中 ${list.reduce((s,k)=>s+k.today,0)} 次`}
-        action={<button onClick={() => setShowAdd(true)} style={{ padding:"11px 20px", borderRadius:99, background:"var(--grad)", color:"#fff", fontSize:13, fontWeight:600, boxShadow:"0 4px 16px rgba(124,92,255,0.35)" }}>+ 新增关键词</button>}
+        action={<button onClick={() => setShowAdd(true)} style={{ padding:"11px 20px", borderRadius:99, background:"var(--grad)", color:"#fff", fontSize:13, fontWeight:600, boxShadow:"0 4px 16px rgba(20,19,26,0.21)" }}>+ 新增关键词</button>}
       />
 
       <div style={{ flex:1, overflow:"auto", padding:"8px 36px 36px", display:"grid", gridTemplateColumns:"1.6fr 1fr", gap:22, alignItems:"start" }}>
@@ -669,12 +670,12 @@ function RadarPage() {
               return (
                 <div key={k.id} onClick={() => setSel(k)}
                   className={`glass ${isSel?"":"glass-hover"} fade-up`}
-                  style={{ padding:"14px 18px", display:"flex", gap:14, alignItems:"center", cursor:"pointer", border:isSel?"1px solid var(--c1)":"", boxShadow:isSel?"0 4px 16px rgba(124,92,255,0.2)":"", opacity:k.on?1:0.55, animationDelay:`${i*0.05}s` }}>
-                  <div className="pulse-ring" style={{ width:10, height:10, borderRadius:"50%", background: k.on?"#10b981":"#c8ccd8", color: k.on?"#10b981":"transparent", boxShadow: k.on?"0 0 6px #10b981":"none" }}></div>
+                  style={{ padding:"14px 18px", display:"flex", gap:14, alignItems:"center", cursor:"pointer", border:isSel?"1px solid var(--c1)":"", boxShadow:isSel?"0 4px 16px rgba(126,87,245,0.2)":"", opacity:k.on?1:0.55, animationDelay:`${i*0.05}s` }}>
+                  <div className="pulse-ring" style={{ width:10, height:10, borderRadius:"50%", background: k.on?"#10b981":"#d0ccd5", color: k.on?"#10b981":"transparent", boxShadow: k.on?"0 0 6px #10b981":"none" }}></div>
                   <div style={{ flex:1 }}>
                     <div style={{ display:"flex", gap:10, alignItems:"baseline", marginBottom:4 }}>
                       <span className="display" style={{ fontSize:15, fontWeight:600 }}>{k.keyword}</span>
-                      <span style={{ fontSize:11, color: k.trend==="up"?"#10b981":k.trend==="down"?"#db2777":"var(--ink-3)", fontWeight:500 }}>
+                      <span style={{ fontSize:11, color: k.trend==="up"?"#10b981":k.trend==="down"?"#14131a":"var(--ink-3)", fontWeight:500 }}>
                         {k.trend==="up"?"↑ 上升中":k.trend==="down"?"↓ 下降":"→ 平稳"}
                       </span>
                     </div>
@@ -687,11 +688,11 @@ function RadarPage() {
                     <div className="display grad-text" style={{ fontSize:22, fontWeight:700, lineHeight:1 }}>{k.today}</div>
                     <div style={{ fontSize:10, color:"var(--ink-3)", marginTop:3 }}>今日命中</div>
                   </div>
-                  <MiniSpark data={[20,28,38,32,48,55,k.today/3+12].map(v=>v+Math.random()*5)} color={k.on?"#7c5cff":"#c8ccd8"} w={70} h={32} />
+                  <MiniSpark data={[20,28,38,32,48,55,k.today/3+12].map(v=>v+Math.random()*5)} color={k.on?"#7e57f5":"#d0ccd5"} w={70} h={32} />
                   <button onClick={(e)=>{e.stopPropagation();toggle(k.id);}} style={{
                     padding:"5px 12px", fontSize:11, fontWeight:600, borderRadius:99,
                     color: k.on?"#fff":"var(--ink-2)",
-                    background: k.on?"var(--grad)":"rgba(124,92,255,0.06)",
+                    background: k.on?"var(--grad)":"rgba(126,87,245,0.06)",
                   }}>{k.on?"开启":"暂停"}</button>
                 </div>
               );
@@ -707,7 +708,7 @@ function RadarPage() {
                 <div className="mono" style={{ fontSize:11, color:"var(--c1)", marginBottom:6, fontWeight:500 }}>关键词分析</div>
                 <h2 className="display grad-text" style={{ fontSize:26, fontWeight:700, marginBottom:18 }}>{sel.keyword}</h2>
                 <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
-                  {[["今日命中", sel.today, "#7c5cff"], ["本周命中", sel.week, "#db2777"], ["热度分", sel.score, "#f59e0b"], ["监控频率", sel.freq, "#06b6d4"]].map(([l,v,c])=>(
+                  {[["今日命中", sel.today, "#7e57f5"], ["本周命中", sel.week, "#14131a"], ["热度分", sel.score, "#7e57f5"], ["监控频率", sel.freq, "#5a5763"]].map(([l,v,c])=>(
                     <div key={l} className="glass-soft" style={{ padding:"12px 14px", borderRadius:12 }}>
                       <div style={{ fontSize:10, color:"var(--ink-3)", marginBottom:4 }}>{l}</div>
                       <div className="display" style={{ fontSize:20, fontWeight:700, color:c, lineHeight:1.1 }}>{typeof v === "number" ? v.toLocaleString() : v}</div>
@@ -747,7 +748,7 @@ function RadarPage() {
       </div>
 
       {showAdd && (
-        <div onClick={() => setShowAdd(false)} style={{ position:"fixed", inset:0, background:"rgba(26,31,58,0.4)", backdropFilter:"blur(8px)", zIndex:50, display:"flex", alignItems:"center", justifyContent:"center" }}>
+        <div onClick={() => setShowAdd(false)} style={{ position:"fixed", inset:0, background:"rgba(20,19,26,0.4)", backdropFilter:"blur(8px)", zIndex:50, display:"flex", alignItems:"center", justifyContent:"center" }}>
           <div onClick={e => e.stopPropagation()} className="glass fade-up" style={{ padding:28, width:480 }}>
             <div className="mono" style={{ fontSize:11, color:"var(--c1)", marginBottom:6, fontWeight:500 }}>✦ 新增监控</div>
             <h2 className="display" style={{ fontSize:24, fontWeight:700, marginBottom:20 }}>添加关键词</h2>
@@ -771,7 +772,7 @@ function RadarPage() {
             </div>
             <div style={{ display:"flex", gap:10 }}>
               <button onClick={() => setShowAdd(false)} className="glass-soft" style={{ flex:1, padding:"11px", borderRadius:99, fontSize:13, fontWeight:500, color:"var(--ink-2)" }}>取消</button>
-              <button onClick={add} style={{ flex:2, padding:"11px", borderRadius:99, fontSize:13, fontWeight:600, color:"#fff", background:"var(--grad)", boxShadow:"0 4px 12px rgba(124,92,255,0.35)" }}>✨ 创建监控</button>
+              <button onClick={add} style={{ flex:2, padding:"11px", borderRadius:99, fontSize:13, fontWeight:600, color:"#fff", background:"var(--grad)", boxShadow:"0 4px 12px rgba(20,19,26,0.21)" }}>✨ 创建监控</button>
             </div>
           </div>
         </div>
@@ -794,8 +795,8 @@ function Radar({ keywords, sel, setSel }) {
       <svg width={size} height={size}>
         <defs>
           <radialGradient id="rsweep">
-            <stop offset="0%" stopColor="rgba(124,92,255,0.35)" />
-            <stop offset="100%" stopColor="rgba(124,92,255,0)" />
+            <stop offset="0%" stopColor="rgba(126,87,245,0.35)" />
+            <stop offset="100%" stopColor="rgba(126,87,245,0)" />
           </radialGradient>
           <radialGradient id="rcenter">
             <stop offset="0%" stopColor="rgba(255,255,255,0.5)" />
@@ -804,30 +805,30 @@ function Radar({ keywords, sel, setSel }) {
         </defs>
         <circle cx={c} cy={c} r="170" fill="url(#rcenter)" />
         {[50, 100, 150].map(r => (
-          <circle key={r} cx={c} cy={c} r={r} fill="none" stroke="rgba(124,92,255,0.15)" strokeWidth="1" strokeDasharray="2 4" />
+          <circle key={r} cx={c} cy={c} r={r} fill="none" stroke="rgba(126,87,245,0.15)" strokeWidth="1" strokeDasharray="2 4" />
         ))}
-        <line x1={c} y1="20" x2={c} y2={size-20} stroke="rgba(124,92,255,0.1)" />
-        <line x1="20" y1={c} x2={size-20} y2={c} stroke="rgba(124,92,255,0.1)" />
+        <line x1={c} y1="20" x2={c} y2={size-20} stroke="rgba(126,87,245,0.1)" />
+        <line x1="20" y1={c} x2={size-20} y2={c} stroke="rgba(126,87,245,0.1)" />
         <g transform={`rotate(${angle} ${c} ${c})`}>
           <path d={`M ${c} ${c} L ${c+170} ${c} A 170 170 0 0 0 ${c + 170*Math.cos(-Math.PI/3)} ${c + 170*Math.sin(-Math.PI/3)} Z`} fill="url(#rsweep)" />
-          <line x1={c} y1={c} x2={c+170} y2={c} stroke="#7c5cff" strokeWidth="1.5" strokeLinecap="round" />
+          <line x1={c} y1={c} x2={c+170} y2={c} stroke="#7e57f5" strokeWidth="1.5" strokeLinecap="round" />
         </g>
         {keywords.map((k, i) => {
           const a = (i/keywords.length) * Math.PI * 2 - Math.PI/2;
           const r = 50 + (k.score/100) * 110;
           const x = c + r * Math.cos(a), y = c + r * Math.sin(a);
           const isSel = sel?.id === k.id;
-          const col = !k.on ? "#c8ccd8" : k.score>=80 ? "#db2777" : k.score>=60 ? "#f59e0b" : "#7c5cff";
+          const col = !k.on ? "#d0ccd5" : k.score>=80 ? "#14131a" : k.score>=60 ? "#7e57f5" : "#7e57f5";
           return (
             <g key={k.id} onClick={() => setSel(k)} style={{ cursor:"pointer" }}>
               {isSel && <circle cx={x} cy={y} r="14" fill="none" stroke={col} strokeWidth="1.5" opacity="0.5" />}
               <circle cx={x} cy={y} r={isSel?7:5} fill={col} style={{ transition:"all .3s", filter:`drop-shadow(0 0 ${isSel?8:4}px ${col})` }} />
-              <text x={x} y={y - 14} textAnchor="middle" fontSize="11" fontFamily="Inter Tight" fontWeight={isSel?700:500} fill={isSel?col:"#4b5263"}>{k.keyword}</text>
+              <text x={x} y={y - 14} textAnchor="middle" fontSize="11" fontFamily="Inter Tight" fontWeight={isSel?700:500} fill={isSel?col:"#5a5763"}>{k.keyword}</text>
             </g>
           );
         })}
-        <circle cx={c} cy={c} r="4" fill="#7c5cff" />
-        <circle cx={c} cy={c} r="8" fill="none" stroke="#7c5cff" strokeWidth="1" opacity="0.4" />
+        <circle cx={c} cy={c} r="4" fill="#7e57f5" />
+        <circle cx={c} cy={c} r="8" fill="none" stroke="#7e57f5" strokeWidth="1" opacity="0.4" />
       </svg>
     </div>
   );
@@ -836,17 +837,17 @@ function Radar({ keywords, sel, setSel }) {
 // ─── TRENDS ──────────────────────────────────────────────────
 function TrendsPage() {
   const companies = [
-    { name:"OpenAI", score:98, change:"+5%", c:"#7c5cff" },
-    { name:"Anthropic", score:94, change:"+12%", c:"#db2777" },
-    { name:"Google DeepMind", score:79, change:"-3%", c:"#06b6d4" },
-    { name:"Meta AI", score:65, change:"+8%", c:"#f59e0b" },
-    { name:"Mistral AI", score:58, change:"+22%", c:"#10b981" },
-    { name:"Stability AI", score:52, change:"+15%", c:"#ef4444" },
+    { name:"OpenAI", score:98, change:"+5%", c:"#7e57f5" },
+    { name:"Anthropic", score:94, change:"+12%", c:"#14131a" },
+    { name:"Google DeepMind", score:79, change:"-3%", c:"#5a5763" },
+    { name:"Meta AI", score:65, change:"+8%", c:"#7e57f5" },
+    { name:"Mistral AI", score:58, change:"+22%", c:"#7e57f5" },
+    { name:"Stability AI", score:52, change:"+15%", c:"#5a5763" },
   ];
   const series = [
-    { name:"Claude", data:[45,52,49,78,92,88,76], c:"#db2777" },
-    { name:"OpenAI", data:[80,75,82,79,85,91,88], c:"#7c5cff" },
-    { name:"Gemini", data:[30,35,38,42,39,45,41], c:"#06b6d4" },
+    { name:"Claude", data:[45,52,49,78,92,88,76], c:"#14131a" },
+    { name:"OpenAI", data:[80,75,82,79,85,91,88], c:"#7e57f5" },
+    { name:"Gemini", data:[30,35,38,42,39,45,41], c:"#5a5763" },
   ];
   const w=420, h=180;
   return (
@@ -864,11 +865,11 @@ function TrendsPage() {
                     <span style={{ fontSize:13, fontWeight:600 }}>{co.name}</span>
                   </div>
                   <div style={{ display:"flex", gap:10, alignItems:"center" }}>
-                    <span className="mono" style={{ fontSize:11, color: co.change.startsWith("+")?"#10b981":"#db2777", fontWeight:600 }}>{co.change}</span>
+                    <span className="mono" style={{ fontSize:11, color: co.change.startsWith("+")?"#10b981":"#14131a", fontWeight:600 }}>{co.change}</span>
                     <span className="display" style={{ fontSize:18, fontWeight:700, color:co.c, width:30, textAlign:"right" }}>{co.score}</span>
                   </div>
                 </div>
-                <div style={{ height:6, background:"rgba(124,92,255,0.06)", borderRadius:99, overflow:"hidden" }}>
+                <div style={{ height:6, background:"rgba(126,87,245,0.06)", borderRadius:99, overflow:"hidden" }}>
                   <div className="fill-bar" style={{ width:`${co.score}%`, height:"100%", background:co.c, borderRadius:99, animationDelay:`${i*0.08}s` }}></div>
                 </div>
               </div>
@@ -904,14 +905,14 @@ function TrendsPage() {
           <h3 className="display" style={{ fontWeight:700, fontSize:18, marginBottom:14 }}>🚀 增速最快关键词</h3>
           <div style={{ display:"grid", gridTemplateColumns:"repeat(4, 1fr)", gap:12 }}>
             {[
-              { kw:"Vibe Coding", g:320, ct:892, c:"#db2777" },
-              { kw:"Claude 4", g:280, ct:743, c:"#7c5cff" },
-              { kw:"AI Agent", g:145, ct:1203, c:"#06b6d4" },
-              { kw:"Local LLM", g:98, ct:456, c:"#f59e0b" },
-              { kw:"Cursor", g:87, ct:678, c:"#10b981" },
-              { kw:"o3 API", g:75, ct:389, c:"#ef4444" },
-              { kw:"LangGraph", g:63, ct:234, c:"#7c5cff" },
-              { kw:"Gemini 2.5", g:48, ct:567, c:"#06b6d4" },
+              { kw:"Vibe Coding", g:320, ct:892, c:"#14131a" },
+              { kw:"Claude 4", g:280, ct:743, c:"#7e57f5" },
+              { kw:"AI Agent", g:145, ct:1203, c:"#5a5763" },
+              { kw:"Local LLM", g:98, ct:456, c:"#7e57f5" },
+              { kw:"Cursor", g:87, ct:678, c:"#7e57f5" },
+              { kw:"o3 API", g:75, ct:389, c:"#5a5763" },
+              { kw:"LangGraph", g:63, ct:234, c:"#7e57f5" },
+              { kw:"Gemini 2.5", g:48, ct:567, c:"#5a5763" },
             ].map((k, i) => (
               <div key={k.kw} className="glass glass-hover fade-up" style={{ padding:"16px 18px", animationDelay:`${0.25+i*0.05}s` }}>
                 <div style={{ fontSize:11, color:"var(--ink-3)", marginBottom:6 }}>#{i+1}</div>
@@ -945,7 +946,7 @@ function VaultPage({ openItem }) {
         </div>
         <div style={{ display:"flex", gap:8, marginTop:14, flexWrap:"wrap" }}>
           {["Claude","OpenAI","AI Agent","Cursor","开源","融资","Local LLM"].map((s,i) => (
-            <button key={s} onClick={() => setQ(s)} style={{ padding:"5px 14px", fontSize:12, fontWeight:500, borderRadius:99, color:["#7c5cff","#db2777","#f59e0b","#06b6d4","#10b981"][i%5], background:`${["#7c5cff","#db2777","#f59e0b","#06b6d4","#10b981"][i%5]}10`, border:`1px solid ${["#7c5cff","#db2777","#f59e0b","#06b6d4","#10b981"][i%5]}20` }}>{s}</button>
+            <button key={s} onClick={() => setQ(s)} style={{ padding:"5px 14px", fontSize:12, fontWeight:500, borderRadius:99, color:["#7e57f5","#14131a","#7e57f5","#5a5763","#7e57f5"][i%5], background:`${["#7e57f5","#14131a","#7e57f5","#5a5763","#7e57f5"][i%5]}10`, border:`1px solid ${["#7e57f5","#14131a","#7e57f5","#5a5763","#7e57f5"][i%5]}20` }}>{s}</button>
           ))}
         </div>
       </div>
