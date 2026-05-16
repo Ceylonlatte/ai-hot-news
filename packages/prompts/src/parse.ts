@@ -3,8 +3,13 @@ import { TAXONOMY } from './taxonomy';
 export interface SummarizeResult {
   /**
    * SP-5 v3.3: AI-translated Chinese title (10-30 chars target, hard-capped to 100).
-   * `null` when the LLM omitted the field (legacy V1 prompts) or produced empty
-   * string. Caller writes to `HotNews.titleZh` and falls back to original `title`
+   * `null` when the LLM omitted the field (legacy V1 prompts), produced empty
+   * string, OR produced a string with no CJK characters (LLM laziness defense
+   * added 2026-05-16: prod实测 ~6.9% rows had `titleZh` byte-equal to original
+   * English `title` because the LLM gave up on translation; setting it to null
+   * lets the UI's `titleZh ?? title` fallback work cleanly instead of pinning
+   * a fake-translation string in the DB forever).
+   * Caller writes to `HotNews.titleZh` and falls back to original `title`
    * in the UI when null.
    */
   titleZh: string | null;
@@ -18,6 +23,14 @@ const MAX_TAGS_PER_DIM = 3;
 const MAX_SUMMARY_CHARS = 400;
 const MAX_TITLE_ZH_CHARS = 100;
 const MAX_TECH_VALUE_CHARS = 30;
+
+/**
+ * Matches any CJK Unified Ideograph in the BMP range (U+4E00–U+9FFF).
+ * Covers ~99% of modern Chinese characters. Excludes CJK punctuation and
+ * Latin-only strings — exactly the discrimination we need to detect the
+ * "LLM gave up and copy-pasted the English title" failure mode.
+ */
+const HAS_CJK = /[\u4E00-\u9FFF]/;
 
 function extractJson(raw: string): unknown | null {
   const match = raw.match(/\{[\s\S]*\}/);
@@ -75,7 +88,12 @@ export function parseSummarizeResponse(raw: string): SummarizeResult | null {
   if (!summary) return null;
 
   const titleZhRaw = typeof obj.titleZh === 'string' ? obj.titleZh.trim() : '';
-  const titleZh = titleZhRaw ? titleZhRaw.slice(0, MAX_TITLE_ZH_CHARS) : null;
+  const titleZhCandidate = titleZhRaw ? titleZhRaw.slice(0, MAX_TITLE_ZH_CHARS) : null;
+  // SP-5 titleZh-cjk-guard (2026-05-16): LLM 偷懒会把原英文标题原样/改写后返回
+  // 而不真的翻译。用单一 CJK 检查识别这种"假翻译"，set null 让 UI fallback
+  // 到原 title 显示。已 trim 过、已 slice 过，纯防御性的最后一道闸。
+  const titleZh =
+    titleZhCandidate && HAS_CJK.test(titleZhCandidate) ? titleZhCandidate : null;
 
   const tags: string[] = [];
 

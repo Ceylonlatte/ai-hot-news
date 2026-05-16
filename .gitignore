@@ -22,6 +22,7 @@ packages/db/src/generated/
 .vscode/
 .idea/
 .cursor/
+.superpowers/
 *.swp
 
 # Docker volumes (local dev)

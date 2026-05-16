@@ -188,6 +188,51 @@ describe('parseSummarizeResponse', () => {
     expect(r.titleZh!.length).toBeLessThanOrEqual(100);
   });
 
+  it('returns titleZh=null when LLM lazy-copied the original English title (no CJK chars)', () => {
+    // Real-world prod sample: LLM 应当翻译为「某 OpenAI 文章」但偷懒原样返回了
+    // 英文。新规则识别"无 CJK 字符" → set null → UI fallback 到原 title。
+    const json = JSON.stringify({
+      titleZh: 'Why do haters keep insisting LLMs cant code?',
+      summary: '资深工程师分享了一段经历\n讨论 LLM 的实际编程能力。',
+      companies: [],
+      models: [],
+      category: 'Opinion',
+      tech: [],
+    });
+    const r = parseSummarizeResponse(json)!;
+    expect(r.titleZh).toBeNull();
+    // summary / aiTags 不应受影响
+    expect(r.summary).toMatch(/资深工程师/);
+  });
+
+  it('returns titleZh=null when LLM rephrased the title but still produced English-only output', () => {
+    // 比上一种更隐蔽的偷懒：LLM 改写了大小写 / 标点但没真的翻译
+    const json = JSON.stringify({
+      titleZh: 'Show HN: Built an Agent Memory Library',
+      summary: '一段正常的中文摘要。',
+      companies: [],
+      models: [],
+      category: 'Open Source',
+      tech: [],
+    });
+    const r = parseSummarizeResponse(json)!;
+    expect(r.titleZh).toBeNull();
+  });
+
+  it('accepts titleZh that mixes CJK + Latin (real-world product names retained)', () => {
+    // PRD 要求「保留专有名词」，所以「Cursor 0.50 内置 AI 安全审查」是合法翻译
+    const json = JSON.stringify({
+      titleZh: 'Cursor 0.50 内置 AI 安全审查功能',
+      summary: '正常摘要内容。',
+      companies: ['Cursor'],
+      models: [],
+      category: 'Product',
+      tech: [],
+    });
+    const r = parseSummarizeResponse(json)!;
+    expect(r.titleZh).toBe('Cursor 0.50 内置 AI 安全审查功能');
+  });
+
   it('passes through a single-paragraph summary unchanged (SP-5 v3.4 default)', () => {
     const r = parseSummarizeResponse(goodJson)!;
     expect(r.summary).not.toContain('\n');
