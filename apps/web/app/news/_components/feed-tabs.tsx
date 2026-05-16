@@ -13,7 +13,7 @@ export function parseTab(raw: string | undefined): FeedTab {
 
 export function FeedTabs({ active }: { active: FeedTab }) {
   return (
-    <nav className="mb-4 flex gap-2 border-b border-gray-200">
+    <nav className="mb-6 flex gap-1 border-b border-line">
       {TABS.map((t) => {
         const isActive = t.key === active;
         return (
@@ -21,10 +21,10 @@ export function FeedTabs({ active }: { active: FeedTab }) {
             key={t.key}
             href={`/news?tab=${t.key}`}
             className={
-              'border-b-2 px-3 py-2 text-sm transition-colors ' +
+              'border-b-2 px-4 py-2.5 text-sm transition-colors ' +
               (isActive
-                ? 'border-blue-600 font-medium text-blue-700'
-                : 'border-transparent text-gray-600 hover:text-gray-900')
+                ? 'border-aurora font-medium text-aurora'
+                : 'border-transparent text-ink-2 hover:text-ink')
             }
           >
             {t.label}

@@ -16,13 +16,14 @@ export function Pagination({
   const prev = Math.max(1, page - 1);
   const next = Math.min(totalPages, page + 1);
 
-  const baseClass = 'rounded border border-gray-300 px-3 py-1 text-sm';
+  const baseClass =
+    'rounded border border-line px-3 py-1 text-sm text-ink hover:text-aurora transition-colors';
   const disabledClass = 'pointer-events-none opacity-40';
 
   const link = (p: number) => ({ pathname: '/news' as const, query: { tab, page: p } });
 
   return (
-    <div className="mt-6 flex items-center justify-center gap-3 text-sm text-gray-700">
+    <div className="mt-6 flex items-center justify-center gap-3 text-sm text-ink-2">
       <Link href={link(prev)} className={`${baseClass} ${page <= 1 ? disabledClass : ''}`}>
         上一页
       </Link>

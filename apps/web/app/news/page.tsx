@@ -1,3 +1,4 @@
+import { PageHeader } from '@ai-hot-news/ui';
 import { fetchHotNewsList, type FeedPlatform } from '@/lib/api';
 import { ListHeader } from './_components/list-header';
 import { NewsItem } from './_components/news-item';
@@ -34,7 +35,11 @@ export default async function NewsPage({ searchParams }: PageProps) {
   }
 
   return (
-    <main className="mx-auto max-w-3xl p-6">
+    <>
+      <PageHeader
+        title="News"
+        subtitle="HN / Reddit / RSS 跨平台聚合 · SP-6 heatScore 排序"
+      />
       <FeedTabs active={tab} />
       {errorMessage ? (
         <ErrorState message={errorMessage} />
@@ -43,14 +48,14 @@ export default async function NewsPage({ searchParams }: PageProps) {
       ) : data ? (
         <>
           <ListHeader total={data.total} latestCrawledAt={data.items[0]?.crawledAt} />
-          <ul className="mt-4 divide-y divide-gray-200">
+          <div className="mt-4 space-y-3 fade-up">
             {data.items.map((item) => (
               <NewsItem key={item.id} item={item} />
             ))}
-          </ul>
+          </div>
           <Pagination page={data.page} pageSize={data.pageSize} total={data.total} tab={tab} />
         </>
       ) : null}
-    </main>
+    </>
   );
 }
