@@ -14,6 +14,7 @@ export class HotNewsController {
       query.pageSize,
       query.platforms,
       query.sort,
+      query.groupMode ?? 'fold',
     );
   }
 }
