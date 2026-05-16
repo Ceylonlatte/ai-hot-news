@@ -1,6 +1,6 @@
 import { type ComponentType, type ReactNode, createElement } from 'react';
 
-interface NavLinkProps {
+export interface NavLinkProps {
   href: string;
   children?: ReactNode;
   className?: string;
