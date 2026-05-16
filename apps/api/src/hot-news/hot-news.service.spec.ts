@@ -11,6 +11,7 @@ describe('HotNewsService', () => {
       groupBy: ReturnType<typeof vi.fn>;
     };
     $transaction: ReturnType<typeof vi.fn>;
+    $queryRaw: ReturnType<typeof vi.fn>;
   };
 
   beforeEach(() => {
@@ -23,6 +24,11 @@ describe('HotNewsService', () => {
       $transaction: vi.fn().mockImplementation(async (calls: Promise<unknown>[]) => {
         return Promise.all(calls);
       }),
+      // SP-7-D fold path uses two $queryRaw calls: one to pick representative
+      // ids (DISTINCT ON + LIMIT/OFFSET), one for the COUNT(DISTINCT) total.
+      // Default returns are empty + 0 so tests targeting the expand path
+      // (which never touches $queryRaw) are unaffected.
+      $queryRaw: vi.fn().mockResolvedValue([]),
     };
     vi.spyOn(dbModule, 'getPrisma').mockReturnValue(
       prismaMock as unknown as ReturnType<typeof dbModule.getPrisma>,
@@ -33,7 +39,7 @@ describe('HotNewsService', () => {
   it('keeps status:VISIBLE filter on findMany (SP-4 contract)', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-05-10T12:00:00Z'));
-    await service.list(1, 20);
+    await service.list(1, 20, undefined, undefined, 'expand');
     expect(prismaMock.hotNews.findMany).toHaveBeenCalledTimes(1);
     const findManyArgs = prismaMock.hotNews.findMany.mock.calls[0]![0]!;
     expect(findManyArgs.where.status).toBe('VISIBLE');
@@ -43,7 +49,7 @@ describe('HotNewsService', () => {
   it('keeps status:VISIBLE filter on count (SP-4 contract)', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-05-10T12:00:00Z'));
-    await service.list(1, 20);
+    await service.list(1, 20, undefined, undefined, 'expand');
     expect(prismaMock.hotNews.count).toHaveBeenCalledTimes(1);
     const countArgs = prismaMock.hotNews.count.mock.calls[0]![0]!;
     expect(countArgs.where.status).toBe('VISIBLE');
@@ -67,7 +73,7 @@ describe('HotNewsService', () => {
     ]);
     prismaMock.hotNews.count.mockResolvedValueOnce(1);
 
-    const result = await service.list(1, 20);
+    const result = await service.list(1, 20, undefined, undefined, 'expand');
 
     expect(result.items[0]).not.toHaveProperty('status');
     expect(result.items[0]).not.toHaveProperty('filterReason');
@@ -102,7 +108,7 @@ describe('HotNewsService', () => {
     ]);
     prismaMock.hotNews.count.mockResolvedValueOnce(2);
 
-    const result = await service.list(1, 20);
+    const result = await service.list(1, 20, undefined, undefined, 'expand');
 
     expect(result.items[0]).toMatchObject({
       id: 'b',
@@ -136,7 +142,7 @@ describe('HotNewsService', () => {
     afterEach(() => vi.useRealTimers());
 
     it('default platforms=[HACKERNEWS,REDDIT] with 48h windows', async () => {
-      await service.list(1, 20);
+      await service.list(1, 20, undefined, undefined, 'expand');
       const findManyArgs = prismaMock.hotNews.findMany.mock.calls[0]![0]!;
       expect(findManyArgs.where.status).toBe('VISIBLE');
       expect(findManyArgs.where.OR).toHaveLength(2);
@@ -152,7 +158,7 @@ describe('HotNewsService', () => {
     });
 
     it('platforms=[RSS] uses 7d window', async () => {
-      await service.list(1, 20, ['RSS']);
+      await service.list(1, 20, ['RSS'], undefined, 'expand');
       const findManyArgs = prismaMock.hotNews.findMany.mock.calls[0]![0]!;
       expect(findManyArgs.where.OR).toHaveLength(1);
       const expectedCutoff = new Date(NOW.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -161,7 +167,7 @@ describe('HotNewsService', () => {
     });
 
     it('platforms=[HACKERNEWS] uses 48h window for that one platform', async () => {
-      await service.list(1, 20, ['HACKERNEWS']);
+      await service.list(1, 20, ['HACKERNEWS'], undefined, 'expand');
       const findManyArgs = prismaMock.hotNews.findMany.mock.calls[0]![0]!;
       expect(findManyArgs.where.OR).toHaveLength(1);
       expect(findManyArgs.where.OR[0].sourcePlatform).toBe('HACKERNEWS');
@@ -170,7 +176,7 @@ describe('HotNewsService', () => {
     });
 
     it('platforms=[] (empty array) falls back to default [HACKERNEWS, REDDIT]', async () => {
-      await service.list(1, 20, []);
+      await service.list(1, 20, [], undefined, 'expand');
       const findManyArgs = prismaMock.hotNews.findMany.mock.calls[0]![0]!;
       expect(findManyArgs.where.OR).toHaveLength(2);
       const platforms = findManyArgs.where.OR
@@ -180,7 +186,7 @@ describe('HotNewsService', () => {
     });
 
     it('count() receives the same where clause as findMany()', async () => {
-      await service.list(1, 20, ['RSS']);
+      await service.list(1, 20, ['RSS'], undefined, 'expand');
       const findManyWhere = prismaMock.hotNews.findMany.mock.calls[0]![0]!.where;
       const countWhere = prismaMock.hotNews.count.mock.calls[0]![0]!.where;
       expect(countWhere).toEqual(findManyWhere);
@@ -191,7 +197,7 @@ describe('HotNewsService', () => {
     it('defaults to orderBy publishedAt desc when sort is undefined', async () => {
       vi.useFakeTimers();
       vi.setSystemTime(new Date('2026-05-10T12:00:00Z'));
-      await service.list(1, 20);
+      await service.list(1, 20, undefined, undefined, 'expand');
       const findManyArgs = prismaMock.hotNews.findMany.mock.calls[0]![0]!;
       expect(findManyArgs.orderBy).toEqual([{ publishedAt: 'desc' }]);
       vi.useRealTimers();
@@ -200,7 +206,7 @@ describe('HotNewsService', () => {
     it('uses orderBy [heatScore desc, publishedAt desc] when sort=heat', async () => {
       vi.useFakeTimers();
       vi.setSystemTime(new Date('2026-05-10T12:00:00Z'));
-      await service.list(1, 20, ['HACKERNEWS', 'REDDIT'], 'heat');
+      await service.list(1, 20, ['HACKERNEWS', 'REDDIT'], 'heat', 'expand');
       const findManyArgs = prismaMock.hotNews.findMany.mock.calls[0]![0]!;
       expect(findManyArgs.orderBy).toEqual([
         { heatScore: 'desc' },
@@ -212,7 +218,7 @@ describe('HotNewsService', () => {
     it('filters out RSS from platforms when sort=heat (SP-6 §0 Q1/Q2)', async () => {
       vi.useFakeTimers();
       vi.setSystemTime(new Date('2026-05-10T12:00:00Z'));
-      await service.list(1, 20, ['RSS', 'HACKERNEWS', 'REDDIT'], 'heat');
+      await service.list(1, 20, ['RSS', 'HACKERNEWS', 'REDDIT'], 'heat', 'expand');
       const findManyArgs = prismaMock.hotNews.findMany.mock.calls[0]![0]!;
       const platformsInOr = findManyArgs.where.OR.map(
         (c: { sourcePlatform: string }) => c.sourcePlatform,
@@ -223,7 +229,7 @@ describe('HotNewsService', () => {
     });
 
     it('returns empty result when sort=heat AND only RSS platform requested', async () => {
-      const result = await service.list(1, 20, ['RSS'], 'heat');
+      const result = await service.list(1, 20, ['RSS'], 'heat', 'expand');
       expect(result.items).toEqual([]);
       expect(result.total).toBe(0);
       expect(prismaMock.hotNews.findMany).not.toHaveBeenCalled();
@@ -232,7 +238,7 @@ describe('HotNewsService', () => {
     it('keeps RSS in platforms when sort=time (default)', async () => {
       vi.useFakeTimers();
       vi.setSystemTime(new Date('2026-05-10T12:00:00Z'));
-      await service.list(1, 20, ['RSS', 'HACKERNEWS'], 'time');
+      await service.list(1, 20, ['RSS', 'HACKERNEWS'], 'time', 'expand');
       const findManyArgs = prismaMock.hotNews.findMany.mock.calls[0]![0]!;
       const platformsInOr = findManyArgs.where.OR.map(
         (c: { sourcePlatform: string }) => c.sourcePlatform,
@@ -242,7 +248,7 @@ describe('HotNewsService', () => {
     });
 
     it('selects heatScore + heatLevel from prisma', async () => {
-      await service.list(1, 20);
+      await service.list(1, 20, undefined, undefined, 'expand');
       const findManyArgs = prismaMock.hotNews.findMany.mock.calls[0]![0]!;
       expect(findManyArgs.select).toMatchObject({
         heatScore: true,
@@ -270,7 +276,7 @@ describe('HotNewsService', () => {
       ]);
       prismaMock.hotNews.count.mockResolvedValueOnce(1);
 
-      const result = await service.list(1, 20, ['REDDIT'], 'heat');
+      const result = await service.list(1, 20, ['REDDIT'], 'heat', 'expand');
 
       expect(result.items[0]!.heatScore).toBe(67.4);
       expect(result.items[0]!.heatLevel).toBe('HOT');
@@ -298,7 +304,7 @@ describe('HotNewsService', () => {
       ]);
       prismaMock.hotNews.count.mockResolvedValueOnce(1);
 
-      const result = await service.list(1, 20);
+      const result = await service.list(1, 20, undefined, undefined, 'expand');
 
       expect(result.items[0]!.groupId).toBeNull();
       expect(result.items[0]!.groupSize).toBe(1);
@@ -335,7 +341,7 @@ describe('HotNewsService', () => {
         { groupId: 'grp-shared', sourcePlatform: 'REDDIT', _count: { _all: 2 } },
       ]);
 
-      const result = await service.list(1, 20);
+      const result = await service.list(1, 20, undefined, undefined, 'expand');
 
       expect(prismaMock.hotNews.groupBy).toHaveBeenCalledTimes(1);
       const groupByArgs = prismaMock.hotNews.groupBy.mock.calls[0]![0]!;
@@ -372,7 +378,7 @@ describe('HotNewsService', () => {
       prismaMock.hotNews.count.mockResolvedValueOnce(1);
       prismaMock.hotNews.groupBy.mockResolvedValueOnce([]); // no count row
 
-      const result = await service.list(1, 20);
+      const result = await service.list(1, 20, undefined, undefined, 'expand');
 
       expect(result.items[0]!.groupId).toBe('grp-ghost');
       expect(result.items[0]!.groupSize).toBe(1);
@@ -400,11 +406,208 @@ describe('HotNewsService', () => {
         { groupId: 'grp-B', sourcePlatform: 'HACKERNEWS', _count: { _all: 5 } },
       ]);
 
-      await service.list(1, 20);
+      await service.list(1, 20, undefined, undefined, 'expand');
 
       expect(prismaMock.hotNews.groupBy).toHaveBeenCalledTimes(1);
       const groupByArgs = prismaMock.hotNews.groupBy.mock.calls[0]![0]!;
       expect((groupByArgs.where.groupId.in as string[]).sort()).toEqual(['grp-A', 'grp-B']);
+    });
+  });
+
+  describe('SP-7-D fold path', () => {
+    /** Helper: stage the two $queryRaw calls expected by the fold path —
+     *  first call returns representative ids, second returns the total
+     *  bucket count. */
+    function stageFoldQueries(repIds: string[], total: number) {
+      prismaMock.$queryRaw
+        .mockResolvedValueOnce(repIds.map((id) => ({ id })))
+        .mockResolvedValueOnce([{ total: BigInt(total) }]);
+    }
+
+    it('default groupMode is fold; runs DISTINCT-ON via $queryRaw not findMany+count', async () => {
+      stageFoldQueries(['a'], 1);
+      prismaMock.hotNews.findMany.mockResolvedValueOnce([
+        {
+          id: 'a', title: 'A', titleZh: null, summary: null, aiTags: [],
+          sourceUrl: 'https://example.com/a', sourcePlatform: 'HACKERNEWS',
+          author: null,
+          publishedAt: new Date('2026-05-10T10:00:00Z'),
+          crawledAt: new Date('2026-05-10T10:00:00Z'),
+          heatScore: 0, heatLevel: null, groupId: null,
+        },
+      ]);
+
+      const result = await service.list(1, 20);
+
+      expect(prismaMock.$queryRaw).toHaveBeenCalledTimes(2);
+      // Hydration findMany ran exactly once with id IN representativeIds.
+      expect(prismaMock.hotNews.findMany).toHaveBeenCalledTimes(1);
+      const hydrateArgs = prismaMock.hotNews.findMany.mock.calls[0]![0]!;
+      expect(hydrateArgs.where).toMatchObject({ id: { in: ['a'] } });
+      // expand path (count + transactional findMany) was NOT used.
+      expect(prismaMock.hotNews.count).not.toHaveBeenCalled();
+      expect(result.total).toBe(1);
+      expect(result.items[0]!.id).toBe('a');
+    });
+
+    it('singleton row in fold mode → groupMembers is empty array', async () => {
+      stageFoldQueries(['a'], 1);
+      prismaMock.hotNews.findMany.mockResolvedValueOnce([
+        {
+          id: 'a', title: 'Solo', titleZh: null, summary: null, aiTags: [],
+          sourceUrl: 'https://example.com/a', sourcePlatform: 'HACKERNEWS',
+          author: null,
+          publishedAt: new Date('2026-05-10T10:00:00Z'),
+          crawledAt: new Date('2026-05-10T10:00:00Z'),
+          heatScore: 0, heatLevel: null, groupId: null,
+        },
+      ]);
+
+      const result = await service.list(1, 20);
+
+      expect(result.items[0]!.groupId).toBeNull();
+      expect(result.items[0]!.groupSize).toBe(1);
+      expect(result.items[0]!.groupMembers).toEqual([]);
+    });
+
+    it('group of 3 → representative + 2 members eager-loaded into groupMembers', async () => {
+      stageFoldQueries(['rep'], 1);
+      // Hydration: just the representative.
+      prismaMock.hotNews.findMany.mockResolvedValueOnce([
+        {
+          id: 'rep', title: 'Rep', titleZh: 'Rep ZH', summary: 's', aiTags: [],
+          sourceUrl: 'https://example.com/rep', sourcePlatform: 'HACKERNEWS',
+          author: null,
+          publishedAt: new Date('2026-05-10T12:00:00Z'),
+          crawledAt: new Date('2026-05-10T12:00:00Z'),
+          heatScore: 80, heatLevel: 'HOT', groupId: 'grp-X',
+        },
+      ]);
+      // SP-7-C breakdown groupBy.
+      prismaMock.hotNews.groupBy.mockResolvedValueOnce([
+        { groupId: 'grp-X', sourcePlatform: 'HACKERNEWS', _count: { _all: 1 } },
+        { groupId: 'grp-X', sourcePlatform: 'REDDIT', _count: { _all: 2 } },
+      ]);
+      // SP-7-D members fetch (excluding the representative).
+      prismaMock.hotNews.findMany.mockResolvedValueOnce([
+        {
+          id: 'm1', title: 'M1', titleZh: null,
+          sourceUrl: 'https://example.com/m1', sourcePlatform: 'REDDIT',
+          author: 'r/openai',
+          publishedAt: new Date('2026-05-10T08:00:00Z'),
+          groupId: 'grp-X',
+        },
+        {
+          id: 'm2', title: 'M2', titleZh: 'M2 ZH',
+          sourceUrl: 'https://example.com/m2', sourcePlatform: 'REDDIT',
+          author: 'r/agi',
+          publishedAt: new Date('2026-05-10T10:00:00Z'),
+          groupId: 'grp-X',
+        },
+      ]);
+
+      const result = await service.list(1, 20);
+
+      expect(result.items[0]!.groupId).toBe('grp-X');
+      expect(result.items[0]!.groupSize).toBe(3);
+      expect(result.items[0]!.groupPlatforms).toEqual({
+        HACKERNEWS: 1,
+        REDDIT: 2,
+      });
+      expect(result.items[0]!.groupMembers).toHaveLength(2);
+      expect(result.items[0]!.groupMembers[0]).toMatchObject({
+        id: 'm1',
+        title: 'M1',
+        sourcePlatform: 'REDDIT',
+      });
+      // Representative is NOT duplicated in groupMembers.
+      expect(result.items[0]!.groupMembers.find((m) => m.id === 'rep')).toBeUndefined();
+      // Members fetch ran with NOT-IN repIds and ordered ASC by publishedAt.
+      const memberFetchArgs = prismaMock.hotNews.findMany.mock.calls[1]![0]!;
+      expect(memberFetchArgs.where).toMatchObject({
+        groupId: { in: ['grp-X'] },
+        status: 'VISIBLE',
+        NOT: { id: { in: ['rep'] } },
+      });
+      expect(memberFetchArgs.orderBy).toEqual([{ publishedAt: 'asc' }]);
+    });
+
+    it('groupMembers does NOT include heat / aiTags / crawledAt fields', async () => {
+      stageFoldQueries(['rep'], 1);
+      prismaMock.hotNews.findMany.mockResolvedValueOnce([
+        {
+          id: 'rep', title: 'Rep', titleZh: null, summary: null, aiTags: [],
+          sourceUrl: 'https://example.com/rep', sourcePlatform: 'HACKERNEWS',
+          author: null,
+          publishedAt: new Date('2026-05-10T10:00:00Z'),
+          crawledAt: new Date('2026-05-10T10:00:00Z'),
+          heatScore: 0, heatLevel: null, groupId: 'grp-Y',
+        },
+      ]);
+      prismaMock.hotNews.groupBy.mockResolvedValueOnce([
+        { groupId: 'grp-Y', sourcePlatform: 'HACKERNEWS', _count: { _all: 2 } },
+      ]);
+      prismaMock.hotNews.findMany.mockResolvedValueOnce([
+        {
+          id: 'm', title: 'M', titleZh: null,
+          sourceUrl: 'https://example.com/m', sourcePlatform: 'HACKERNEWS',
+          author: null,
+          publishedAt: new Date('2026-05-10T08:00:00Z'),
+          groupId: 'grp-Y',
+        },
+      ]);
+
+      const result = await service.list(1, 20);
+      const member = result.items[0]!.groupMembers[0]!;
+      expect(member).not.toHaveProperty('heatScore');
+      expect(member).not.toHaveProperty('heatLevel');
+      expect(member).not.toHaveProperty('aiTags');
+      expect(member).not.toHaveProperty('summary');
+      expect(member).not.toHaveProperty('crawledAt');
+      expect(member).toMatchObject({
+        id: 'm',
+        title: 'M',
+        sourcePlatform: 'HACKERNEWS',
+        publishedAt: '2026-05-10T08:00:00.000Z',
+      });
+    });
+
+    it('total reflects DISTINCT bucket count from $queryRaw, not findMany row count', async () => {
+      // Imagine 87-row Claude megagroup + 5 singletons → 6 buckets.
+      stageFoldQueries(['rep1', 'rep2'], 6);
+      prismaMock.hotNews.findMany.mockResolvedValueOnce([
+        {
+          id: 'rep1', title: '', titleZh: null, summary: null, aiTags: [],
+          sourceUrl: 'u1', sourcePlatform: 'HACKERNEWS',
+          author: null,
+          publishedAt: new Date('2026-05-10T10:00:00Z'),
+          crawledAt: new Date('2026-05-10T10:00:00Z'),
+          heatScore: 0, heatLevel: null, groupId: null,
+        },
+        {
+          id: 'rep2', title: '', titleZh: null, summary: null, aiTags: [],
+          sourceUrl: 'u2', sourcePlatform: 'REDDIT',
+          author: null,
+          publishedAt: new Date('2026-05-10T11:00:00Z'),
+          crawledAt: new Date('2026-05-10T11:00:00Z'),
+          heatScore: 0, heatLevel: null, groupId: null,
+        },
+      ]);
+
+      const result = await service.list(1, 20);
+      expect(result.total).toBe(6);
+      expect(result.items).toHaveLength(2);
+    });
+
+    it('returns empty without hydration when $queryRaw yields zero ids', async () => {
+      stageFoldQueries([], 0);
+
+      const result = await service.list(1, 20);
+
+      expect(result.items).toEqual([]);
+      expect(result.total).toBe(0);
+      expect(prismaMock.hotNews.findMany).not.toHaveBeenCalled();
+      expect(prismaMock.hotNews.groupBy).not.toHaveBeenCalled();
     });
   });
 });

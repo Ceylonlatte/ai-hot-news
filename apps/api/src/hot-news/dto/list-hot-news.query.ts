@@ -7,6 +7,15 @@ type AllowedPlatform = (typeof ALLOWED_PLATFORMS)[number];
 const ALLOWED_SORTS = ['time', 'heat'] as const;
 type AllowedSort = (typeof ALLOWED_SORTS)[number];
 
+/** SP-7-D (2026-05-16): how to handle rows that share a `groupId`.
+ *  - `fold`: collapse same-group rows into a single representative entry
+ *    on the list, with `groupMembers[]` populated for client-side disclosure.
+ *  - `expand`: legacy behavior — every row gets its own list entry,
+ *    `groupMembers` is empty. Useful for debugging and for clients that
+ *    want to render their own grouping UI. */
+const ALLOWED_GROUP_MODES = ['fold', 'expand'] as const;
+type AllowedGroupMode = (typeof ALLOWED_GROUP_MODES)[number];
+
 export class ListHotNewsQuery {
   @Type(() => Number)
   @IsOptional()
@@ -41,4 +50,11 @@ export class ListHotNewsQuery {
   )
   @IsIn(ALLOWED_SORTS)
   sort?: AllowedSort;
+
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim().toLowerCase() : value,
+  )
+  @IsIn(ALLOWED_GROUP_MODES)
+  groupMode?: AllowedGroupMode;
 }

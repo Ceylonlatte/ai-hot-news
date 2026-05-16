@@ -121,6 +121,40 @@ export interface HotNewsListItemDto {
    * lets the UI render the truthful "🔗 12 篇 · Reddit 10 / HN 2" form.
    */
   groupPlatforms: Partial<Record<Platform, number>>;
+  /**
+   * SP-7-D (2026-05-16): When `?groupMode=fold` (default), the API
+   * collapses same-group rows into a single representative entry on
+   * the list and ships every other VISIBLE member of the group in this
+   * array, sorted ascending by `publishedAt` (oldest first — useful for
+   * UI to show the originating story before the cross-platform echoes).
+   *
+   * Empty `[]` when:
+   *   - row is a singleton (groupId === null), OR
+   *   - `?groupMode=expand` is in effect, OR
+   *   - the row IS the only member of its group on this page (size 1).
+   *
+   * Note: the representative row is NOT duplicated in this array; the
+   * full group set on the UI is `[item, ...item.groupMembers]`.
+   */
+  groupMembers: GroupMemberDto[];
+}
+
+/**
+ * SP-7-D: Slim companion of `HotNewsListItemDto` shipped inside the
+ * representative row's `groupMembers[]`. Carries just enough fields
+ * for an inline `<details>` disclosure to render a clickable list of
+ * sibling articles. Drops fields that the UI never needs at the
+ * disclosure layer (heat / aiTags / crawledAt / etc.) to keep list
+ * responses small.
+ */
+export interface GroupMemberDto {
+  id: string;
+  title: string;
+  titleZh: string | null;
+  sourceUrl: string;
+  sourcePlatform: Platform;
+  author: string | null;
+  publishedAt: string;
 }
 
 export interface HotNewsListResponseDto {

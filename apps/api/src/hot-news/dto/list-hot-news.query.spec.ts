@@ -69,4 +69,35 @@ describe('ListHotNewsQuery', () => {
       expect(errors.length).toBeGreaterThan(0);
     });
   });
+
+  describe('groupMode field (SP-7-D)', () => {
+    it('defaults to undefined when omitted (controller maps to "fold")', async () => {
+      const { dto, errors } = await validateRaw({});
+      expect(errors).toEqual([]);
+      expect(dto.groupMode).toBeUndefined();
+    });
+
+    it('accepts "fold"', async () => {
+      const { dto, errors } = await validateRaw({ groupMode: 'fold' });
+      expect(errors).toEqual([]);
+      expect(dto.groupMode).toBe('fold');
+    });
+
+    it('accepts "expand"', async () => {
+      const { dto, errors } = await validateRaw({ groupMode: 'expand' });
+      expect(errors).toEqual([]);
+      expect(dto.groupMode).toBe('expand');
+    });
+
+    it('lowercases " FOLD " (mixed case + whitespace)', async () => {
+      const { dto, errors } = await validateRaw({ groupMode: ' FOLD ' });
+      expect(errors).toEqual([]);
+      expect(dto.groupMode).toBe('fold');
+    });
+
+    it('rejects "collapse" (not in allowlist)', async () => {
+      const { errors } = await validateRaw({ groupMode: 'collapse' });
+      expect(errors.length).toBeGreaterThan(0);
+    });
+  });
 });

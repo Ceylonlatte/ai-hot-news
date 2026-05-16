@@ -43,6 +43,7 @@ export function NewsItem({ item }: { item: HotNewsListItemDto }) {
   const displayTitle = item.titleZh ?? item.title;
   const tooltip = item.titleZh && item.titleZh !== item.title ? item.title : undefined;
   const crossPlatformBadge = formatCrossPlatformBadge(item.groupSize, item.groupPlatforms);
+  const hasMembers = item.groupMembers.length > 0;
   return (
     <li className="py-3">
       <a
@@ -79,6 +80,45 @@ export function NewsItem({ item }: { item: HotNewsListItemDto }) {
           </>
         ) : null}
       </div>
+      {hasMembers ? (
+        <details className="mt-2 group">
+          <summary className="cursor-pointer text-xs text-purple-700 hover:text-purple-900 select-none list-none flex items-center gap-1">
+            <span className="inline-block transition-transform group-open:rotate-90">▶</span>
+            <span>查看同组其它 {item.groupMembers.length} 篇</span>
+          </summary>
+          <ul className="mt-1.5 ml-4 space-y-1 border-l border-purple-100 pl-3">
+            {item.groupMembers.map((m) => {
+              const mLabel = PLATFORM_LABEL[m.sourcePlatform] ?? m.sourcePlatform;
+              const mBadgeCls =
+                PLATFORM_BADGE_CLASS[m.sourcePlatform] ?? 'bg-gray-100 text-gray-700';
+              const mTitle = m.titleZh ?? m.title;
+              const mTooltip = m.titleZh && m.titleZh !== m.title ? m.title : undefined;
+              return (
+                <li key={m.id} className="text-xs">
+                  <a
+                    href={m.sourceUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title={mTooltip}
+                    className="text-gray-700 hover:text-gray-900 hover:underline"
+                  >
+                    {mTitle}
+                  </a>
+                  <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] text-gray-400">
+                    <span>{m.author ?? '匿名'}</span>
+                    <span>·</span>
+                    <span className={`rounded px-1 py-0.5 font-medium ${mBadgeCls}`}>
+                      {mLabel}
+                    </span>
+                    <span>·</span>
+                    <LocalTime iso={m.publishedAt} />
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </details>
+      ) : null}
     </li>
   );
 }
