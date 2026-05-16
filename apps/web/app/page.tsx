@@ -1,18 +1,53 @@
 import Link from 'next/link';
+import type { ComponentProps } from 'react';
+import { Glass, PageHeader } from '@ai-hot-news/ui';
+import { MockupBanner } from './_components/MockupBanner';
+
+type NextLinkHref = ComponentProps<typeof Link>['href'];
 
 export default function HomePage() {
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-4 p-8">
-      <div className="rounded-lg border border-gray-200 bg-white p-8 shadow-sm">
-        <h1 className="text-3xl font-bold">AI Hot News</h1>
-        <p className="mt-2 text-gray-600">SP-1 placeholder · v0.0.2</p>
-        <p className="mt-1 text-xs text-gray-400">
-          实际 UI 在 P4 / SP-8 起按 Aurora 设计稿落地
-        </p>
-        <Link href="/news" className="mt-4 inline-block text-blue-600 underline">
-          → 查看热点列表
-        </Link>
+    <>
+      <MockupBanner targetSp="SP-8 V1（HomePage 真数据接入留给 V2）" />
+      <PageHeader
+        title="Aurora"
+        subtitle="AI 圈热点聚合 · 实时雷达 · 趋势观察"
+      />
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 fade-up">
+        <Glass variant="hover" as="article">
+          <Link href="/news" className="block p-6">
+            <div className="text-aurora text-sm font-medium mb-2">News</div>
+            <div className="text-2xl font-light tracking-tight text-ink mb-2">
+              热点列表
+            </div>
+            <p className="text-sm text-ink-2">
+              HN / Reddit / RSS 跨平台合并 · 24h 滚动 · heatScore 排序
+            </p>
+          </Link>
+        </Glass>
+        <Glass variant="hover" as="article">
+          <Link href={'/radar' as NextLinkHref} className="block p-6">
+            <div className="text-aurora text-sm font-medium mb-2">Radar</div>
+            <div className="text-2xl font-light tracking-tight text-ink mb-2">
+              新冒头雷达
+            </div>
+            <p className="text-sm text-ink-2">
+              抓取&lt;3h 的新议题 · 跨平台首发追踪 · Mockup
+            </p>
+          </Link>
+        </Glass>
+        <Glass variant="hover" as="article">
+          <Link href={'/trends' as NextLinkHref} className="block p-6">
+            <div className="text-aurora text-sm font-medium mb-2">Trends</div>
+            <div className="text-2xl font-light tracking-tight text-ink mb-2">
+              趋势观察
+            </div>
+            <p className="text-sm text-ink-2">
+              7d / 30d 关键词热度曲线 · aiTags 维度切片 · Mockup
+            </p>
+          </Link>
+        </Glass>
       </div>
-    </main>
+    </>
   );
 }
