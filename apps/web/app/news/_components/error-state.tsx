@@ -1,8 +1,12 @@
+import { Glass } from '@ai-hot-news/ui';
+
 export function ErrorState({ message }: { message: string }) {
   return (
-    <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-      暂时无法加载内容，请稍后再试。
-      <pre className="mt-2 whitespace-pre-wrap text-xs text-red-500">{message}</pre>
-    </div>
+    <Glass variant="soft">
+      <div className="px-6 py-8">
+        <div className="text-sm font-medium text-red-700 mb-1">加载失败</div>
+        <p className="text-xs text-ink-2 break-all">{message}</p>
+      </div>
+    </Glass>
   );
 }
