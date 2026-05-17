@@ -58,6 +58,30 @@
 
 ---
 
+## CI-2026-05-17: Flaky `migrate-sp4.spec.ts` / worker integration specs from cross-package real-DB contention
+
+- **Status**: Fixed (PR #29 forces `turbo run test --concurrency=1`)
+- **Affected**: `.github/workflows/ci.yml` job `Lint / Typecheck / Build / Test`
+- **Symptom**: Random CI failures on docs-only or unrelated PRs with one of:
+  - `scripts/migrate-sp4.spec.ts:110 > Layer 2 reddit_low_ratio` — `TypeError: actual value must be number or bigint, received "undefined"` OR `PrismaClientKnownRequestError P2025 No record was found for an update`
+  - `apps/worker/src/heat/heat.cron.processor.integration.spec.ts:102` — same `P2025`
+  - `prisma:error Unique constraint failed on the fields: ('sourceUrl')` stderr in unrelated specs
+  Observed flake rate on `main` before fix: **3 / 8 recent runs failed** (PR #24 / #26 / #27), all rerun-recovered.
+- **Reproduces on**: CI (Ubuntu runner, fresh postgres service container, dense timing). **Does NOT reproduce reliably on local** (looser timing, dev DB has historical rows that change `runMigrateSp4`'s whole-table scan path).
+- **Root cause**: Two packages run real-DB integration specs against the same `DATABASE_URL`:
+  - `@ai-hot-news/db` — 7 spec files (`migrate-sp4`, `cleanup-rss-pre-window`, `cleanup-antibot-extracted`, `consolidate-sp5-sources`, `sp5-5-source-migrations`, `wipe-hot-news-pre-sp5`, `wipe-hot-news-pre-ai`)
+  - `@ai-hot-news/worker` — 2 spec files (`ingestion.service.integration.spec`, `heat.cron.processor.integration.spec`)
+  `packages/db/vitest.config.ts` already sets `fileParallelism: false` so the 7 db specs run sequentially **within** the package. But `pnpm turbo run test` runs `@ai-hot-news/db` and `@ai-hot-news/worker` **in parallel** (turbo defaults to 10x concurrency). `runMigrateSp4()` does a whole-table scan + read-then-update, which races against the worker specs' `prisma.hotNews.create()` / `deleteMany()`, producing P2002 / P2025 / missing-row errors.
+- **Current fix**: Add `--concurrency=1` to the CI test step and the root `pnpm test` script. Cost: ~10-20s extra wall-clock (db ~2s + worker ~5s, previously overlapped). Benefit: removes the entire class of cross-package DB contention flakes.
+- **Cleanup criteria** (when we want speed back):
+  1. Audit every spec file in `packages/db/scripts/`, `apps/worker/src/`, `apps/api/src/` and split into `test:unit` (mock-only, can parallelize) vs `test:integration` (real DB, must serialize)
+  2. Split `turbo.json` task into `test:unit` + `test:integration` with appropriate dependencies
+  3. Update `.github/workflows/ci.yml` to run both in sequence; only `test:integration` needs `--concurrency=1`
+  4. Add lint rule or CI guard so new specs declare which bucket they belong to
+- **Decision deferred to V2**: `heat.cron.processor.ts` `read-then-update` could be wrapped in a single transaction or `updateMany` to make the worker spec robust to deletions. Useful regardless of CI fix because prod worker also has this race (rare but possible).
+
+---
+
 ## Template for new entries
 
 ```
