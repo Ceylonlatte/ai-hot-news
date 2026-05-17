@@ -38,17 +38,17 @@ describe('Sidebar', () => {
     expect(homeLink.getAttribute('aria-current')).toBe('page');
   });
 
-  it('aside uses glass-soft container per spec §3.6 (was border-r drift)', () => {
-    const { container } = render(<Sidebar currentPath="/" LinkComponent={NavLink} />);
-    const aside = container.querySelector('aside');
-    expect(aside).not.toBeNull();
-    expect(aside!.className).toMatch(/glass-soft/);
+  it('treats nested paths (e.g. /news/abc) as active for parent nav', () => {
+    render(<Sidebar currentPath="/news/abc" LinkComponent={NavLink} />);
+    const newsLink = screen.getByTestId('link-/news');
+    expect(newsLink.getAttribute('aria-current')).toBe('page');
   });
 
-  it('renders logo block with brand title and version sub per spec §3.6', () => {
+  it('renders logo block with AI badge + brand title + sub line', () => {
     render(<Sidebar currentPath="/" LinkComponent={NavLink} />);
-    expect(screen.getByText('AI Hot News')).toBeInTheDocument();
-    expect(screen.getByText(/v0\.1 · Aurora/)).toBeInTheDocument();
+    expect(screen.getByText('Hot News')).toBeInTheDocument();
+    expect(screen.getByText('AI 信息聚合')).toBeInTheDocument();
+    expect(screen.getByText('AI')).toBeInTheDocument();
   });
 
   it('uses unicode geometric icons matching design mockup (✦◔◈◬◎)', () => {
@@ -58,5 +58,41 @@ describe('Sidebar', () => {
     expect(screen.getByText('◈')).toBeInTheDocument();
     expect(screen.getByText('◬')).toBeInTheDocument();
     expect(screen.getByText('◎')).toBeInTheDocument();
+  });
+
+  it('renders bilingual nav labels (Chinese label + English en)', () => {
+    render(<Sidebar currentPath="/" LinkComponent={NavLink} />);
+    expect(screen.getByText('今日热点')).toBeInTheDocument();
+    expect(screen.getByText('Dashboard')).toBeInTheDocument();
+    expect(screen.getByText('热点流')).toBeInTheDocument();
+    expect(screen.getByText('Hot Feed')).toBeInTheDocument();
+    expect(screen.getByText('关键词监控')).toBeInTheDocument();
+    expect(screen.getByText('Keyword Radar')).toBeInTheDocument();
+  });
+
+  it('shows notif badge on /radar when notifCount > 0 (defaults to 3)', () => {
+    render(<Sidebar currentPath="/" LinkComponent={NavLink} />);
+    const radarLink = screen.getByTestId('link-/radar');
+    expect(radarLink.textContent).toMatch(/3/);
+  });
+
+  it('hides notif badge on /radar when notifCount = 0', () => {
+    render(<Sidebar currentPath="/" LinkComponent={NavLink} notifCount={0} />);
+    const radarLink = screen.getByTestId('link-/radar');
+    expect(radarLink.querySelector('span.bg-ink')).toBeNull();
+  });
+
+  it('renders system status panel with 3 services', () => {
+    render(<Sidebar currentPath="/" LinkComponent={NavLink} />);
+    expect(screen.getByText('系统状态')).toBeInTheDocument();
+    expect(screen.getByText('数据抓取')).toBeInTheDocument();
+    expect(screen.getByText('AI 摘要')).toBeInTheDocument();
+    expect(screen.getByText('推送服务')).toBeInTheDocument();
+  });
+
+  it('renders user card with avatar + name + tier', () => {
+    render(<Sidebar currentPath="/" LinkComponent={NavLink} />);
+    expect(screen.getByText('张研究员')).toBeInTheDocument();
+    expect(screen.getByText('Pro 用户')).toBeInTheDocument();
   });
 });

@@ -36,27 +36,35 @@ export default async function NewsPage({ searchParams }: PageProps) {
 
   return (
     <>
-      <PageHeader
-        kicker="LIVE FEED"
-        title="News"
-        sub="HN / Reddit / RSS 跨平台聚合 · SP-6 heatScore 排序"
-      />
-      <FeedTabs active={tab} />
-      {errorMessage ? (
-        <ErrorState message={errorMessage} />
-      ) : data && data.items.length === 0 ? (
-        <EmptyState />
-      ) : data ? (
-        <>
-          <ListHeader total={data.total} latestCrawledAt={data.items[0]?.crawledAt} />
-          <div className="mt-4 space-y-3 fade-up">
-            {data.items.map((item) => (
-              <NewsItem key={item.id} item={item} />
-            ))}
-          </div>
-          <Pagination page={data.page} pageSize={data.pageSize} total={data.total} tab={tab} />
-        </>
-      ) : null}
+      <div className="px-9 pt-7 pb-3">
+        <PageHeader
+          kicker="Hot Feed"
+          title="热点流"
+          sub={
+            data
+              ? `${data.total} 条精选热点 · 实时聚合 4 个平台`
+              : 'HN / Reddit / RSS 跨平台聚合 · SP-6 heatScore 排序'
+          }
+        />
+        <FeedTabs active={tab} />
+      </div>
+      <div className="flex-1 overflow-auto px-9 pb-9">
+        {errorMessage ? (
+          <ErrorState message={errorMessage} />
+        ) : data && data.items.length === 0 ? (
+          <EmptyState />
+        ) : data ? (
+          <>
+            <ListHeader total={data.total} latestCrawledAt={data.items[0]?.crawledAt} />
+            <div className="mt-3.5 space-y-3 fade-up">
+              {data.items.map((item) => (
+                <NewsItem key={item.id} item={item} />
+              ))}
+            </div>
+            <Pagination page={data.page} pageSize={data.pageSize} total={data.total} tab={tab} />
+          </>
+        ) : null}
+      </div>
     </>
   );
 }

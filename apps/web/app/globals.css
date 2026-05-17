@@ -10,9 +10,15 @@
   --line: rgba(20, 19, 26, 0.06);
   --line-2: rgba(20, 19, 26, 0.10);
   --c1: #7e57f5;
+  --c2: #14131a;
+  --c3: #7e57f5;
+  --c4: #5a5763;
   --accent: #7e57f5;
   --accent-soft: rgba(126, 87, 245, 0.10);
   --accent-soft-2: rgba(126, 87, 245, 0.18);
+  /* 设计稿用 --grad 给主按钮 / active nav 上黑色块；--grad-soft 给装饰柔光 */
+  --grad: #14131a;
+  --grad-soft: linear-gradient(135deg, #e9e1ff, #f0e8ff, #f6efff);
 }
 
 html, body {
@@ -21,8 +27,14 @@ html, body {
   font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Helvetica Neue', sans-serif;
   font-size: 14px;
   height: 100%;
+  overflow: hidden;
   -webkit-font-smoothing: antialiased;
 }
+
+/* Aurora 设计稿用细滚动条，让卡片视觉聚焦 */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-thumb { background: rgba(20, 19, 26, 0.15); border-radius: 3px; }
+::-webkit-scrollbar-track { background: transparent; }
 
 body {
   background-image:

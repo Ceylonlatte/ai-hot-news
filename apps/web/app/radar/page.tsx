@@ -31,36 +31,43 @@ const MOCK_RADAR_ITEMS = [
 export default function RadarPage() {
   return (
     <>
-      <MockupBanner targetSp="SP-9（Radar 真实数据接入）" />
-      <PageHeader
-        kicker="KEYWORD RADAR"
-        title="Radar"
-        sub="抓取 < 3h 的新冒头议题 · 跨平台首发追踪"
-      />
-      <div className="space-y-3 fade-up">
-        {MOCK_RADAR_ITEMS.map((item) => (
-          <Glass key={item.id} variant="hover" as="article">
-            <div className="p-5">
-              <div className="flex items-center gap-2 mb-2 text-xs text-ink-3">
-                <Pill platform={item.platform} />
-                <span className="text-aurora font-mono font-medium">{item.age}</span>
-                <span className="blink">·</span>
-                <span>new</span>
+      <div className="px-9 pt-7 pb-3">
+        <PageHeader
+          kicker="Keyword Radar"
+          title="关键词"
+          gradTitle="监控雷达"
+          sub="抓取 < 3h 的新冒头议题 · 跨平台首发追踪"
+        />
+        <MockupBanner targetSp="SP-9（Radar 真实数据接入）" />
+      </div>
+      <div className="flex-1 overflow-auto px-9 pb-9">
+        <div className="space-y-3 fade-up">
+          {MOCK_RADAR_ITEMS.map((item) => (
+            <Glass key={item.id} variant="hover" as="article">
+              <div className="p-5">
+                <div className="flex items-center gap-2 mb-2 text-xs text-ink-3">
+                  <Pill platform={item.platform} />
+                  <span className="text-aurora font-mono font-medium">{item.age}</span>
+                  <span className="blink">·</span>
+                  <span>new</span>
+                </div>
+                <h3 className="text-base font-medium text-ink mb-1">
+                  {item.titleZh ?? item.title}
+                </h3>
+                {item.titleZh && (
+                  <p className="text-xs text-ink-3 mb-3">{item.title}</p>
+                )}
+                <div className="flex flex-wrap gap-1.5">
+                  {item.tags.map((t, i) => (
+                    <Tag key={t} index={i}>
+                      {t}
+                    </Tag>
+                  ))}
+                </div>
               </div>
-              <h3 className="text-base font-medium text-ink mb-1">
-                {item.titleZh ?? item.title}
-              </h3>
-              {item.titleZh && (
-                <p className="text-xs text-ink-3 mb-3">{item.title}</p>
-              )}
-              <div className="flex flex-wrap gap-1.5">
-                {item.tags.map((t) => (
-                  <Tag key={t}>{t}</Tag>
-                ))}
-              </div>
-            </div>
-          </Glass>
-        ))}
+            </Glass>
+          ))}
+        </div>
       </div>
     </>
   );
