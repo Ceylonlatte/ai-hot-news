@@ -2222,3 +2222,17 @@ PR-C merge 即 SP-8 V1 完成。
 **2. Inline Execution** — 在当前会话内顺序执行 task，按 PR 边界做 checkpoint review
 
 **用哪种？**
+
+---
+
+## Errata（2026-05-17）
+
+PR-A 在 §A7（PageHeader）和 §A8（Sidebar）实施时**未严格跟 spec §3.5 / §3.6**，由 `fix/sp8-ui-spec-drift` 修复。详见 `docs/superpowers/specs/2026-05-16-sp8-aurora-visual-system-design.md` §13 Errata。
+
+主要 drift：
+
+- **PageHeader**（§A7 code block 651-665）：缺 `kicker` prop / 字段名 `sub→subtitle` `action→right` / 字号字重 `text-2xl font-bold→text-3xl font-light` / 缺 `fade-up`。修复后接口与 spec §3.5 一致。
+- **Sidebar**（§A8 code block）：容器用 `border-r border-line` 而非 `glass-soft` / icon 用 H/N/R/T/V 字母 / logo 简化成 "Aurora" 单行 / labels 用英文。修复后用 unicode 几何符号 ✦/◔/◈/◬/◎ + glass-soft 容器 + "AI Hot News" + "v0.1 · Aurora" + 中文 labels。
+- **5 个 page.tsx 调用**：相应改 `subtitle→sub` + 加 `kicker` 文案（DASHBOARD / LIVE FEED / KEYWORD RADAR / TRENDS · 7D / VAULT）。
+
+V2 backlog（spec §13 列）：系统状态卡 / 用户头像 / 生成日报按钮 / 双列网格 / Inter Tight 字体 / 移动端 bottom-nav。

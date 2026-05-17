@@ -23,8 +23,9 @@ export default function VaultPage() {
     <>
       <MockupBanner targetSp="SP-15（用户收藏 & 笔记）" />
       <PageHeader
+        kicker="VAULT"
         title="Vault"
-        subtitle="收藏 · 笔记 · 私人知识库"
+        sub="收藏 · 笔记 · 私人知识库"
       />
       <div className="space-y-3 fade-up">
         {MOCK_VAULT.map((item) => (

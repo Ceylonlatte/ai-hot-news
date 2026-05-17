@@ -15,7 +15,7 @@ const NavLink: ComponentType<{
 );
 
 describe('Sidebar', () => {
-  it('renders all 4 nav items via LinkComponent', () => {
+  it('renders all 5 nav items via LinkComponent', () => {
     render(<Sidebar currentPath="/news" LinkComponent={NavLink} />);
     expect(screen.getByTestId('link-/')).toBeInTheDocument();
     expect(screen.getByTestId('link-/news')).toBeInTheDocument();
@@ -36,5 +36,27 @@ describe('Sidebar', () => {
     render(<Sidebar currentPath="" LinkComponent={NavLink} />);
     const homeLink = screen.getByTestId('link-/');
     expect(homeLink.getAttribute('aria-current')).toBe('page');
+  });
+
+  it('aside uses glass-soft container per spec §3.6 (was border-r drift)', () => {
+    const { container } = render(<Sidebar currentPath="/" LinkComponent={NavLink} />);
+    const aside = container.querySelector('aside');
+    expect(aside).not.toBeNull();
+    expect(aside!.className).toMatch(/glass-soft/);
+  });
+
+  it('renders logo block with brand title and version sub per spec §3.6', () => {
+    render(<Sidebar currentPath="/" LinkComponent={NavLink} />);
+    expect(screen.getByText('AI Hot News')).toBeInTheDocument();
+    expect(screen.getByText(/v0\.1 · Aurora/)).toBeInTheDocument();
+  });
+
+  it('uses unicode geometric icons matching design mockup (✦◔◈◬◎)', () => {
+    render(<Sidebar currentPath="/" LinkComponent={NavLink} />);
+    expect(screen.getByText('✦')).toBeInTheDocument();
+    expect(screen.getByText('◔')).toBeInTheDocument();
+    expect(screen.getByText('◈')).toBeInTheDocument();
+    expect(screen.getByText('◬')).toBeInTheDocument();
+    expect(screen.getByText('◎')).toBeInTheDocument();
   });
 });

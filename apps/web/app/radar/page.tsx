@@ -33,8 +33,9 @@ export default function RadarPage() {
     <>
       <MockupBanner targetSp="SP-9（Radar 真实数据接入）" />
       <PageHeader
+        kicker="KEYWORD RADAR"
         title="Radar"
-        subtitle="抓取 < 3h 的新冒头议题 · 跨平台首发追踪"
+        sub="抓取 < 3h 的新冒头议题 · 跨平台首发追踪"
       />
       <div className="space-y-3 fade-up">
         {MOCK_RADAR_ITEMS.map((item) => (

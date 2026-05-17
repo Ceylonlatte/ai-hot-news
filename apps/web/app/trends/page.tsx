@@ -15,8 +15,9 @@ export default function TrendsPage() {
     <>
       <MockupBanner targetSp="SP-12（aiTags 时间序列聚合）" />
       <PageHeader
+        kicker="TRENDS · 7D"
         title="Trends"
-        subtitle="7d aiTags 热度排行 · delta = 相比前 7d"
+        sub="7d aiTags 热度排行 · delta = 相比前 7d"
       />
       <Glass>
         <div className="p-6 fade-up">
