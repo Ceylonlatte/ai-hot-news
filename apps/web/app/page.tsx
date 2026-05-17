@@ -10,8 +10,9 @@ export default function HomePage() {
     <>
       <MockupBanner targetSp="SP-8 V1（HomePage 真数据接入留给 V2）" />
       <PageHeader
+        kicker="DASHBOARD"
         title="Aurora"
-        subtitle="AI 圈热点聚合 · 实时雷达 · 趋势观察"
+        sub="AI 圈热点聚合 · 实时雷达 · 趋势观察"
       />
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 fade-up">
         <Glass variant="hover" as="article">

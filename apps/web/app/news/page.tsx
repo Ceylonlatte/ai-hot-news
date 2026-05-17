@@ -37,8 +37,9 @@ export default async function NewsPage({ searchParams }: PageProps) {
   return (
     <>
       <PageHeader
+        kicker="LIVE FEED"
         title="News"
-        subtitle="HN / Reddit / RSS 跨平台聚合 · SP-6 heatScore 排序"
+        sub="HN / Reddit / RSS 跨平台聚合 · SP-6 heatScore 排序"
       />
       <FeedTabs active={tab} />
       {errorMessage ? (

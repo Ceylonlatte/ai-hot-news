@@ -1056,5 +1056,23 @@ worker / api / db / utils / prompts 现有 ~250 测试无需任何修改（本 S
 | 2026-05-16 | 不引 Storybook | 引 Storybook | 6 atoms YAGNI；超 15 个 atom 时再开 SP |
 | 2026-05-16 | x-pathname middleware 注入而非 client component | 整个 layout 改 client | RSC 性能 + Aurora 静态背景层不需要 client；middleware 是 Next 14+ 推荐方案 |
 
+---
+
+## 13. Errata（修订记录）
+
+| 日期 | 来源 | 偏差 | 修复 PR |
+|----|----|----|----|
+| 2026-05-17 | PR-A §A7 实施 | PageHeader 实施漏了 spec §3.5 的 `kicker` prop、把 `sub`/`action` 字段名改成了 `subtitle`/`right`、字号字重从 `text-2xl font-bold` 偏到 `text-3xl font-light`、漏了 `fade-up` 入场动画 | fix/sp8-ui-spec-drift |
+| 2026-05-17 | PR-A §A8 实施 | Sidebar 容器没用 `glass-soft`（用了普通 `border-r border-line`）、icon 用 H/N/R/T/V 字母而非设计稿的 ✦/◔/◈/◬/◎ 几何符号、logo block 简化成只 "Aurora" 单行（spec §3.6 要求 "AI Hot News" + "v0.1 · Aurora"）、标题字重字号偏离 spec、label 是 Home/News/Radar/Trends/Vault 英文而非中文 | fix/sp8-ui-spec-drift |
+
+**V2 backlog**（设计稿超 SP-8 V1 scope，等后续 SP 接通）：
+
+- Sidebar "系统状态卡"（数据抓取/AI 摘要/推送 + blink 灯）— 等 SP-25 observability
+- Sidebar 底部"用户头像 + Pro 标签"— 等 SP-15 auth
+- PageHeader 右侧 `✨ 生成今日日报` 按钮 — 等 SP-12 daily brief
+- /news 双列网格布局 — V1 选了单列（列表阅读更舒服），V2 用户提需求再开
+- Inter Tight / JetBrains Mono Google Font — V1 Q2 选系统字体保 LCP；若要切回需评估 LCP 回归
+- Sidebar 移动端 bottom-nav — § 10 已列 V2
+
 
 
