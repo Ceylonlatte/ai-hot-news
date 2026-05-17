@@ -17,7 +17,7 @@
     "build": "turbo run build",
     "lint": "eslint . --no-error-on-unmatched-pattern && turbo run lint",
     "typecheck": "turbo run typecheck",
-    "test": "turbo run test",
+    "test": "turbo run test --concurrency=1",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "db:generate": "pnpm --filter @ai-hot-news/db exec prisma generate",

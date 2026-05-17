@@ -70,7 +70,12 @@ jobs:
         run: pnpm turbo run build
 
       - name: Test
-        run: pnpm turbo run test
+        # SP-8 hotfix (PR #29): force --concurrency=1 because packages/db and
+        # apps/worker both run real-DB integration specs against the same
+        # DATABASE_URL. Parallel execution races on the hot_news table and
+        # produces flaky P2002 / P2025 errors that bit PR #24 / #27 / #28.
+        # See docs/Decisions/2026-05-17-ci-test-concurrency.md.
+        run: pnpm turbo run test --concurrency=1
 
   build-images:
     name: Build & push images to GHCR
