@@ -12,8 +12,8 @@ export const metadata: Metadata = {
 
 type NextLinkHref = ComponentProps<typeof Link>['href'];
 
-const NextLinkAdapter: ComponentType<NavLinkProps> = ({ href, children, className, ...rest }) => (
-  <Link href={href as NextLinkHref} className={className} {...rest}>
+const NextLinkAdapter: ComponentType<NavLinkProps> = ({ href, children, className, style, ...rest }) => (
+  <Link href={href as NextLinkHref} className={className} style={style} {...rest}>
     {children}
   </Link>
 );
@@ -28,10 +28,13 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         <div className="aurora-blob ab-1" aria-hidden="true" />
         <div className="aurora-blob ab-2" aria-hidden="true" />
         <div className="aurora-blob ab-3" aria-hidden="true" />
-        <div className="relative z-10 flex min-h-screen">
+        <div className="relative z-10 flex h-screen overflow-hidden">
           <Sidebar currentPath={currentPath} LinkComponent={NextLinkAdapter} />
-          <main className="flex-1 px-6 py-8 md:px-10 md:py-12">
-            <div className="max-w-6xl mx-auto">{children}</div>
+          <main
+            data-testid="app-main"
+            className="flex-1 min-w-0 flex flex-col overflow-hidden relative z-[1]"
+          >
+            {children}
           </main>
         </div>
       </body>

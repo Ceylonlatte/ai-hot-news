@@ -19,9 +19,9 @@ describe('PageHeader', () => {
     expect(screen.getByRole('button', { name: 'sort' })).toBeInTheDocument();
   });
 
-  it('renders kicker above title in aurora color when provided (spec §3.5)', () => {
+  it('renders kicker with ✦ prefix in aurora color when provided (spec §3.5)', () => {
     render(<PageHeader kicker="LIVE FEED" title="News" />);
-    const kicker = screen.getByText('LIVE FEED');
+    const kicker = screen.getByText('✦ LIVE FEED');
     expect(kicker).toBeInTheDocument();
     expect(kicker.className).toMatch(/text-aurora/);
     expect(kicker.className).toMatch(/uppercase/);
@@ -34,11 +34,20 @@ describe('PageHeader', () => {
     expect(kickers).toHaveLength(0);
   });
 
-  it('uses text-2xl font-bold for h1 (spec §3.5 visual weight)', () => {
+  it('renders h1 as bold display title (font-bold + 36px inline)', () => {
     render(<PageHeader title="Weighty Title" />);
     const h1 = screen.getByRole('heading', { level: 1, name: 'Weighty Title' });
-    expect(h1.className).toMatch(/text-2xl/);
     expect(h1.className).toMatch(/font-bold/);
+    // inline style font-size: 36px → jsdom normalises to "36px"
+    expect(h1.style.fontSize).toBe('36px');
+    expect(h1.style.letterSpacing).toBe('-0.03em');
+  });
+
+  it('renders a second gradTitle fragment when supplied', () => {
+    render(<PageHeader title="今天的" gradTitle="AI 信号潮汐" />);
+    const h1 = screen.getByRole('heading', { level: 1 });
+    expect(h1.textContent).toContain('今天的');
+    expect(h1.textContent).toContain('AI 信号潮汐');
   });
 
   it('applies fade-up entry animation on the wrapper (spec §3.5)', () => {

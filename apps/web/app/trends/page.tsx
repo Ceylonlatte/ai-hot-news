@@ -13,34 +13,38 @@ const MOCK_TRENDS = [
 export default function TrendsPage() {
   return (
     <>
-      <MockupBanner targetSp="SP-12（aiTags 时间序列聚合）" />
-      <PageHeader
-        kicker="TRENDS · 7D"
-        title="Trends"
-        sub="7d aiTags 热度排行 · delta = 相比前 7d"
-      />
-      <Glass>
-        <div className="p-6 fade-up">
-          <ul className="space-y-4">
-            {MOCK_TRENDS.map((row) => (
-              <li key={row.tag}>
-                <div className="flex items-center justify-between mb-1.5">
-                  <Tag>{row.tag}</Tag>
-                  <div className="flex items-center gap-3 text-xs font-mono">
-                    <span className="text-ink-2">{row.count}</span>
-                    <span className={row.delta.startsWith('-') ? 'text-ink-3' : 'text-aurora'}>
-                      {row.delta}
-                    </span>
+      <div className="px-9 pt-7 pb-3">
+        <PageHeader
+          kicker="Trends · 7D"
+          title="趋势分析"
+          sub="7d aiTags 热度排行 · delta = 相比前 7d"
+        />
+        <MockupBanner targetSp="SP-12（aiTags 时间序列聚合）" />
+      </div>
+      <div className="flex-1 overflow-auto px-9 pb-9">
+        <Glass>
+          <div className="p-6 fade-up">
+            <ul className="space-y-4">
+              {MOCK_TRENDS.map((row, i) => (
+                <li key={row.tag}>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <Tag index={i}>{row.tag}</Tag>
+                    <div className="flex items-center gap-3 text-xs font-mono">
+                      <span className="text-ink-2">{row.count}</span>
+                      <span className={row.delta.startsWith('-') ? 'text-ink-3' : 'text-aurora'}>
+                        {row.delta}
+                      </span>
+                    </div>
                   </div>
-                </div>
-                <div className="h-1.5 bg-ink/[0.04] rounded-full overflow-hidden">
-                  <div className={`h-full bg-aurora rounded-full fill-bar ${row.cls}`} />
-                </div>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </Glass>
+                  <div className="h-1.5 bg-ink/[0.04] rounded-full overflow-hidden">
+                    <div className={`h-full bg-aurora rounded-full fill-bar ${row.cls}`} />
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </Glass>
+      </div>
     </>
   );
 }
