@@ -82,8 +82,9 @@ export function CountUp({
     return () => {
       if (raf) cancelAnimationFrame(raf);
     };
-    // First-mount only by design — ignore subsequent value/duration prop changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // First-mount only by design — `targetRef` captures `value` at mount,
+    // and subsequent prop changes are intentionally ignored. We omit deps
+    // here on purpose; the spec verifies the contract.
   }, []);
 
   const rendered: ReactNode = format
