@@ -5,3 +5,4 @@ export * from './boilerplate';
 export * from './quality';
 export { detectAntiBotPage, isAntiBotPage } from './antibot';
 export type { AntiBotVerdict } from './antibot';
+export { stripTagLabel } from './tag-label';
