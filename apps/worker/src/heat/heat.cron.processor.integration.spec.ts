@@ -2,11 +2,13 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { getPrisma, Platform, ContentStatus } from '@ai-hot-news/db';
 import { processHeatRefreshJob } from './heat.cron.processor';
 import { loadHeatConfig } from './heat.config';
+import { computeBucketAt } from './bucket-at';
 
 const prisma = getPrisma();
 const TEST_PREFIX = 'sp6-cron-test-';
 
 async function reset() {
+  // Cascading delete (FK ON DELETE CASCADE) cleans heat_history for these rows.
   await prisma.hotNews.deleteMany({
     where: { sourceUrl: { startsWith: TEST_PREFIX } },
   });
@@ -159,5 +161,103 @@ describe('processHeatRefreshJob (integration)', () => {
     expect(levels.has('HOT')).toBe(true);
     expect(levels.has('NORMAL')).toBe(true);
     expect(levels.has('LOW')).toBe(true);
+  });
+
+  it('SP-11 — writes one heat_history row per (visible, non-RSS, 48h) entry per bucket', async () => {
+    const now = new Date();
+    const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+
+    // Two visible HN, one RSS (must be ignored), one >48h (must be ignored).
+    await prisma.hotNews.create({
+      data: {
+        title: 'HN row 1',
+        content: 'HN row 1',
+        sourcePlatform: Platform.HACKERNEWS,
+        sourceUrl: `${TEST_PREFIX}history-1`,
+        publishedAt: oneHourAgo,
+        dedupeHash: `${TEST_PREFIX}history-hash-1`,
+        status: ContentStatus.VISIBLE,
+        interactionData: { score: 100, comments: 20 },
+      },
+    });
+    await prisma.hotNews.create({
+      data: {
+        title: 'HN row 2',
+        content: 'HN row 2',
+        sourcePlatform: Platform.HACKERNEWS,
+        sourceUrl: `${TEST_PREFIX}history-2`,
+        publishedAt: oneHourAgo,
+        dedupeHash: `${TEST_PREFIX}history-hash-2`,
+        status: ContentStatus.VISIBLE,
+        interactionData: { score: 50, comments: 5 },
+      },
+    });
+    await prisma.hotNews.create({
+      data: {
+        title: 'RSS row',
+        content: 'RSS row',
+        sourcePlatform: Platform.RSS,
+        sourceUrl: `${TEST_PREFIX}history-rss`,
+        publishedAt: oneHourAgo,
+        dedupeHash: `${TEST_PREFIX}history-hash-rss`,
+        status: ContentStatus.VISIBLE,
+        interactionData: undefined,
+      },
+    });
+    await prisma.hotNews.create({
+      data: {
+        title: 'Old row',
+        content: 'Old row',
+        sourcePlatform: Platform.HACKERNEWS,
+        sourceUrl: `${TEST_PREFIX}history-old`,
+        publishedAt: new Date(now.getTime() - 49 * 60 * 60 * 1000),
+        dedupeHash: `${TEST_PREFIX}history-hash-old`,
+        status: ContentStatus.VISIBLE,
+        interactionData: { score: 100, comments: 10 },
+      },
+    });
+
+    // Tick 1
+    await processHeatRefreshJob(loadHeatConfig());
+    const ids = await prisma.hotNews.findMany({
+      where: { sourceUrl: { startsWith: `${TEST_PREFIX}history-` } },
+      select: { id: true, sourceUrl: true },
+    });
+    const visibleNonRssIds = ids
+      .filter((r) => r.sourceUrl === `${TEST_PREFIX}history-1` || r.sourceUrl === `${TEST_PREFIX}history-2`)
+      .map((r) => r.id);
+    const rssId = ids.find((r) => r.sourceUrl === `${TEST_PREFIX}history-rss`)!.id;
+    const oldId = ids.find((r) => r.sourceUrl === `${TEST_PREFIX}history-old`)!.id;
+
+    const after1 = await prisma.heatHistory.findMany({
+      where: { hotNewsId: { in: [...visibleNonRssIds, rssId, oldId] } },
+    });
+    expect(after1.filter((h) => visibleNonRssIds.includes(h.hotNewsId)).length).toBe(2);
+    expect(after1.filter((h) => h.hotNewsId === rssId).length).toBe(0);
+    expect(after1.filter((h) => h.hotNewsId === oldId).length).toBe(0);
+
+    // All rows aligned to the same bucket (within the same tick).
+    const buckets = new Set(after1.map((h) => h.bucketAt.toISOString()));
+    expect(buckets.size).toBe(1);
+    const onlyBucket = [...buckets][0]!;
+    expect(onlyBucket).toBe(computeBucketAt(new Date()).toISOString().replace(/\d{3}Z$/, '000Z'));
+
+    // Tick 2 (same bucket because we ran immediately) — must be idempotent.
+    await processHeatRefreshJob(loadHeatConfig());
+    const after2 = await prisma.heatHistory.findMany({
+      where: { hotNewsId: { in: visibleNonRssIds } },
+    });
+    expect(after2.length).toBe(2);
+
+    // heatScore should still match the row's current heatScore.
+    const current = await prisma.hotNews.findMany({
+      where: { id: { in: visibleNonRssIds } },
+      select: { id: true, heatScore: true, heatLevel: true },
+    });
+    for (const c of current) {
+      const snap = after2.find((h) => h.hotNewsId === c.id)!;
+      expect(snap.heatScore).toBeCloseTo(c.heatScore, 5);
+      expect(snap.heatLevel).toBe(c.heatLevel);
+    }
   });
 });
