@@ -84,12 +84,36 @@ model HotNews {
   interactionData Json?
 
   hits            KeywordHit[]
+  heatHistory     HeatHistory[]
 
   @@index([publishedAt(sort: Desc)])
   @@index([heatScore(sort: Desc)])
   @@index([groupId])
   @@index([sourcePlatform, publishedAt])
   @@map("hot_news")
+}
+
+// SP-11 — 30-minute heat snapshot, written by the heat cron in
+// apps/worker/src/heat/heat.cron.processor.ts. One row per (visible,
+// non-RSS) hot_news per 30-min bucket; UPSERT on the composite unique
+// keeps retries / boundary-straddling ticks idempotent.
+//
+// Only the most recent 48h matter for the detail page (SP-11 design
+// spec §0 Q14), but rows are retained indefinitely for SP-13 burst
+// alert training (spec §0 Q8). TTL pruning is deferred.
+model HeatHistory {
+  id        String    @id @default(cuid())
+  hotNewsId String
+  bucketAt  DateTime
+  heatScore Float
+  heatLevel HeatLevel
+
+  hotNews   HotNews   @relation(fields: [hotNewsId], references: [id], onDelete: Cascade)
+
+  @@unique([hotNewsId, bucketAt])
+  @@index([hotNewsId, bucketAt(sort: Desc)])
+  @@index([bucketAt(sort: Desc)])
+  @@map("heat_history")
 }
 
 model SourceConfig {
