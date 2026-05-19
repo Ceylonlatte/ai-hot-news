@@ -1,0 +1,147 @@
+import { Injectable } from '@nestjs/common';
+import { getPrisma, Prisma } from '@ai-hot-news/db';
+import type { StatsSourcesDto, StatsTodayDto } from '@ai-hot-news/types';
+
+const WINDOW_HOURS = 24;
+
+@Injectable()
+export class StatsService {
+  /**
+   * SP-9 (2026-05-19): Returns the 4-card stats for the Dashboard HomePage.
+   * 2 raw SQL queries (counters via FILTER aggregates; sourceCount via JOIN
+   * against source_configs). Uses Postgres `NOW() - INTERVAL '24 hours'`
+   * instead of application-layer Date arithmetic — both sides are UTC so
+   * results agree, but the SQL form is clearer and races-free.
+   */
+  async getToday(): Promise<StatsTodayDto> {
+    const prisma = getPrisma();
+    const windowEnd = new Date();
+    const windowStart = new Date(
+      windowEnd.getTime() - WINDOW_HOURS * 60 * 60 * 1000,
+    );
+
+    type CountersRow = {
+      aggregate_count: bigint;
+      burst_count: bigint;
+      tagged_count: bigint;
+    };
+    const countersResult = await prisma.$queryRaw<CountersRow[]>(Prisma.sql`
+      SELECT
+        COUNT(*) FILTER (
+          WHERE status = 'VISIBLE'
+            AND "publishedAt" >= NOW() - INTERVAL '24 hours'
+        ) AS aggregate_count,
+        COUNT(*) FILTER (
+          WHERE status = 'VISIBLE'
+            AND "publishedAt" >= NOW() - INTERVAL '24 hours'
+            AND "heatLevel" = 'BURST'
+        ) AS burst_count,
+        COUNT(*) FILTER (
+          WHERE status = 'VISIBLE'
+            AND "publishedAt" >= NOW() - INTERVAL '24 hours'
+            AND array_length("aiTags", 1) > 0
+        ) AS tagged_count
+      FROM hot_news
+    `);
+    const counters = countersResult[0] ?? {
+      aggregate_count: 0n,
+      burst_count: 0n,
+      tagged_count: 0n,
+    };
+
+    type SourceRow = { source_count: bigint };
+    const sourceResult = await prisma.$queryRaw<SourceRow[]>(Prisma.sql`
+      SELECT COUNT(DISTINCT sc.id)::bigint AS source_count
+      FROM source_configs sc
+      INNER JOIN hot_news hn ON hn."sourcePlatform" = sc.platform
+      WHERE sc.enabled = TRUE
+        AND hn.status = 'VISIBLE'
+        AND hn."publishedAt" >= NOW() - INTERVAL '24 hours'
+    `);
+
+    return {
+      aggregateCount: Number(counters.aggregate_count),
+      burstCount: Number(counters.burst_count),
+      taggedCount: Number(counters.tagged_count),
+      sourceCount: Number(sourceResult[0]?.source_count ?? 0n),
+      windowStart: windowStart.toISOString(),
+      windowEnd: windowEnd.toISOString(),
+    };
+  }
+
+  /**
+   * SP-9 (2026-05-19): Returns the 24h per-platform breakdown for the
+   * "信源分布" card. RSS is INCLUDED here (coverage signal, not heat).
+   * Percentages sum to exactly 100 via the hare-quota residual-to-last-
+   * bucket assignment (see `distributePct` below).
+   */
+  async getSources(): Promise<StatsSourcesDto> {
+    const prisma = getPrisma();
+    const windowEnd = new Date();
+    const windowStart = new Date(
+      windowEnd.getTime() - WINDOW_HOURS * 60 * 60 * 1000,
+    );
+
+    type Row = {
+      platform: 'TWITTER' | 'HACKERNEWS' | 'REDDIT' | 'RSS';
+      count: bigint;
+    };
+    const rows = await prisma.$queryRaw<Row[]>(Prisma.sql`
+      SELECT "sourcePlatform"::text AS platform, COUNT(*)::bigint AS count
+      FROM hot_news
+      WHERE status = 'VISIBLE'
+        AND "publishedAt" >= NOW() - INTERVAL '24 hours'
+      GROUP BY "sourcePlatform"
+      ORDER BY count DESC
+    `);
+
+    const counts = rows.map((r) => ({
+      platform: r.platform,
+      count: Number(r.count),
+    }));
+    const total = counts.reduce((s, c) => s + c.count, 0);
+    const platforms = distributePct(counts, total);
+
+    return {
+      platforms,
+      total,
+      windowStart: windowStart.toISOString(),
+      windowEnd: windowEnd.toISOString(),
+    };
+  }
+}
+
+/**
+ * SP-9 (2026-05-19): Hare-quota rounding for the platform-distribution
+ * percentages. Floor each share, then assign the residual (100 - sum)
+ * to the last bucket so the rendered card always sums to exactly 100.
+ *
+ * Why last bucket (not largest-remainder method): the rows are sorted
+ * `count DESC` by SQL, so "last" === "smallest count" — visually the
+ * residual lands on the least-noticeable bar, which is the safest UX
+ * choice. Largest-remainder is theoretically more "fair" but produces
+ * row-order-dependent flicker between deploys when counts are close.
+ *
+ * Edge cases:
+ *   - total === 0 → returns []
+ *   - single platform → returns [{ ..., pct: 100 }]
+ *   - all platforms perfectly divisible → residual = 0, no-op
+ */
+function distributePct(
+  counts: Array<{
+    platform: 'TWITTER' | 'HACKERNEWS' | 'REDDIT' | 'RSS';
+    count: number;
+  }>,
+  total: number,
+): StatsSourcesDto['platforms'] {
+  if (total === 0 || counts.length === 0) return [];
+  const floored = counts.map((c) => ({
+    ...c,
+    pct: Math.floor((c.count / total) * 100),
+  }));
+  const residual = 100 - floored.reduce((s, p) => s + p.pct, 0);
+  if (residual !== 0 && floored.length > 0) {
+    floored[floored.length - 1]!.pct += residual;
+  }
+  return floored;
+}
