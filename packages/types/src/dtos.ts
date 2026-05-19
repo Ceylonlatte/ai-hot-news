@@ -218,6 +218,57 @@ export interface StatsTodayDto {
 }
 
 /**
+ * SP-9 (2026-05-19): 24h heat curve bucketed by hour for the "今日热度波形"
+ * card. Always returns exactly 24 buckets, oldest first. `buckets[23]` is
+ * the current (partial) hour — UI is expected to render its label as "现在"
+ * rather than the literal time.
+ *
+ * Each bucket is `MAX(heatScore)` over VISIBLE non-RSS rows ingested in
+ * that hour. Empty hour buckets return 0 (LEFT JOIN against
+ * `generate_series(0,23)`). RSS is excluded per SP-6 §0 Q1/Q2 contract
+ * (RSS does not participate in heat ranking).
+ */
+export interface HeatCurveDto {
+  /** Length-24 array of MAX(heatScore) per hourly bucket, oldest first */
+  buckets: number[];
+  /** Length-24 array of "HH:00" labels matching buckets, oldest first (UTC) */
+  hourLabels: string[];
+  windowStart: string;
+  windowEnd: string;
+}
+
+/**
+ * SP-9 (2026-05-19): AI tag momentum ranking for the "增速最快" card.
+ * Computed as `24h-vs-prior-24h` frequency delta over `aiTags`. The raw
+ * tag is prefix-encoded (`company:openai` / `model:claude-4` / etc); the
+ * `label` is the human-readable form derived by `stripTagLabel` from
+ * `@ai-hot-news/utils`.
+ *
+ * `growthPct` semantics:
+ *   - `prior === 0 && cur > 0` → `9999` (NEW sentinel; UI renders "NEW")
+ *   - `prior > 0` → `round((cur - prior) / prior * 100)`
+ *   - `prior > 0 && cur === prior` → `0`
+ *   - `prior > 0 && cur < prior` → negative integer
+ *
+ * Returned sorted by `growthPct DESC`, then `count24h DESC` (tiebreaker),
+ * then `tag ASC`. Caller controls slice via `?limit=N` (default 8, max 20).
+ */
+export interface TrendingKeywordsDto {
+  items: Array<{
+    /** Raw prefix-encoded tag from `aiTags` array (e.g. `company:openai`) */
+    tag: string;
+    /** Human-readable label derived from `tag` (e.g. `OpenAI`) */
+    label: string;
+    count24h: number;
+    countPrior24h: number;
+    /** See JSDoc above; `9999` is the NEW sentinel */
+    growthPct: number;
+  }>;
+  windowStart: string;
+  windowEnd: string;
+}
+
+/**
  * SP-9 (2026-05-19): Per-platform breakdown for the "信源分布" card.
  *
  * `platforms[]` items are sorted by `count DESC`. Percentages sum to

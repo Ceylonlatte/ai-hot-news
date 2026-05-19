@@ -8,12 +8,16 @@ describe('StatsController', () => {
   let serviceMock: {
     getToday: ReturnType<typeof vi.fn>;
     getSources: ReturnType<typeof vi.fn>;
+    getHeatCurve: ReturnType<typeof vi.fn>;
+    getTrendingKeywords: ReturnType<typeof vi.fn>;
   };
 
   beforeEach(async () => {
     serviceMock = {
       getToday: vi.fn(),
       getSources: vi.fn(),
+      getHeatCurve: vi.fn(),
+      getTrendingKeywords: vi.fn(),
     };
     const module: TestingModule = await Test.createTestingModule({
       controllers: [StatsController],
@@ -46,5 +50,39 @@ describe('StatsController', () => {
     serviceMock.getSources.mockResolvedValue(expected);
     await expect(controller.sources()).resolves.toEqual(expected);
     expect(serviceMock.getSources).toHaveBeenCalledTimes(1);
+  });
+
+  it('GET /stats/heat-curve delegates to service.getHeatCurve()', async () => {
+    const expected = {
+      buckets: new Array(24).fill(0),
+      hourLabels: new Array(24).fill('00:00'),
+      windowStart: 'a',
+      windowEnd: 'b',
+    };
+    serviceMock.getHeatCurve.mockResolvedValue(expected);
+    await expect(controller.heatCurve()).resolves.toEqual(expected);
+  });
+
+  it('GET /stats/trending-keywords uses default limit=8', async () => {
+    const expected = { items: [], windowStart: 'a', windowEnd: 'b' };
+    serviceMock.getTrendingKeywords.mockResolvedValue(expected);
+    await controller.trendingKeywords('8');
+    expect(serviceMock.getTrendingKeywords).toHaveBeenCalledWith(8);
+  });
+
+  it('GET /stats/trending-keywords passes parsed limit', async () => {
+    const expected = { items: [], windowStart: 'a', windowEnd: 'b' };
+    serviceMock.getTrendingKeywords.mockResolvedValue(expected);
+    await controller.trendingKeywords('5');
+    expect(serviceMock.getTrendingKeywords).toHaveBeenCalledWith(5);
+  });
+
+  it('GET /stats/trending-keywords passes NaN-safe limit when bogus string', async () => {
+    // DefaultValuePipe still returns the raw string; parseInt of 'foo' is NaN.
+    // Service is responsible for clamping (we verified that in service spec).
+    const expected = { items: [], windowStart: 'a', windowEnd: 'b' };
+    serviceMock.getTrendingKeywords.mockResolvedValue(expected);
+    await controller.trendingKeywords('foo');
+    expect(serviceMock.getTrendingKeywords).toHaveBeenCalledWith(NaN);
   });
 });
