@@ -4,5 +4,5 @@ import { proxyToApi } from '@/lib/proxy';
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
-  return proxyToApi(req, '/hot-news');
+  return proxyToApi(req, '/stats/heat-curve');
 }
