@@ -80,10 +80,89 @@ describe('processHeatRefreshJob', () => {
 
     expect(mockPrisma.hotNews.update).toHaveBeenCalledTimes(2);
 
-    expect(mockPrisma.$executeRawUnsafe).toHaveBeenCalledTimes(1);
-    const sqlCall = mockPrisma.$executeRawUnsafe.mock.calls[0]![0]! as string;
-    expect(sqlCall).toMatch(/NTILE\(20\)/);
-    expect(sqlCall).toMatch(/heatLevel/);
+    // SP-11 §3: NTILE then heat_history upsert, in that order.
+    expect(mockPrisma.$executeRawUnsafe).toHaveBeenCalledTimes(2);
+    const ntileSql = mockPrisma.$executeRawUnsafe.mock.calls[0]![0]! as string;
+    expect(ntileSql).toMatch(/NTILE\(20\)/);
+    expect(ntileSql).toMatch(/heatLevel/);
+
+    const historyCall = mockPrisma.$executeRawUnsafe.mock.calls[1]!;
+    const historySql = historyCall[0] as string;
+    const historyBucketAt = historyCall[1] as string;
+    expect(historySql).toMatch(/INSERT INTO heat_history/i);
+    expect(historySql).toMatch(/ON CONFLICT[\s\S]+DO UPDATE SET/i);
+    // bucketAt is 30-min aligned. System time 13:00 → bucket 13:00.
+    expect(historyBucketAt).toBe(new Date('2026-05-09T13:00:00Z').toISOString());
+  });
+
+  it('aligns bucketAt to the 30-min floor (13:14 → 13:00)', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-05-09T13:14:30Z'));
+
+    mockPrisma.hotNews.findMany.mockResolvedValue([
+      {
+        id: 'h1',
+        sourcePlatform: 'HACKERNEWS',
+        publishedAt: new Date('2026-05-09T12:00:00Z'),
+        interactionData: { score: 10, comments: 1 },
+      },
+    ]);
+    mockPrisma.sourceConfig.findMany.mockResolvedValue([
+      { platform: 'HACKERNEWS', weight: 0.5 },
+    ]);
+
+    await processHeatRefreshJob(CFG);
+
+    const historyCall = mockPrisma.$executeRawUnsafe.mock.calls[1]!;
+    expect(historyCall[1]).toBe(new Date('2026-05-09T13:00:00Z').toISOString());
+  });
+
+  it('aligns bucketAt to :30 when minute >= 30 (13:45 → 13:30)', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-05-09T13:45:12Z'));
+
+    mockPrisma.hotNews.findMany.mockResolvedValue([
+      {
+        id: 'h1',
+        sourcePlatform: 'HACKERNEWS',
+        publishedAt: new Date('2026-05-09T12:00:00Z'),
+        interactionData: { score: 10, comments: 1 },
+      },
+    ]);
+    mockPrisma.sourceConfig.findMany.mockResolvedValue([
+      { platform: 'HACKERNEWS', weight: 0.5 },
+    ]);
+
+    await processHeatRefreshJob(CFG);
+
+    const historyCall = mockPrisma.$executeRawUnsafe.mock.calls[1]!;
+    expect(historyCall[1]).toBe(new Date('2026-05-09T13:30:00Z').toISOString());
+  });
+
+  it('does not throw when history upsert fails — heat refresh stays green', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-05-09T13:00:00Z'));
+
+    mockPrisma.hotNews.findMany.mockResolvedValue([
+      {
+        id: 'h1',
+        sourcePlatform: 'HACKERNEWS',
+        publishedAt: new Date('2026-05-09T12:00:00Z'),
+        interactionData: { score: 10, comments: 1 },
+      },
+    ]);
+    mockPrisma.sourceConfig.findMany.mockResolvedValue([
+      { platform: 'HACKERNEWS', weight: 0.5 },
+    ]);
+    // First call (NTILE) ok, second call (history) throws.
+    mockPrisma.$executeRawUnsafe.mockImplementation(async (sql: string) => {
+      if (/INSERT INTO heat_history/i.test(sql))
+        throw new Error('simulated history failure');
+      return 0;
+    });
+
+    await expect(processHeatRefreshJob(CFG)).resolves.toBeUndefined();
+    expect(mockPrisma.hotNews.update).toHaveBeenCalledTimes(1);
   });
 
   it('returns early when no candidate rows (no UPDATE, no NTILE)', async () => {

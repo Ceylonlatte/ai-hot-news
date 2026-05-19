@@ -2,6 +2,7 @@ import { Logger } from '@nestjs/common';
 import { getPrisma, type Platform } from '@ai-hot-news/db';
 import { computeHeatScore } from './heat.service';
 import type { HeatConfig } from './heat.config';
+import { computeBucketAt } from './bucket-at';
 
 const logger = new Logger('HeatCronProcessor');
 
@@ -73,7 +74,43 @@ export async function processHeatRefreshJob(cfg: HeatConfig): Promise<void> {
   `;
   await prisma.$executeRawUnsafe(sql);
 
+  // SP-11 — snapshot the current (heatScore, heatLevel) for every row in
+  // the same 48h cohort, keyed on the 30-min bucket nearest to `now`.
+  // UPSERT on (hotNewsId, bucketAt) keeps this idempotent across retries
+  // or boundary-straddling ticks. Failures here must not propagate — the
+  // detail page is non-critical relative to keeping heat refresh green.
+  const bucketAt = computeBucketAt(now);
+  const historySql = `
+    INSERT INTO heat_history ("id", "hotNewsId", "bucketAt", "heatScore", "heatLevel")
+    SELECT
+      gen_random_uuid()::text,
+      h.id,
+      $1::timestamp,
+      h."heatScore",
+      h."heatLevel"
+    FROM hot_news h
+    WHERE h.status = 'VISIBLE'
+      AND h."sourcePlatform" != 'RSS'
+      AND h."publishedAt" > now() - interval '48 hours'
+    ON CONFLICT ("hotNewsId", "bucketAt")
+    DO UPDATE SET
+      "heatScore" = EXCLUDED."heatScore",
+      "heatLevel" = EXCLUDED."heatLevel"
+  `;
+  let historyWritten = false;
+  try {
+    await prisma.$executeRawUnsafe(historySql, bucketAt.toISOString());
+    historyWritten = true;
+  } catch (err) {
+    logger.error(
+      `Cron: heat_history upsert failed at bucket ${bucketAt.toISOString()}: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+
   logger.log(
-    `Cron: updated ${updated} heatScore values + recomputed heatLevel via NTILE(20)`,
+    `Cron: updated ${updated} heatScore values + recomputed heatLevel via NTILE(20)` +
+      ` + heat_history ${historyWritten ? 'upserted' : 'SKIPPED (see error above)'} @ ${bucketAt.toISOString()}`,
   );
 }
