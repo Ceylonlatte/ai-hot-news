@@ -192,3 +192,50 @@ export interface HotNewsListResponseDto {
   pageSize: number;
   total: number;
 }
+
+/**
+ * SP-9 (2026-05-19): "Today" 4-card stats for the Dashboard HomePage. All
+ * counters cover the last 24 hours (NOW() - INTERVAL '24 hours' .. NOW()).
+ *
+ * - `aggregateCount`: total VISIBLE rows ingested in window
+ * - `burstCount`: VISIBLE rows with `heatLevel='BURST'` in window
+ * - `taggedCount`: VISIBLE rows where `array_length(aiTags) > 0` in window.
+ *   **SP-14 contract**: when KeywordMonitor lands, this field will be
+ *   reinterpreted as "user-monitored keyword hits"; DTO field name stays
+ *   stable so the Web card requires zero re-render-side change.
+ * - `sourceCount`: enabled SourceConfig rows that ingested at least one
+ *   VISIBLE row in window. Defensive: "covered today" not just "configured".
+ */
+export interface StatsTodayDto {
+  aggregateCount: number;
+  burstCount: number;
+  taggedCount: number;
+  sourceCount: number;
+  /** ISO timestamp of window start (24h before windowEnd) */
+  windowStart: string;
+  /** ISO timestamp of window end (now()) */
+  windowEnd: string;
+}
+
+/**
+ * SP-9 (2026-05-19): Per-platform breakdown for the "信源分布" card.
+ *
+ * `platforms[]` items are sorted by `count DESC`. Percentages sum to
+ * exactly 100 via the hare-quota residual-to-last-bucket assignment
+ * (see StatsService.getSources implementation); single-platform input
+ * returns one row with `pct: 100`. Empty input returns `platforms: []`.
+ *
+ * RSS IS included here (coverage signal, not heat).
+ */
+export interface StatsSourcesDto {
+  platforms: Array<{
+    platform: 'TWITTER' | 'HACKERNEWS' | 'REDDIT' | 'RSS';
+    count: number;
+    /** 0-100 integer; sum across all entries === 100 (residual assigned to last bucket) */
+    pct: number;
+  }>;
+  /** Total VISIBLE rows in 24h across all platforms (basis for pct) */
+  total: number;
+  windowStart: string;
+  windowEnd: string;
+}
