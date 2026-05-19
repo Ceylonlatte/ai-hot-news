@@ -7,8 +7,12 @@ describe('HotNewsService', () => {
   let prismaMock: {
     hotNews: {
       findMany: ReturnType<typeof vi.fn>;
+      findUnique: ReturnType<typeof vi.fn>;
       count: ReturnType<typeof vi.fn>;
       groupBy: ReturnType<typeof vi.fn>;
+    };
+    heatHistory: {
+      findMany: ReturnType<typeof vi.fn>;
     };
     $transaction: ReturnType<typeof vi.fn>;
     $queryRaw: ReturnType<typeof vi.fn>;
@@ -18,8 +22,12 @@ describe('HotNewsService', () => {
     prismaMock = {
       hotNews: {
         findMany: vi.fn().mockResolvedValue([]),
+        findUnique: vi.fn().mockResolvedValue(null),
         count: vi.fn().mockResolvedValue(0),
         groupBy: vi.fn().mockResolvedValue([]),
+      },
+      heatHistory: {
+        findMany: vi.fn().mockResolvedValue([]),
       },
       $transaction: vi.fn().mockImplementation(async (calls: Promise<unknown>[]) => {
         return Promise.all(calls);
@@ -778,6 +786,204 @@ describe('HotNewsService', () => {
 
       expect(result.items[0]!.subreddit).toBe('LocalLLaMA');
       expect(prismaMock.$queryRaw).not.toHaveBeenCalled();
+    });
+  });
+
+  // ─── SP-11: detail() ─────────────────────────────────────────────────────
+  describe('detail', () => {
+    const baseRow = {
+      id: 'rep1',
+      title: 'Title',
+      titleZh: '标题',
+      summary: 'Summary',
+      content: 'Full body',
+      sourcePlatform: 'HACKERNEWS' as const,
+      sourceUrl: 'https://news.ycombinator.com/item?id=42',
+      author: 'pg',
+      publishedAt: new Date('2026-05-19T10:00:00Z'),
+      crawledAt: new Date('2026-05-19T10:05:00Z'),
+      aiTags: ['company:openai', 'tech:security'],
+      matchedKeywords: [],
+      heatScore: 72.5,
+      heatLevel: 'BURST' as const,
+      groupId: 'grp-xyz',
+      extractStatus: 'OK',
+    };
+
+    it('returns null when row does not exist', async () => {
+      prismaMock.hotNews.findUnique.mockResolvedValueOnce(null);
+      const result = await service.detail('does-not-exist');
+      expect(result).toBeNull();
+      // Must NOT touch relatedItems path on 404.
+      expect(prismaMock.hotNews.findMany).not.toHaveBeenCalled();
+    });
+
+    it('returns row with empty relatedItems when groupId is null and aiTags is empty', async () => {
+      prismaMock.hotNews.findUnique.mockResolvedValueOnce({
+        ...baseRow,
+        groupId: null,
+        aiTags: [],
+      });
+      const result = await service.detail('rep1');
+      expect(result).not.toBeNull();
+      expect(result!.id).toBe('rep1');
+      expect(result!.relatedItems).toEqual([]);
+      expect(prismaMock.hotNews.findMany).not.toHaveBeenCalled();
+    });
+
+    it('returns related via groupId when groupId is set (excludes self, limit 5, sort heatScore DESC)', async () => {
+      prismaMock.hotNews.findUnique.mockResolvedValueOnce(baseRow);
+      prismaMock.hotNews.findMany.mockResolvedValueOnce([
+        {
+          id: 's1', title: 'Sibling 1', titleZh: null,
+          sourcePlatform: 'REDDIT', heatScore: 65, heatLevel: 'HOT',
+          publishedAt: new Date('2026-05-19T09:00:00Z'),
+        },
+        {
+          id: 's2', title: 'Sibling 2', titleZh: 'Z2',
+          sourcePlatform: 'HACKERNEWS', heatScore: 60, heatLevel: 'HOT',
+          publishedAt: new Date('2026-05-19T08:30:00Z'),
+        },
+      ]);
+
+      const result = await service.detail('rep1');
+      expect(result!.relatedItems).toHaveLength(2);
+      expect(result!.relatedItems[0]!.id).toBe('s1');
+      expect(result!.relatedItems[0]!.heatScore).toBe(65);
+
+      const args = prismaMock.hotNews.findMany.mock.calls[0]![0]!;
+      expect(args.where.groupId).toBe('grp-xyz');
+      expect(args.where.id).toEqual({ not: 'rep1' });
+      expect(args.where.status).toBe('VISIBLE');
+      expect(args.take).toBe(5);
+      expect(args.orderBy).toEqual({ heatScore: 'desc' });
+    });
+
+    it('falls back to aiTag overlap when groupId is null but aiTags is non-empty', async () => {
+      prismaMock.hotNews.findUnique.mockResolvedValueOnce({
+        ...baseRow,
+        groupId: null,
+      });
+      prismaMock.hotNews.findMany.mockResolvedValueOnce([
+        {
+          id: 'tag-overlap-1', title: 'Tag match',
+          titleZh: null, sourcePlatform: 'REDDIT', heatScore: 40, heatLevel: 'NORMAL',
+          publishedAt: new Date('2026-05-19T07:00:00Z'),
+        },
+      ]);
+
+      const result = await service.detail('rep1');
+      expect(result!.relatedItems).toHaveLength(1);
+      expect(result!.relatedItems[0]!.id).toBe('tag-overlap-1');
+
+      const args = prismaMock.hotNews.findMany.mock.calls[0]![0]!;
+      // Fallback path uses hasSome on aiTags, NOT groupId.
+      expect(args.where.aiTags).toEqual({ hasSome: ['company:openai', 'tech:security'] });
+      expect(args.where.id).toEqual({ not: 'rep1' });
+      expect(args.where.groupId).toBeUndefined();
+    });
+
+    it('falls back to aiTag overlap when groupId is set but no group siblings exist', async () => {
+      prismaMock.hotNews.findUnique.mockResolvedValueOnce(baseRow);
+      // First findMany: group query → empty.
+      prismaMock.hotNews.findMany.mockResolvedValueOnce([]);
+      // Second findMany: aiTag fallback → 1 hit.
+      prismaMock.hotNews.findMany.mockResolvedValueOnce([
+        {
+          id: 'tag-fallback', title: 'Tag fallback',
+          titleZh: null, sourcePlatform: 'HACKERNEWS', heatScore: 30, heatLevel: 'NORMAL',
+          publishedAt: new Date('2026-05-19T06:00:00Z'),
+        },
+      ]);
+
+      const result = await service.detail('rep1');
+      expect(result!.relatedItems).toHaveLength(1);
+      expect(result!.relatedItems[0]!.id).toBe('tag-fallback');
+      expect(prismaMock.hotNews.findMany).toHaveBeenCalledTimes(2);
+    });
+
+    it('serializes ISO timestamps on detail + relatedItems', async () => {
+      prismaMock.hotNews.findUnique.mockResolvedValueOnce(baseRow);
+      prismaMock.hotNews.findMany.mockResolvedValueOnce([
+        {
+          id: 's1', title: 'Sib', titleZh: null,
+          sourcePlatform: 'REDDIT', heatScore: 50, heatLevel: 'HOT',
+          publishedAt: new Date('2026-05-19T09:30:15Z'),
+        },
+      ]);
+
+      const result = await service.detail('rep1');
+      expect(typeof result!.publishedAt).toBe('string');
+      expect(result!.publishedAt).toBe('2026-05-19T10:00:00.000Z');
+      expect(result!.crawledAt).toBe('2026-05-19T10:05:00.000Z');
+      expect(result!.relatedItems[0]!.publishedAt).toBe('2026-05-19T09:30:15.000Z');
+    });
+  });
+
+  // ─── SP-11: heatHistory() ────────────────────────────────────────────────
+  describe('heatHistory', () => {
+    it('returns ascending bucket series for hours=48 (default)', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-05-19T14:00:00Z'));
+      prismaMock.heatHistory.findMany.mockResolvedValueOnce([
+        {
+          bucketAt: new Date('2026-05-19T12:00:00Z'),
+          heatScore: 40,
+          heatLevel: 'NORMAL',
+        },
+        {
+          bucketAt: new Date('2026-05-19T13:30:00Z'),
+          heatScore: 55,
+          heatLevel: 'HOT',
+        },
+      ]);
+
+      const result = await service.heatHistory('rep1', 48);
+      expect(result.items).toHaveLength(2);
+      expect(result.items[0]!.heatScore).toBe(40);
+      expect(result.items[0]!.bucketAt).toBe('2026-05-19T12:00:00.000Z');
+      expect(result.hours).toBe(48);
+
+      const args = prismaMock.heatHistory.findMany.mock.calls[0]![0]!;
+      expect(args.where.hotNewsId).toBe('rep1');
+      expect(args.where.bucketAt.gte).toEqual(
+        new Date('2026-05-17T14:00:00Z'), // now - 48h
+      );
+      expect(args.orderBy).toEqual({ bucketAt: 'asc' });
+      vi.useRealTimers();
+    });
+
+    it('respects hours=24', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-05-19T14:00:00Z'));
+      await service.heatHistory('rep1', 24);
+      const args = prismaMock.heatHistory.findMany.mock.calls[0]![0]!;
+      expect(args.where.bucketAt.gte).toEqual(
+        new Date('2026-05-18T14:00:00Z'),
+      );
+      vi.useRealTimers();
+    });
+
+    it('respects hours=72', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-05-19T14:00:00Z'));
+      await service.heatHistory('rep1', 72);
+      const args = prismaMock.heatHistory.findMany.mock.calls[0]![0]!;
+      expect(args.where.bucketAt.gte).toEqual(
+        new Date('2026-05-16T14:00:00Z'),
+      );
+      vi.useRealTimers();
+    });
+
+    it('returns empty items + correct window when row has no snapshots yet', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-05-19T14:00:00Z'));
+      const result = await service.heatHistory('brand-new-id', 48);
+      expect(result.items).toEqual([]);
+      expect(result.hours).toBe(48);
+      expect(result.windowEnd).toBe('2026-05-19T14:00:00.000Z');
+      expect(result.windowStart).toBe('2026-05-17T14:00:00.000Z');
+      vi.useRealTimers();
     });
   });
 });
