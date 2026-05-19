@@ -69,7 +69,79 @@ export class StatsService {
     };
   }
 
+  /**
+   * SP-9 (2026-05-19): Returns the 24h per-platform breakdown for the
+   * "信源分布" card. RSS is INCLUDED here (coverage signal, not heat).
+   * Percentages sum to exactly 100 via the hare-quota residual-to-last-
+   * bucket assignment (see `distributePct` below).
+   */
   async getSources(): Promise<StatsSourcesDto> {
-    throw new Error('Not implemented yet — see Task A3');
+    const prisma = getPrisma();
+    const windowEnd = new Date();
+    const windowStart = new Date(
+      windowEnd.getTime() - WINDOW_HOURS * 60 * 60 * 1000,
+    );
+
+    type Row = {
+      platform: 'TWITTER' | 'HACKERNEWS' | 'REDDIT' | 'RSS';
+      count: bigint;
+    };
+    const rows = await prisma.$queryRaw<Row[]>(Prisma.sql`
+      SELECT "sourcePlatform"::text AS platform, COUNT(*)::bigint AS count
+      FROM hot_news
+      WHERE status = 'VISIBLE'
+        AND "publishedAt" >= NOW() - INTERVAL '24 hours'
+      GROUP BY "sourcePlatform"
+      ORDER BY count DESC
+    `);
+
+    const counts = rows.map((r) => ({
+      platform: r.platform,
+      count: Number(r.count),
+    }));
+    const total = counts.reduce((s, c) => s + c.count, 0);
+    const platforms = distributePct(counts, total);
+
+    return {
+      platforms,
+      total,
+      windowStart: windowStart.toISOString(),
+      windowEnd: windowEnd.toISOString(),
+    };
   }
+}
+
+/**
+ * SP-9 (2026-05-19): Hare-quota rounding for the platform-distribution
+ * percentages. Floor each share, then assign the residual (100 - sum)
+ * to the last bucket so the rendered card always sums to exactly 100.
+ *
+ * Why last bucket (not largest-remainder method): the rows are sorted
+ * `count DESC` by SQL, so "last" === "smallest count" — visually the
+ * residual lands on the least-noticeable bar, which is the safest UX
+ * choice. Largest-remainder is theoretically more "fair" but produces
+ * row-order-dependent flicker between deploys when counts are close.
+ *
+ * Edge cases:
+ *   - total === 0 → returns []
+ *   - single platform → returns [{ ..., pct: 100 }]
+ *   - all platforms perfectly divisible → residual = 0, no-op
+ */
+function distributePct(
+  counts: Array<{
+    platform: 'TWITTER' | 'HACKERNEWS' | 'REDDIT' | 'RSS';
+    count: number;
+  }>,
+  total: number,
+): StatsSourcesDto['platforms'] {
+  if (total === 0 || counts.length === 0) return [];
+  const floored = counts.map((c) => ({
+    ...c,
+    pct: Math.floor((c.count / total) * 100),
+  }));
+  const residual = 100 - floored.reduce((s, p) => s + p.pct, 0);
+  if (residual !== 0 && floored.length > 0) {
+    floored[floored.length - 1]!.pct += residual;
+  }
+  return floored;
 }
