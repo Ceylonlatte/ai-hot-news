@@ -119,4 +119,50 @@ describe('StatsService', () => {
       expect(diff).toBe(24 * 60 * 60 * 1000);
     });
   });
+
+  describe('getHeatCurve', () => {
+    it('returns 24 buckets oldest-first', async () => {
+      prismaMock.$queryRaw.mockResolvedValueOnce(
+        Array.from({ length: 24 }, (_, i) => ({ h: i, max_heat: i * 2 })),
+      );
+      const result = await service.getHeatCurve();
+      expect(result.buckets).toHaveLength(24);
+      expect(result.hourLabels).toHaveLength(24);
+      // SQL output order is h ASC; service should preserve it.
+      expect(result.buckets[0]).toBe(0);
+      expect(result.buckets[23]).toBe(46);
+    });
+
+    it('returns 24 zeros when no rows in any bucket', async () => {
+      prismaMock.$queryRaw.mockResolvedValueOnce(
+        Array.from({ length: 24 }, (_, i) => ({ h: i, max_heat: 0 })),
+      );
+      const result = await service.getHeatCurve();
+      expect(result.buckets).toEqual(new Array(24).fill(0));
+    });
+
+    it('hourLabels are zero-padded HH:00 format', async () => {
+      prismaMock.$queryRaw.mockResolvedValueOnce(
+        Array.from({ length: 24 }, (_, i) => ({ h: i, max_heat: 0 })),
+      );
+      const result = await service.getHeatCurve();
+      for (const label of result.hourLabels) {
+        expect(label).toMatch(/^\d{2}:00$/);
+      }
+    });
+
+    it('tolerates DB returning < 24 rows (degraded but does not crash)', async () => {
+      // Should not happen with generate_series but defensive: take what came
+      // back and zero-pad the rest. Service maps `h` ordering to position.
+      prismaMock.$queryRaw.mockResolvedValueOnce([
+        { h: 0, max_heat: 10 },
+        { h: 1, max_heat: 20 },
+      ]);
+      const result = await service.getHeatCurve();
+      expect(result.buckets).toHaveLength(24);
+      expect(result.buckets[0]).toBe(10);
+      expect(result.buckets[1]).toBe(20);
+      expect(result.buckets[2]).toBe(0);
+    });
+  });
 });
