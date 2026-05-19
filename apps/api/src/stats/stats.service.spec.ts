@@ -165,4 +165,60 @@ describe('StatsService', () => {
       expect(result.buckets[2]).toBe(0);
     });
   });
+
+  describe('getTrendingKeywords', () => {
+    it('uses 9999 sentinel for prior=0 case (NEW)', async () => {
+      prismaMock.$queryRaw.mockResolvedValueOnce([
+        { tag: 'company:openai', cur: 5n, prior: 0n, growth_pct: 9999 },
+      ]);
+      const result = await service.getTrendingKeywords(8);
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0]).toEqual({
+        tag: 'company:openai',
+        label: 'OpenAI',
+        count24h: 5,
+        countPrior24h: 0,
+        growthPct: 9999,
+      });
+    });
+
+    it('computes positive growth percentages and Title-cases labels', async () => {
+      prismaMock.$queryRaw.mockResolvedValueOnce([
+        { tag: 'model:claude-4', cur: 15n, prior: 10n, growth_pct: 50 },
+        { tag: 'category:research', cur: 5n, prior: 10n, growth_pct: -50 },
+      ]);
+      const result = await service.getTrendingKeywords(8);
+      expect(result.items.map((i) => i.growthPct)).toEqual([50, -50]);
+      expect(result.items.map((i) => i.label)).toEqual(['Claude 4', 'Research']);
+    });
+
+    it('clamps limit to [1, 20]', async () => {
+      prismaMock.$queryRaw.mockResolvedValue([]);
+      await service.getTrendingKeywords(100);
+      await service.getTrendingKeywords(0);
+      await service.getTrendingKeywords(-5);
+      await service.getTrendingKeywords(Number.NaN);
+      expect(prismaMock.$queryRaw).toHaveBeenCalledTimes(4);
+    });
+
+    it('returns empty when no tags qualify', async () => {
+      prismaMock.$queryRaw.mockResolvedValueOnce([]);
+      const result = await service.getTrendingKeywords(8);
+      expect(result.items).toEqual([]);
+    });
+
+    it('preserves SQL-side ordering (no service-layer reorder)', async () => {
+      prismaMock.$queryRaw.mockResolvedValueOnce([
+        { tag: 'tech:rag', cur: 30n, prior: 10n, growth_pct: 200 },
+        { tag: 'model:claude-4', cur: 20n, prior: 10n, growth_pct: 100 },
+        { tag: 'company:openai', cur: 10n, prior: 5n, growth_pct: 100 },
+      ]);
+      const result = await service.getTrendingKeywords(8);
+      expect(result.items.map((i) => i.label)).toEqual([
+        'RAG',
+        'Claude 4',
+        'OpenAI',
+      ]);
+    });
+  });
 });

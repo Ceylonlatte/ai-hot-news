@@ -1,12 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { getPrisma, Prisma } from '@ai-hot-news/db';
+import { stripTagLabel } from '@ai-hot-news/utils';
 import type {
   HeatCurveDto,
   StatsSourcesDto,
   StatsTodayDto,
+  TrendingKeywordsDto,
 } from '@ai-hot-news/types';
 
 const WINDOW_HOURS = 24;
+const DEFAULT_TRENDING_LIMIT = 8;
+const MAX_TRENDING_LIMIT = 20;
 
 @Injectable()
 export class StatsService {
@@ -175,6 +179,86 @@ export class StatsService {
     return {
       buckets,
       hourLabels,
+      windowStart: windowStart.toISOString(),
+      windowEnd: windowEnd.toISOString(),
+    };
+  }
+
+  /**
+   * SP-9 (2026-05-19): Returns the AI tag momentum ranking for the
+   * "增速最快" card. Algorithm: 24h-vs-prior-24h frequency delta over
+   * `aiTags` (unnest expansion).
+   *
+   * `growthPct`:
+   *   - `prior=0, cur>0` → 9999 sentinel (UI renders "NEW")
+   *   - `prior>0`        → `round((cur - prior) / prior * 100)`
+   *
+   * Ordering (SQL-side, preserved by service): `growthPct DESC, cur DESC, tag ASC`.
+   *
+   * The `limit` parameter is clamped to `[1, MAX_TRENDING_LIMIT=20]`. The
+   * default applies when callers pass `0`, negative, or `NaN`.
+   *
+   * Why 24h vs prior-24h (not 24h vs 7d): simpler "momentum" signal; at
+   * prod's 800-row scale the prior-24h bucket has enough volume to be
+   * stable. See spec §0 Q4.
+   */
+  async getTrendingKeywords(limit: number): Promise<TrendingKeywordsDto> {
+    const prisma = getPrisma();
+    const windowEnd = new Date();
+    const windowStart = new Date(
+      windowEnd.getTime() - WINDOW_HOURS * 60 * 60 * 1000,
+    );
+
+    const intLimit = Number.isFinite(limit)
+      ? Math.floor(limit)
+      : DEFAULT_TRENDING_LIMIT;
+    const safeLimit = Math.max(
+      1,
+      Math.min(MAX_TRENDING_LIMIT, intLimit > 0 ? intLimit : DEFAULT_TRENDING_LIMIT),
+    );
+
+    type Row = {
+      tag: string;
+      cur: bigint;
+      prior: bigint;
+      growth_pct: number;
+    };
+    const rows = await prisma.$queryRaw<Row[]>(Prisma.sql`
+      WITH unnested AS (
+        SELECT unnest("aiTags") AS tag, "publishedAt"
+        FROM hot_news
+        WHERE status = 'VISIBLE'
+          AND "publishedAt" >= NOW() - INTERVAL '48 hours'
+          AND array_length("aiTags", 1) > 0
+      ),
+      buckets AS (
+        SELECT
+          tag,
+          COUNT(*) FILTER (WHERE "publishedAt" >= NOW() - INTERVAL '24 hours')::bigint AS cur,
+          COUNT(*) FILTER (WHERE "publishedAt" <  NOW() - INTERVAL '24 hours')::bigint AS prior
+        FROM unnested
+        GROUP BY tag
+      )
+      SELECT tag, cur, prior,
+        CASE
+          WHEN prior = 0 AND cur > 0 THEN 9999
+          WHEN prior > 0 THEN ROUND(((cur::float - prior) / prior) * 100)::int
+          ELSE 0
+        END AS growth_pct
+      FROM buckets
+      WHERE cur > 0
+      ORDER BY growth_pct DESC, cur DESC, tag ASC
+      LIMIT ${safeLimit}
+    `);
+
+    return {
+      items: rows.map((r) => ({
+        tag: r.tag,
+        label: stripTagLabel(r.tag),
+        count24h: Number(r.cur),
+        countPrior24h: Number(r.prior),
+        growthPct: r.growth_pct,
+      })),
       windowStart: windowStart.toISOString(),
       windowEnd: windowEnd.toISOString(),
     };
