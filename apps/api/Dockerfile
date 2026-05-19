@@ -12,6 +12,7 @@ COPY apps/web/package.json apps/web/
 COPY apps/worker/package.json apps/worker/
 COPY packages/db/package.json packages/db/
 COPY packages/types/package.json packages/types/
+COPY packages/utils/package.json packages/utils/
 RUN pnpm install --frozen-lockfile
 
 # ───────── build stage ─────────
@@ -23,8 +24,10 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/apps/api/node_modules ./apps/api/node_modules
 COPY --from=deps /app/packages/db/node_modules ./packages/db/node_modules
 COPY --from=deps /app/packages/types/node_modules ./packages/types/node_modules
+COPY --from=deps /app/packages/utils/node_modules ./packages/utils/node_modules
 COPY . .
 RUN pnpm --filter @ai-hot-news/db build
+RUN pnpm --filter @ai-hot-news/utils build
 RUN pnpm --filter @ai-hot-news/api build
 
 # ───────── runner stage ─────────
@@ -37,10 +40,12 @@ COPY --from=builder /app/package.json /app/pnpm-lock.yaml /app/pnpm-workspace.ya
 COPY --from=builder /app/apps/api/package.json apps/api/package.json
 COPY --from=builder /app/packages/db/package.json packages/db/package.json
 COPY --from=builder /app/packages/types/package.json packages/types/package.json
+COPY --from=builder /app/packages/utils/package.json packages/utils/package.json
 COPY --from=builder /app/apps/api/dist apps/api/dist
 COPY --from=builder /app/packages/db/dist packages/db/dist
 COPY --from=builder /app/packages/db/prisma packages/db/prisma
 COPY --from=builder /app/packages/types/src packages/types/src
+COPY --from=builder /app/packages/utils/dist packages/utils/dist
 RUN pnpm install --prod --frozen-lockfile --filter @ai-hot-news/api...
 
 EXPOSE 3001
