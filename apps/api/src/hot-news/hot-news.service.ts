@@ -2,7 +2,10 @@ import { Injectable } from '@nestjs/common';
 import { getPrisma, ContentStatus, Prisma, type Platform } from '@ai-hot-news/db';
 import type {
   GroupMemberDto,
+  HeatHistoryDto,
+  HotNewsDetailDto,
   HotNewsListResponseDto,
+  HotNewsRelatedDto,
 } from '@ai-hot-news/types';
 
 const PLATFORM_WINDOW_HOURS: Record<Platform, number> = {
@@ -313,4 +316,167 @@ export class HotNewsService {
       total,
     };
   }
+
+  // ──────────────────────────────────────────────────────────────────────
+  // SP-11: detail page (/hot-news/:id)
+  // ──────────────────────────────────────────────────────────────────────
+
+  /**
+   * Returns the full row payload for a single hot_news id, or null if the
+   * row doesn't exist (controller turns null into 404).
+   *
+   * `relatedItems` selection rules (SP-11 spec §0 Q11):
+   *   1. If the row has a `groupId`, look up VISIBLE siblings in the same
+   *      group, exclude self, take top 5 by heatScore DESC.
+   *   2. If step 1 yields 0 rows (singleton or empty group on this page)
+   *      AND the row has at least one `aiTags`, fall back to any VISIBLE
+   *      row with `aiTags hasSome [...self.aiTags]`, exclude self, take
+   *      top 5 by heatScore DESC.
+   *   3. Otherwise return an empty array.
+   *
+   * The fallback chain matches the spec — singletons with tags get a
+   * "related by topic" surface, fully-orphaned rows get nothing rather
+   * than misleading random suggestions.
+   */
+  async detail(id: string): Promise<HotNewsDetailDto | null> {
+    const prisma = getPrisma();
+    const row = await prisma.hotNews.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        title: true,
+        titleZh: true,
+        summary: true,
+        content: true,
+        sourcePlatform: true,
+        sourceUrl: true,
+        author: true,
+        publishedAt: true,
+        crawledAt: true,
+        aiTags: true,
+        matchedKeywords: true,
+        heatScore: true,
+        heatLevel: true,
+        groupId: true,
+        extractStatus: true,
+      },
+    });
+    if (!row) return null;
+
+    let related: HotNewsRelatedDto[] = [];
+    const relatedSelect = {
+      id: true,
+      title: true,
+      titleZh: true,
+      sourcePlatform: true,
+      heatScore: true,
+      heatLevel: true,
+      publishedAt: true,
+    } as const;
+
+    if (row.groupId) {
+      const siblings = await prisma.hotNews.findMany({
+        where: {
+          groupId: row.groupId,
+          id: { not: id },
+          status: ContentStatus.VISIBLE,
+        },
+        orderBy: { heatScore: 'desc' },
+        take: 5,
+        select: relatedSelect,
+      });
+      related = siblings.map(toRelated);
+    }
+
+    if (related.length === 0 && row.aiTags.length > 0) {
+      const tagMatches = await prisma.hotNews.findMany({
+        where: {
+          aiTags: { hasSome: row.aiTags },
+          id: { not: id },
+          status: ContentStatus.VISIBLE,
+        },
+        orderBy: { heatScore: 'desc' },
+        take: 5,
+        select: relatedSelect,
+      });
+      related = tagMatches.map(toRelated);
+    }
+
+    return {
+      id: row.id,
+      title: row.title,
+      titleZh: row.titleZh,
+      summary: row.summary,
+      content: row.content,
+      sourcePlatform: row.sourcePlatform,
+      sourceUrl: row.sourceUrl,
+      author: row.author,
+      publishedAt: row.publishedAt.toISOString(),
+      crawledAt: row.crawledAt.toISOString(),
+      aiTags: row.aiTags,
+      matchedKeywords: row.matchedKeywords,
+      heatScore: row.heatScore,
+      heatLevel: row.heatLevel,
+      groupId: row.groupId,
+      extractStatus: row.extractStatus,
+      relatedItems: related,
+    };
+  }
+
+  /**
+   * Returns the 30-min heat snapshot series for the past `hours` window
+   * (SP-11 spec §4.2). `hours` is restricted to 24 | 48 | 72 by the
+   * controller's pipe; bad values fall back to 48 there so this method
+   * trusts its input.
+   *
+   * No row-existence check: if the id is bogus, the caller still gets a
+   * well-formed empty series (200 OK with `items: []`) — matches the
+   * detail page's behavior of rendering "暂无数据" rather than 404 when
+   * heat history is missing.
+   */
+  async heatHistory(id: string, hours: 24 | 48 | 72): Promise<HeatHistoryDto> {
+    const prisma = getPrisma();
+    const now = new Date();
+    const windowStart = new Date(now.getTime() - hours * 60 * 60 * 1000);
+
+    const rows = await prisma.heatHistory.findMany({
+      where: {
+        hotNewsId: id,
+        bucketAt: { gte: windowStart },
+      },
+      orderBy: { bucketAt: 'asc' },
+      select: { bucketAt: true, heatScore: true, heatLevel: true },
+    });
+
+    return {
+      items: rows.map((r) => ({
+        bucketAt: r.bucketAt.toISOString(),
+        heatScore: r.heatScore,
+        heatLevel: r.heatLevel,
+      })),
+      windowStart: windowStart.toISOString(),
+      windowEnd: now.toISOString(),
+      hours,
+    };
+  }
+}
+
+function toRelated(r: {
+  id: string;
+  title: string;
+  titleZh: string | null;
+  sourcePlatform: Platform;
+  heatScore: number;
+  heatLevel: 'BURST' | 'HOT' | 'NORMAL' | 'LOW';
+  publishedAt: Date;
+}): HotNewsRelatedDto {
+  return {
+    id: r.id,
+    title: r.title,
+    titleZh: r.titleZh,
+    sourcePlatform: r.sourcePlatform,
+    heatScore: r.heatScore,
+    heatLevel: r.heatLevel,
+    publishedAt: r.publishedAt.toISOString(),
+  };
 }

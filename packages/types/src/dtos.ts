@@ -269,6 +269,95 @@ export interface TrendingKeywordsDto {
 }
 
 /**
+ * SP-11 (2026-05-19): Slim sibling row attached to `HotNewsDetailDto.relatedItems`.
+ *
+ * Populated either from the same `groupId` (SP-7 cross-platform merge) or, when
+ * the row is a singleton (groupId === null), from any `aiTags` overlap. Five at
+ * most, sorted by `heatScore DESC`. Excludes the detail page's own id.
+ *
+ * Fields are intentionally narrower than `HotNewsListItemDto` — the side
+ * column on the detail page only needs title + platform + heat + timestamp.
+ * Drop `aiTags`, `summary`, etc. to keep payload small.
+ */
+export interface HotNewsRelatedDto {
+  id: string;
+  title: string;
+  titleZh: string | null;
+  sourcePlatform: Platform;
+  heatScore: number | null;
+  heatLevel: 'BURST' | 'HOT' | 'NORMAL' | 'LOW' | null;
+  publishedAt: string;
+}
+
+/**
+ * SP-11 (2026-05-19): Detail-page payload for `GET /hot-news/:id`.
+ *
+ * Differs from `HotNewsListItemDto` in three ways:
+ *   1. Includes `content` (full extracted body) and `crawledAt` / `extractStatus`
+ *      for the operator-visible footer.
+ *   2. Includes `matchedKeywords` (SP-14 user monitor surface; currently
+ *      empty array until KeywordMonitor lands but DTO is forward-compat).
+ *   3. Attaches `relatedItems[]` (≤5; see HotNewsRelatedDto JSDoc for
+ *      selection rules).
+ *
+ * Drops list-shaped aggregations (`groupSize` / `groupPlatforms` /
+ * `groupMembers` / `subreddit`) — the detail page surfaces grouping via
+ * `relatedItems[]` instead.
+ */
+export interface HotNewsDetailDto {
+  id: string;
+  title: string;
+  titleZh: string | null;
+  summary: string | null;
+  /** Full extracted body (SP-4 article extractor output). May be empty for newly-ingested rows. */
+  content: string;
+  sourcePlatform: Platform;
+  sourceUrl: string;
+  author: string | null;
+  publishedAt: string;
+  crawledAt: string;
+  aiTags: string[];
+  /** SP-14: monitor-keyword hits. Currently always empty; DTO stable for forward-compat. */
+  matchedKeywords: string[];
+  heatScore: number | null;
+  heatLevel: 'BURST' | 'HOT' | 'NORMAL' | 'LOW' | null;
+  groupId: string | null;
+  /** SP-4-7 extract status (PENDING / OK / FAILED / etc); null for legacy rows. */
+  extractStatus: string | null;
+  relatedItems: HotNewsRelatedDto[];
+}
+
+/**
+ * SP-11 (2026-05-19): One snapshot row from `heat_history`. `bucketAt` is
+ * 30-min UTC-aligned (`:00` or `:30`); see worker `computeBucketAt`. The
+ * sequence is monotonically increasing in `bucketAt`.
+ */
+export interface HeatHistoryItemDto {
+  /** ISO timestamp, 30-min aligned UTC */
+  bucketAt: string;
+  heatScore: number;
+  heatLevel: 'BURST' | 'HOT' | 'NORMAL' | 'LOW';
+}
+
+/**
+ * SP-11 (2026-05-19): Time-series payload for `GET /hot-news/:id/heat-history`.
+ *
+ * `items` covers the last `hours` worth of 30-min buckets the cron has written
+ * for this row, ordered ascending by `bucketAt`. May be empty (no cron tick yet
+ * after ingestion) and may be shorter than `hours * 2` (row newer than `hours`
+ * ago, or missing ticks due to deploy / crash).
+ *
+ * `hours` is restricted server-side to one of `24 | 48 | 72`; out-of-range
+ * input falls back to `48` (`Pipe` semantics — caller cannot trigger 400).
+ */
+export interface HeatHistoryDto {
+  items: HeatHistoryItemDto[];
+  windowStart: string;
+  windowEnd: string;
+  hours: 24 | 48 | 72;
+}
+
+/**
  * SP-9 (2026-05-19): Per-platform breakdown for the "信源分布" card.
  *
  * `platforms[]` items are sorted by `count DESC`. Percentages sum to
