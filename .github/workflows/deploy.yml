@@ -33,3 +33,25 @@ jobs:
           # /api/hot-news 是 SP-1 列表接口（200 即可，空列表也算通过）
           curl --fail --max-time 15 "https://${{ secrets.DOMAIN }}/api/hot-news?pageSize=1" \
             && echo "[Smoke OK: /api/hot-news]"
+          # SP-9 stats endpoints — 通过 Next.js BFF thin-proxy 转发到 NestJS
+          # 任意一条 404 / 502 都会让 deploy 红，避免再漏 BFF route（原版 SP-9 部署
+          # 漏了这层 proxy，HomePage SSR 通过容器内网拿数据掩盖了 prod curl 404）
+          curl --fail --max-time 15 "https://${{ secrets.DOMAIN }}/api/stats/today" > /dev/null \
+            && echo "[Smoke OK: /api/stats/today]"
+          curl --fail --max-time 15 "https://${{ secrets.DOMAIN }}/api/stats/sources" > /dev/null \
+            && echo "[Smoke OK: /api/stats/sources]"
+          curl --fail --max-time 15 "https://${{ secrets.DOMAIN }}/api/stats/heat-curve" > /dev/null \
+            && echo "[Smoke OK: /api/stats/heat-curve]"
+          curl --fail --max-time 15 "https://${{ secrets.DOMAIN }}/api/stats/trending-keywords?limit=1" > /dev/null \
+            && echo "[Smoke OK: /api/stats/trending-keywords]"
+          # SP-11 detail endpoints — 抓 list 第一条 id，验 /:id + /:id/heat-history
+          DETAIL_ID=$(curl --fail --max-time 15 -s "https://${{ secrets.DOMAIN }}/api/hot-news?pageSize=1" \
+            | python3 -c 'import sys,json;d=json.load(sys.stdin);items=d.get("items",[]);print(items[0]["id"]) if items else exit(0)')
+          if [ -n "$DETAIL_ID" ]; then
+            curl --fail --max-time 15 "https://${{ secrets.DOMAIN }}/api/hot-news/$DETAIL_ID" > /dev/null \
+              && echo "[Smoke OK: /api/hot-news/:id ($DETAIL_ID)]"
+            curl --fail --max-time 15 "https://${{ secrets.DOMAIN }}/api/hot-news/$DETAIL_ID/heat-history?hours=48" > /dev/null \
+              && echo "[Smoke OK: /api/hot-news/:id/heat-history ($DETAIL_ID)]"
+          else
+            echo "[Smoke SKIP: /api/hot-news/:id (no items)]"
+          fi
