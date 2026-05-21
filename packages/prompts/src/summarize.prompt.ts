@@ -1,15 +1,23 @@
 import { TAXONOMY } from './taxonomy';
 
 /**
- * Prompt 版本。改 system / user prompt body 时 +1，并：
+ * Prompt 版本。改 system / user prompt body 时 +1，并（默认协议）：
  *   1. ssh prod psql: UPDATE hot_news SET summary=NULL, "aiTags"='{}', "titleZh"=NULL WHERE summary IS NOT NULL;
  *   2. restart worker → boot backstop 扫 NULL 重摘
+ *
  * V1 = 1（initial）
  * V2 = 2（SP-5 v3.3：加 titleZh 中文标题；摘要恰好 2 行 / 每行一句 / \n 分隔 / 整体 60-90 字）
  * V3 = 3（SP-5 v3.4：摘要改为单段连贯陈述 50-80 字、不强制换行、加套话/营销腔黑名单；
  *         双行结构在 V2 实测下显得机械，单行复合句更接近"今日要闻"自然语感）
+ * V4 = 4（SP-5.6：受控词表 categories 8 → 10，加 OpenSource + Funding 对齐 PRD §5.2 6 类完整映射；
+ *         **有意识偏离默认协议** — 不触发全量重摘：
+ *         (1) prod 1,177 visible row × 重摘 ≈ $0.37 + 25min worker 串行 LLM；
+ *         (2) OpenSource/Funding 在历史 row 召回率本来就低（LLM 之前没这两个 category 可选）；
+ *         (3) HN/Reddit 48h + RSS 7d 内 row 自然轮换 → 7d 内 chip 召回率自然爬到 100%；
+ *         (4) 真正需要历史聚合是 M7（SP-19 趋势 / SP-21 日报），到时单独 backfill 更可控。
+ *         **保留协议适用于** SP-19/21 决定真要 backfill 时；本 SP 不跑 UPDATE summary=NULL。）
  */
-export const SUMMARIZE_PROMPT_VERSION = 3;
+export const SUMMARIZE_PROMPT_VERSION = 4;
 
 const MAX_USER_CONTENT_CHARS = 6000;
 
