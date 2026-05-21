@@ -70,7 +70,37 @@ describe('parseSummarizeResponse', () => {
     expect(r.aiTags).not.toContain('company:UnknownCo');
   });
 
-  it('drops invalid category (not in 8 enum values)', () => {
+  it('accepts OpenSource as a valid category (SP-5.6)', () => {
+    // SP-5.6 expanded TAXONOMY.categories 8 → 10; LLM 输出 `category: 'OpenSource'`
+    // 应当被 parser 接受并打到 `category:OpenSource` 标签上 — SP-10 顶部 chip filter
+    // "开源" 依赖此 tag 命中。命名约定无空格：`OpenSource` 而非 `Open Source`，
+    // 与 taxonomy.ts 的 readonly tuple 字面量严格匹配。
+    const json = JSON.stringify({
+      titleZh: '某团队开源 LLM 微调工具链',
+      summary: '某团队在 GitHub 上开源了一套 LLM 微调工具链，覆盖数据清洗、训练、评测三阶段。',
+      companies: [],
+      models: [],
+      category: 'OpenSource',
+      tech: ['Fine-tuning'],
+    });
+    const r = parseSummarizeResponse(json)!;
+    expect(r.aiTags).toContain('category:OpenSource');
+  });
+
+  it('accepts Funding as a valid category (SP-5.6)', () => {
+    const json = JSON.stringify({
+      titleZh: '某 AI 公司完成 B 轮融资',
+      summary: '某 AI 初创公司宣布完成 1.5 亿美元 B 轮融资，由 Sequoia 领投，估值 10 亿美元。',
+      companies: [],
+      models: [],
+      category: 'Funding',
+      tech: [],
+    });
+    const r = parseSummarizeResponse(json)!;
+    expect(r.aiTags).toContain('category:Funding');
+  });
+
+  it('drops invalid category (not in taxonomy)', () => {
     const json = JSON.stringify({
       summary: '业内讨论了一些观点。',
       companies: [],
