@@ -1,8 +1,6 @@
 import { PageHeader } from '@ai-hot-news/ui';
 import { fetchHotNewsList } from '@/lib/api';
-import { ListHeader } from './_components/list-header';
-import { NewsItem } from './_components/news-item';
-import { Pagination } from './_components/pagination';
+import { NewsFeed } from './_components/news-feed';
 import { EmptyState } from './_components/empty-state';
 import { ErrorState } from './_components/error-state';
 import { FeedTabs, parseTab } from './_components/feed-tabs';
@@ -20,7 +18,6 @@ export const dynamic = 'force-dynamic';
 
 interface PageProps {
   searchParams: Promise<{
-    page?: string;
     tab?: string;
     range?: string;
     sort?: string;
@@ -28,11 +25,14 @@ interface PageProps {
   }>;
 }
 
+// SP-10 PR-C (2026-05-21): RSC fetches the FIRST page only; the client
+// `<NewsFeed>` takes the response as initialData and loads subsequent pages
+// via IntersectionObserver. SSR keeps SEO + LCP healthy; client takes over
+// for "infinite" experience.
+const PAGE_SIZE = 20;
+
 export default async function NewsPage({ searchParams }: PageProps) {
   const sp = await searchParams;
-  const parsed = parseInt(sp.page ?? '1', 10);
-  const page = Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
-  const pageSize = 20;
   const tab = parseTab(sp.tab);
   const range = parseRange(sp.range);
   const sort = parseSort(sp.sort);
@@ -42,7 +42,7 @@ export default async function NewsPage({ searchParams }: PageProps) {
   let data;
   let errorMessage: string | null = null;
   try {
-    data = await fetchHotNewsList(page, pageSize, platforms, sort, { range, tags });
+    data = await fetchHotNewsList(1, PAGE_SIZE, platforms, sort, { range, tags });
   } catch (err) {
     errorMessage = err instanceof Error ? err.message : 'Unknown error';
   }
@@ -83,15 +83,13 @@ export default async function NewsPage({ searchParams }: PageProps) {
         ) : data && data.items.length === 0 ? (
           <EmptyState />
         ) : data ? (
-          <>
-            <ListHeader total={data.total} latestCrawledAt={data.items[0]?.crawledAt} />
-            <div className="mt-3.5 space-y-3 fade-up">
-              {data.items.map((item) => (
-                <NewsItem key={item.id} item={item} />
-              ))}
-            </div>
-            <Pagination page={data.page} pageSize={data.pageSize} total={data.total} tab={tab} />
-          </>
+          <NewsFeed
+            initialData={data}
+            platforms={platforms}
+            range={range}
+            sort={sort}
+            tags={tags}
+          />
         ) : null}
       </div>
     </>

@@ -52,13 +52,13 @@ export interface ListFilterOptions {
   tags?: string[];
 }
 
-export function fetchHotNewsList(
+function buildHotNewsQueryString(
   page: number,
   pageSize: number,
   platforms?: FeedPlatform[],
   sort?: FeedSort,
   options?: ListFilterOptions,
-): Promise<HotNewsListResponseDto> {
+): string {
   const qs = new URLSearchParams({
     page: String(page),
     pageSize: String(pageSize),
@@ -75,7 +75,38 @@ export function fetchHotNewsList(
   if (options?.tags && options.tags.length > 0) {
     qs.set('tags', options.tags.join(','));
   }
-  return fetchJson<HotNewsListResponseDto>(`/hot-news?${qs.toString()}`);
+  return qs.toString();
+}
+
+export function fetchHotNewsList(
+  page: number,
+  pageSize: number,
+  platforms?: FeedPlatform[],
+  sort?: FeedSort,
+  options?: ListFilterOptions,
+): Promise<HotNewsListResponseDto> {
+  const qs = buildHotNewsQueryString(page, pageSize, platforms, sort, options);
+  return fetchJson<HotNewsListResponseDto>(`/hot-news?${qs}`);
+}
+
+// SP-10 PR-C (2026-05-21): client-side fetcher for NewsFeed infinite scroll.
+// Hits the Next.js BFF route `/api/hot-news` (defined in app/api/hot-news/route.ts),
+// which forwards to the same NestJS API as the SSR path. Going through the
+// BFF (vs API_URL) is mandatory in browser context — API_URL is an internal
+// docker hostname not reachable from the user agent.
+export async function fetchHotNewsListClient(
+  page: number,
+  pageSize: number,
+  platforms?: FeedPlatform[],
+  sort?: FeedSort,
+  options?: ListFilterOptions,
+): Promise<HotNewsListResponseDto> {
+  const qs = buildHotNewsQueryString(page, pageSize, platforms, sort, options);
+  const res = await fetch(`/api/hot-news?${qs}`, { cache: 'no-store' });
+  if (!res.ok) {
+    throw new ApiError(res.status, `API ${res.status} (/api/hot-news?${qs})`);
+  }
+  return (await res.json()) as HotNewsListResponseDto;
 }
 
 // SP-9 (2026-05-19): dashboard stat fetchers, called in parallel from the
