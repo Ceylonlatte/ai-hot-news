@@ -44,11 +44,20 @@ async function fetchJson<T>(path: string): Promise<T> {
   return (await res.json()) as T;
 }
 
+// SP-10 (2026-05-21): optional filter dimensions beyond legacy platforms/sort.
+// `range` overrides PLATFORM_WINDOW_HOURS in the API (用户显式 7d 真看 7d).
+// `tags` applies multi-tag AND filter via Prisma hasEvery / Postgres @>.
+export interface ListFilterOptions {
+  range?: '1d' | '7d' | '30d';
+  tags?: string[];
+}
+
 export function fetchHotNewsList(
   page: number,
   pageSize: number,
   platforms?: FeedPlatform[],
   sort?: FeedSort,
+  options?: ListFilterOptions,
 ): Promise<HotNewsListResponseDto> {
   const qs = new URLSearchParams({
     page: String(page),
@@ -59,6 +68,12 @@ export function fetchHotNewsList(
   }
   if (sort) {
     qs.set('sort', sort);
+  }
+  if (options?.range) {
+    qs.set('range', options.range);
+  }
+  if (options?.tags && options.tags.length > 0) {
+    qs.set('tags', options.tags.join(','));
   }
   return fetchJson<HotNewsListResponseDto>(`/hot-news?${qs.toString()}`);
 }

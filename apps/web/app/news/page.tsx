@@ -1,22 +1,32 @@
 import { PageHeader } from '@ai-hot-news/ui';
-import { fetchHotNewsList, type FeedPlatform } from '@/lib/api';
+import { fetchHotNewsList } from '@/lib/api';
 import { ListHeader } from './_components/list-header';
 import { NewsItem } from './_components/news-item';
 import { Pagination } from './_components/pagination';
 import { EmptyState } from './_components/empty-state';
 import { ErrorState } from './_components/error-state';
-import { FeedTabs, parseTab, type FeedTab } from './_components/feed-tabs';
+import { FeedTabs, parseTab } from './_components/feed-tabs';
+import { RangeTabs } from './_components/range-tabs';
+import { SortTabs } from './_components/sort-tabs';
+import { CategoryChips } from './_components/category-chips';
+import {
+  parseRange,
+  parseSort,
+  parseTags,
+  TAB_PLATFORMS,
+} from './_components/search-params';
 
 export const dynamic = 'force-dynamic';
 
 interface PageProps {
-  searchParams: Promise<{ page?: string; tab?: string }>;
+  searchParams: Promise<{
+    page?: string;
+    tab?: string;
+    range?: string;
+    sort?: string;
+    tags?: string;
+  }>;
 }
-
-const TAB_PLATFORMS: Record<FeedTab, FeedPlatform[]> = {
-  community: ['HACKERNEWS', 'REDDIT'],
-  media: ['RSS'],
-};
 
 export default async function NewsPage({ searchParams }: PageProps) {
   const sp = await searchParams;
@@ -24,15 +34,25 @@ export default async function NewsPage({ searchParams }: PageProps) {
   const page = Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
   const pageSize = 20;
   const tab = parseTab(sp.tab);
+  const range = parseRange(sp.range);
+  const sort = parseSort(sp.sort);
+  const tags = parseTags(sp.tags);
   const platforms = TAB_PLATFORMS[tab];
 
   let data;
   let errorMessage: string | null = null;
   try {
-    data = await fetchHotNewsList(page, pageSize, platforms);
+    data = await fetchHotNewsList(page, pageSize, platforms, sort, { range, tags });
   } catch (err) {
     errorMessage = err instanceof Error ? err.message : 'Unknown error';
   }
+
+  // State without the dim being controlled by each tab component — used to
+  // build "switch only this one dim" hrefs (e.g. RangeTabs URLs preserve
+  // tab + sort + tags, only swap range).
+  const filterStateForRange = { tab, sort, tags };
+  const filterStateForSort = { tab, range, tags };
+  const filterStateForTags = { tab, range, sort };
 
   return (
     <>
@@ -46,7 +66,16 @@ export default async function NewsPage({ searchParams }: PageProps) {
               : 'HN / Reddit / RSS 跨平台聚合 · SP-6 heatScore 排序'
           }
         />
-        <FeedTabs active={tab} />
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <FeedTabs active={tab} />
+            <RangeTabs active={range} state={filterStateForRange} />
+          </div>
+          <SortTabs active={sort} state={filterStateForSort} />
+        </div>
+        <div className="mt-3">
+          <CategoryChips selectedTags={tags} state={filterStateForTags} />
+        </div>
       </div>
       <div className="flex-1 overflow-auto px-9 pb-9">
         {errorMessage ? (

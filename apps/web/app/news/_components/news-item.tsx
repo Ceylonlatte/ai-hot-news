@@ -93,11 +93,19 @@ export function NewsItem({ item }: { item: HotNewsListItemDto }) {
           </p>
         ) : null}
 
-        {/* tags（多色轮用 + 跨平台 badge） */}
+        {/* tags（多色轮用 + 跨平台 badge）
+            SP-10: tag chips 可点击 — href 跳到 /news?tags=<tag>，仅过滤这一个 tag。
+            点击行为是 "深入这一个标签" 而非 "AND 累加"，与顶部 CategoryChips 的多选 AND
+            是不同的入口语义；用户可在 /news 页面后续继续点 chip 累加。 */}
         {item.aiTags.length > 0 || crossPlatformBadge ? (
           <div className="flex flex-wrap gap-1.5 mb-3.5">
             {item.aiTags.map((tag, i) => (
-              <Tag key={tag} index={i}>
+              <Tag
+                key={tag}
+                index={i}
+                href={`/news?tags=${encodeURIComponent(tag)}`}
+                title={`筛选 ${tag}`}
+              >
                 {tag}
               </Tag>
             ))}
