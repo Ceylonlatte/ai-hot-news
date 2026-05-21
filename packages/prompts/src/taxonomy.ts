@@ -51,6 +51,10 @@ export const TAXONOMY = {
     'Benchmark',
     'Incident',
     'Product',
+    // SP-5.6 (2026-05-21): 加 2 个 category 对齐 PRD §5.2 6 类完整映射。
+    // 老 row 不重摘 — 见 prompts/src/summarize.prompt.ts V4 注释。
+    'OpenSource',
+    'Funding',
   ] as const,
 } as const;
 

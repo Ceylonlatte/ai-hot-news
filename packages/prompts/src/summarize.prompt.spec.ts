@@ -38,6 +38,20 @@ describe('summarize.prompt', () => {
     expect(sys).toContain('对照示例');
   });
 
+  it('system prompt advertises OpenSource + Funding as valid category values (SP-5.6)', () => {
+    const sys = buildSystemPrompt();
+    // 受控词表通过 TAXONOMY.categories.join(' | ') 拼进 prompt，新增的两个 category 应当自动出现。
+    // 这两个词撑住 SP-10 顶部 chip filter 的全召回 — 如果 prompt 不含它们，LLM 永远不会输出这两个标签。
+    expect(sys).toMatch(/OpenSource/);
+    expect(sys).toMatch(/Funding/);
+    // category namespace 仍按预期声明
+    expect(sys).toMatch(/category:/);
+  });
+
+  it('SUMMARIZE_PROMPT_VERSION is at v4 (SP-5.6 taxonomy expansion)', () => {
+    expect(SUMMARIZE_PROMPT_VERSION).toBe(4);
+  });
+
   it('user prompt embeds platform + title + body verbatim when content < 6000 chars', () => {
     const user = buildUserPrompt({
       title: 'GPT-5 announcement',

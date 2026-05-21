@@ -14,12 +14,14 @@ describe('TAXONOMY', () => {
     expect(set.size).toBe(TAXONOMY.models.length);
   });
 
-  it('categories has exactly 8 entries (Release / Research / Tutorial / Opinion / Tooling / Benchmark / Incident / Product)', () => {
-    expect(TAXONOMY.categories.length).toBe(8);
+  it('categories has exactly 10 entries (8 SP-5 baseline + 2 SP-5.6 OpenSource + Funding)', () => {
+    expect(TAXONOMY.categories.length).toBe(10);
     expect([...TAXONOMY.categories].sort()).toEqual(
       [
         'Benchmark',
+        'Funding',
         'Incident',
+        'OpenSource',
         'Opinion',
         'Product',
         'Release',
@@ -35,5 +37,10 @@ describe('TAXONOMY', () => {
     expect(TAXONOMY.companies).toContain('Anthropic');
     expect(TAXONOMY.companies).toContain('Google');
     expect(TAXONOMY.companies).toContain('DeepSeek');
+  });
+
+  it('contains OpenSource + Funding categories (SP-5.6, covers PRD §5.2 6 类完整映射)', () => {
+    expect(TAXONOMY.categories).toContain('OpenSource');
+    expect(TAXONOMY.categories).toContain('Funding');
   });
 });
