@@ -789,6 +789,128 @@ describe('HotNewsService', () => {
     });
   });
 
+  // ─── SP-10: range + tags filtering ───────────────────────────────────────
+  describe('SP-10 range + tags filters', () => {
+    const NOW = new Date('2026-05-21T14:00:00Z');
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+      vi.setSystemTime(NOW);
+    });
+    afterEach(() => vi.useRealTimers());
+
+    it('range=1d overrides platform window — HN/Reddit use 24h instead of 48h', async () => {
+      await service.list(1, 20, undefined, undefined, 'expand', '1d');
+      const findManyArgs = prismaMock.hotNews.findMany.mock.calls[0]![0]!;
+      const expectedCutoff = new Date(NOW.getTime() - 24 * 60 * 60 * 1000);
+      for (const clause of findManyArgs.where.OR) {
+        expect(clause.publishedAt).toEqual({ gte: expectedCutoff });
+      }
+    });
+
+    it('range=7d overrides RSS 7d default too (consistent 7d for all selected platforms)', async () => {
+      await service.list(1, 20, ['HACKERNEWS', 'REDDIT'], undefined, 'expand', '7d');
+      const findManyArgs = prismaMock.hotNews.findMany.mock.calls[0]![0]!;
+      const expectedCutoff = new Date(NOW.getTime() - 7 * 24 * 60 * 60 * 1000);
+      // community tab default platform window is 48h; range=7d expands beyond it
+      for (const clause of findManyArgs.where.OR) {
+        expect(clause.publishedAt).toEqual({ gte: expectedCutoff });
+      }
+    });
+
+    it('range=30d allows 30-day lookback (aligned with SP-10.5 TTL upper bound)', async () => {
+      await service.list(1, 20, undefined, undefined, 'expand', '30d');
+      const findManyArgs = prismaMock.hotNews.findMany.mock.calls[0]![0]!;
+      const expectedCutoff = new Date(NOW.getTime() - 30 * 24 * 60 * 60 * 1000);
+      expect(findManyArgs.where.OR[0].publishedAt).toEqual({ gte: expectedCutoff });
+    });
+
+    it('range=undefined preserves legacy per-platform window (HN/Reddit 48h, RSS 7d)', async () => {
+      await service.list(1, 20, ['RSS', 'HACKERNEWS'], 'time', 'expand');
+      const findManyArgs = prismaMock.hotNews.findMany.mock.calls[0]![0]!;
+      const rss = findManyArgs.where.OR.find(
+        (e: { sourcePlatform: string }) => e.sourcePlatform === 'RSS',
+      );
+      const hn = findManyArgs.where.OR.find(
+        (e: { sourcePlatform: string }) => e.sourcePlatform === 'HACKERNEWS',
+      );
+      expect(rss.publishedAt).toEqual({ gte: new Date(NOW.getTime() - 7 * 24 * 60 * 60 * 1000) });
+      expect(hn.publishedAt).toEqual({ gte: new Date(NOW.getTime() - 48 * 60 * 60 * 1000) });
+    });
+
+    it('tags=[category:Opinion] applies aiTags hasEvery clause', async () => {
+      await service.list(1, 20, undefined, undefined, 'expand', undefined, ['category:Opinion']);
+      const findManyArgs = prismaMock.hotNews.findMany.mock.calls[0]![0]!;
+      expect(findManyArgs.where.aiTags).toEqual({ hasEvery: ['category:Opinion'] });
+    });
+
+    it('tags=[A,B] applies AND semantics via hasEvery', async () => {
+      await service.list(1, 20, undefined, undefined, 'expand', undefined, [
+        'category:Opinion',
+        'company:OpenAI',
+      ]);
+      const findManyArgs = prismaMock.hotNews.findMany.mock.calls[0]![0]!;
+      expect(findManyArgs.where.aiTags).toEqual({
+        hasEvery: ['category:Opinion', 'company:OpenAI'],
+      });
+    });
+
+    it('tags=undefined omits aiTags clause entirely (legacy clients unaffected)', async () => {
+      await service.list(1, 20, undefined, undefined, 'expand');
+      const findManyArgs = prismaMock.hotNews.findMany.mock.calls[0]![0]!;
+      expect(findManyArgs.where.aiTags).toBeUndefined();
+    });
+
+    it('tags=[] (empty array) omits aiTags clause (DTO transform also returns undefined)', async () => {
+      await service.list(1, 20, undefined, undefined, 'expand', undefined, []);
+      const findManyArgs = prismaMock.hotNews.findMany.mock.calls[0]![0]!;
+      expect(findManyArgs.where.aiTags).toBeUndefined();
+    });
+
+    it('range + tags combine — both clauses present, count() shares the same where', async () => {
+      await service.list(1, 20, undefined, undefined, 'expand', '7d', ['category:Funding']);
+      const findManyArgs = prismaMock.hotNews.findMany.mock.calls[0]![0]!;
+      const countArgs = prismaMock.hotNews.count.mock.calls[0]![0]!;
+      const expectedCutoff = new Date(NOW.getTime() - 7 * 24 * 60 * 60 * 1000);
+      expect(findManyArgs.where.OR[0].publishedAt).toEqual({ gte: expectedCutoff });
+      expect(findManyArgs.where.aiTags).toEqual({ hasEvery: ['category:Funding'] });
+      // count() must use the EXACT same where to keep pagination total correct
+      expect(countArgs.where).toEqual(findManyArgs.where);
+    });
+
+    it('groupMode=fold path: tags are embedded in raw SQL (aiTags @> ARRAY[...])', async () => {
+      // Stage fold path: two $queryRaw calls (rep ids + total)
+      prismaMock.$queryRaw
+        .mockResolvedValueOnce([{ id: 'fold-1' }])
+        .mockResolvedValueOnce([{ total: BigInt(1) }]);
+      prismaMock.hotNews.findMany.mockResolvedValueOnce([
+        {
+          id: 'fold-1', title: 'F', titleZh: null, summary: null,
+          aiTags: ['category:OpenSource'],
+          sourceUrl: 'https://example.com/fold-1', sourcePlatform: 'HACKERNEWS',
+          author: null,
+          publishedAt: new Date(NOW.getTime() - 3600_000),
+          crawledAt: new Date(NOW.getTime() - 3600_000),
+          heatScore: 0, heatLevel: null, groupId: null,
+          interactionData: null,
+        },
+      ]);
+
+      await service.list(1, 20, undefined, undefined, 'fold', '1d', ['category:OpenSource']);
+
+      // Fold path uses $queryRaw; the SQL must reference @> with tag array.
+      // Prisma's Sql template parameterizes values, so we inspect the assembled
+      // call's values (or strings) to confirm both pieces are present.
+      const firstCall = prismaMock.$queryRaw.mock.calls[0]![0]!;
+      // Prisma.sql produces { strings, values } objects; check both surfaces.
+      const serialized = JSON.stringify(firstCall);
+      expect(serialized).toMatch(/aiTags|"aiTags"/);
+      // The tag values must be in `values` array passed alongside the SQL.
+      // (Prisma.sql wraps these in a Sql instance whose `values` contains the bound parameters.)
+      expect(serialized).toMatch(/OpenSource/);
+    });
+  });
+
   // ─── SP-11: detail() ─────────────────────────────────────────────────────
   describe('detail', () => {
     const baseRow = {
