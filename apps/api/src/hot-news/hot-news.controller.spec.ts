@@ -46,7 +46,15 @@ describe('HotNewsController', () => {
     query.page = 1;
     query.pageSize = 20;
     const result = await controller.list(query);
-    expect(serviceMock.list).toHaveBeenCalledWith(1, 20, undefined, undefined, 'fold');
+    expect(serviceMock.list).toHaveBeenCalledWith(
+      1,
+      20,
+      undefined,
+      undefined,
+      'fold',
+      undefined,
+      undefined,
+    );
     expect(result.total).toBe(1);
     expect(result.items[0]!.sourcePlatform).toBe('RSS');
   });
@@ -56,7 +64,15 @@ describe('HotNewsController', () => {
     query.page = 3;
     query.pageSize = 5;
     await controller.list(query);
-    expect(serviceMock.list).toHaveBeenCalledWith(3, 5, undefined, undefined, 'fold');
+    expect(serviceMock.list).toHaveBeenCalledWith(
+      3,
+      5,
+      undefined,
+      undefined,
+      'fold',
+      undefined,
+      undefined,
+    );
   });
 
   it('passes query.platforms to service.list', async () => {
@@ -67,7 +83,7 @@ describe('HotNewsController', () => {
     query.pageSize = 20;
     query.platforms = ['RSS'];
     await local.list(query);
-    expect(list).toHaveBeenCalledWith(1, 20, ['RSS'], undefined, 'fold');
+    expect(list).toHaveBeenCalledWith(1, 20, ['RSS'], undefined, 'fold', undefined, undefined);
   });
 
   it('passes undefined platforms when query omits it', async () => {
@@ -75,7 +91,7 @@ describe('HotNewsController', () => {
     const local = new HotNewsController({ list } as unknown as HotNewsService);
     const query = new ListHotNewsQuery();
     await local.list(query);
-    expect(list).toHaveBeenCalledWith(1, 20, undefined, undefined, 'fold');
+    expect(list).toHaveBeenCalledWith(1, 20, undefined, undefined, 'fold', undefined, undefined);
   });
 
   it('passes query.sort through to service.list (SP-6)', async () => {
@@ -87,7 +103,15 @@ describe('HotNewsController', () => {
     query.platforms = ['HACKERNEWS'];
     query.sort = 'heat';
     await local.list(query);
-    expect(list).toHaveBeenCalledWith(1, 20, ['HACKERNEWS'], 'heat', 'fold');
+    expect(list).toHaveBeenCalledWith(
+      1,
+      20,
+      ['HACKERNEWS'],
+      'heat',
+      'fold',
+      undefined,
+      undefined,
+    );
   });
 
   it('passes query.groupMode through to service.list (SP-7-D)', async () => {
@@ -98,7 +122,65 @@ describe('HotNewsController', () => {
     query.pageSize = 20;
     query.groupMode = 'expand';
     await local.list(query);
-    expect(list).toHaveBeenCalledWith(1, 20, undefined, undefined, 'expand');
+    expect(list).toHaveBeenCalledWith(
+      1,
+      20,
+      undefined,
+      undefined,
+      'expand',
+      undefined,
+      undefined,
+    );
+  });
+
+  it('passes query.range through to service.list (SP-10)', async () => {
+    const list = vi.fn().mockResolvedValue({ items: [], page: 1, pageSize: 20, total: 0 });
+    const local = new HotNewsController({ list } as unknown as HotNewsService);
+    const query = new ListHotNewsQuery();
+    query.page = 1;
+    query.pageSize = 20;
+    query.range = '7d';
+    await local.list(query);
+    expect(list).toHaveBeenCalledWith(1, 20, undefined, undefined, 'fold', '7d', undefined);
+  });
+
+  it('passes query.tags through to service.list (SP-10)', async () => {
+    const list = vi.fn().mockResolvedValue({ items: [], page: 1, pageSize: 20, total: 0 });
+    const local = new HotNewsController({ list } as unknown as HotNewsService);
+    const query = new ListHotNewsQuery();
+    query.page = 1;
+    query.pageSize = 20;
+    query.tags = ['category:OpenSource', 'company:Anthropic'];
+    await local.list(query);
+    expect(list).toHaveBeenCalledWith(
+      1,
+      20,
+      undefined,
+      undefined,
+      'fold',
+      undefined,
+      ['category:OpenSource', 'company:Anthropic'],
+    );
+  });
+
+  it('passes both query.range AND query.tags through (combined SP-10 filter)', async () => {
+    const list = vi.fn().mockResolvedValue({ items: [], page: 1, pageSize: 20, total: 0 });
+    const local = new HotNewsController({ list } as unknown as HotNewsService);
+    const query = new ListHotNewsQuery();
+    query.page = 1;
+    query.pageSize = 20;
+    query.range = '30d';
+    query.tags = ['category:Funding'];
+    await local.list(query);
+    expect(list).toHaveBeenCalledWith(
+      1,
+      20,
+      undefined,
+      undefined,
+      'fold',
+      '30d',
+      ['category:Funding'],
+    );
   });
 
   // ─── SP-11: GET /hot-news/:id ──────────────────────────────────────────

@@ -7,6 +7,7 @@ import type {
   HotNewsListResponseDto,
   HotNewsRelatedDto,
 } from '@ai-hot-news/types';
+import { RANGE_HOURS_MAP, type AllowedRange } from './dto/list-hot-news.query';
 
 const PLATFORM_WINDOW_HOURS: Record<Platform, number> = {
   TWITTER: 48,
@@ -47,6 +48,8 @@ export class HotNewsService {
     platforms?: Platform[],
     sort: 'time' | 'heat' = 'time',
     groupMode: 'fold' | 'expand' = 'fold',
+    range?: AllowedRange,
+    tags?: string[],
   ): Promise<HotNewsListResponseDto> {
     const prisma = getPrisma();
     const skip = (page - 1) * pageSize;
@@ -63,19 +66,34 @@ export class HotNewsService {
 
     const now = new Date();
 
-    // Per-platform OR clause: each platform gets its own publishedAt window
+    // SP-10: user-explicit `?range=` overrides PLATFORM_WINDOW_HOURS. When set,
+    // ALL selected platforms use the SAME window (vs per-platform defaults).
+    // When undefined, per-platform defaults preserved → SP-4.5 / SP-9 / SP-11
+    // callers unaffected.
+    const userHours = range ? RANGE_HOURS_MAP[range] : null;
+
+    // Per-platform OR clause: each platform gets its publishedAt window —
+    // user-explicit `?range=` if set, otherwise PLATFORM_WINDOW_HOURS default
     // (HN/Reddit 48h, RSS 7d). Used by both the Prisma findMany path
     // (groupMode=expand) and the raw SQL path (groupMode=fold).
     const orClauses = effectivePlatforms.map((p) => ({
       sourcePlatform: p,
       publishedAt: {
-        gte: new Date(now.getTime() - PLATFORM_WINDOW_HOURS[p] * 60 * 60 * 1000),
+        gte: new Date(
+          now.getTime() - (userHours ?? PLATFORM_WINDOW_HOURS[p]) * 60 * 60 * 1000,
+        ),
       },
     }));
+
+    // SP-10: `?tags=` multi-tag AND filter. Prisma `hasEvery` = Postgres `@>`
+    // operator on text[]. Empty array short-circuits to "no filter" so SP-9/SP-11
+    // callers (passing undefined / no tags) stay byte-identical.
+    const hasTagFilter = tags != null && tags.length > 0;
 
     const where: Prisma.HotNewsWhereInput = {
       status: ContentStatus.VISIBLE,
       OR: orClauses,
+      ...(hasTagFilter ? { aiTags: { hasEvery: tags } } : {}),
     };
 
     const orderBy: Prisma.HotNewsOrderByWithRelationInput[] =
@@ -138,18 +156,25 @@ export class HotNewsService {
       total = count;
     } else {
       // Build the WHERE fragment manually so we can plug it into raw SQL
-      // alongside the DISTINCT-ON. Identical semantics to `where` above.
+      // alongside the DISTINCT-ON. Identical semantics to `where` above
+      // (including SP-10 user-range override + tag AND filter).
       const platformWindowFragments = effectivePlatforms.map(
         (p) => Prisma.sql`(
           "sourcePlatform" = ${Prisma.raw(`'${p}'`)}::"Platform"
           AND "publishedAt" >= ${new Date(
-            now.getTime() - PLATFORM_WINDOW_HOURS[p] * 60 * 60 * 1000,
+            now.getTime() - (userHours ?? PLATFORM_WINDOW_HOURS[p]) * 60 * 60 * 1000,
           )}
         )`,
       );
+      // SP-10: tag filter on fold path uses Postgres `@>` (array contains).
+      // Prisma.sql parameterizes the tag array; cast as text[] for the column.
+      const tagFragment = hasTagFilter
+        ? Prisma.sql`AND "aiTags" @> ${tags}::text[]`
+        : Prisma.empty;
       const whereSql = Prisma.sql`
         status = 'VISIBLE'::"ContentStatus"
         AND (${Prisma.join(platformWindowFragments, ' OR ')})
+        ${tagFragment}
       `;
 
       // Order expression. For heat sort: heatScore desc, publishedAt desc.
