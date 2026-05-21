@@ -7,6 +7,7 @@ import { ExtractModule } from './extract/extract.module';
 import { SummarizeModule } from './summarize/summarize.module';
 import { EmbedModule } from './embed/embed.module';
 import { HeatModule } from './heat/heat.module';
+import { CleanupModule } from './cleanup/cleanup.module';
 
 // Worker reads the monorepo root .env (DATABASE_URL, REDIS_URL, ...) — its own
 // apps/worker/.env only carries worker-specific knobs. Pass an explicit array
@@ -22,6 +23,7 @@ const APP_ENV = join(__dirname, '..', '.env');
     ExtractModule,
     EmbedModule,
     HeatModule,
+    CleanupModule,
     CrawlModule,
   ],
   providers: [LivenessService],
