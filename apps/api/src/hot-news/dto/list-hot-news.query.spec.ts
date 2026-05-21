@@ -70,6 +70,89 @@ describe('ListHotNewsQuery', () => {
     });
   });
 
+  describe('range field (SP-10)', () => {
+    it('defaults to undefined when omitted (service falls back to platform window)', async () => {
+      const { dto, errors } = await validateRaw({});
+      expect(errors).toEqual([]);
+      expect(dto.range).toBeUndefined();
+    });
+
+    it('accepts "1d"', async () => {
+      const { dto, errors } = await validateRaw({ range: '1d' });
+      expect(errors).toEqual([]);
+      expect(dto.range).toBe('1d');
+    });
+
+    it('accepts "7d"', async () => {
+      const { dto, errors } = await validateRaw({ range: '7d' });
+      expect(errors).toEqual([]);
+      expect(dto.range).toBe('7d');
+    });
+
+    it('accepts "30d"', async () => {
+      const { dto, errors } = await validateRaw({ range: '30d' });
+      expect(errors).toEqual([]);
+      expect(dto.range).toBe('30d');
+    });
+
+    it('lowercases " 7D " (mixed case + whitespace)', async () => {
+      const { dto, errors } = await validateRaw({ range: ' 7D ' });
+      expect(errors).toEqual([]);
+      expect(dto.range).toBe('7d');
+    });
+
+    it('rejects "1h" (sub-day granularity intentionally not supported)', async () => {
+      const { errors } = await validateRaw({ range: '1h' });
+      expect(errors.length).toBeGreaterThan(0);
+    });
+
+    it('rejects "all" (use ?range=30d which equals TTL upper bound)', async () => {
+      const { errors } = await validateRaw({ range: 'all' });
+      expect(errors.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('tags field (SP-10)', () => {
+    it('defaults to undefined when omitted', async () => {
+      const { dto, errors } = await validateRaw({});
+      expect(errors).toEqual([]);
+      expect(dto.tags).toBeUndefined();
+    });
+
+    it('parses single tag', async () => {
+      const { dto, errors } = await validateRaw({ tags: 'category:OpenSource' });
+      expect(errors).toEqual([]);
+      expect(dto.tags).toEqual(['category:OpenSource']);
+    });
+
+    it('parses multiple comma-separated tags (AND semantics applied in service)', async () => {
+      const { dto, errors } = await validateRaw({
+        tags: 'category:Opinion,company:OpenAI',
+      });
+      expect(errors).toEqual([]);
+      expect(dto.tags).toEqual(['category:Opinion', 'company:OpenAI']);
+    });
+
+    it('trims surrounding whitespace per tag', async () => {
+      const { dto, errors } = await validateRaw({ tags: ' category:Funding , company:Cursor ' });
+      expect(errors).toEqual([]);
+      expect(dto.tags).toEqual(['category:Funding', 'company:Cursor']);
+    });
+
+    it('filters out empty fragments (e.g. trailing comma)', async () => {
+      const { dto, errors } = await validateRaw({ tags: 'category:Release,,' });
+      expect(errors).toEqual([]);
+      expect(dto.tags).toEqual(['category:Release']);
+    });
+
+    it('does NOT validate tag content (LLM taxonomy drift acceptable, service hasEvery returns 0)', async () => {
+      // 故意传不存在 tag — DTO 层不打回，service 层 Prisma hasEvery 自然返 0 行
+      const { dto, errors } = await validateRaw({ tags: 'category:Nonsense' });
+      expect(errors).toEqual([]);
+      expect(dto.tags).toEqual(['category:Nonsense']);
+    });
+  });
+
   describe('groupMode field (SP-7-D)', () => {
     it('defaults to undefined when omitted (controller maps to "fold")', async () => {
       const { dto, errors } = await validateRaw({});
