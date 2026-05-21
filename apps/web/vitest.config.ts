@@ -1,4 +1,5 @@
 import { defineConfig } from 'vitest/config';
+import path from 'node:path';
 
 // SP-10 PR-B (2026-05-21): first vitest infra for apps/web — implicit debt
 // from SP-4.5 (`test: echo 'no tests yet (P4)'`) cleared here so PR-B / PR-C
@@ -10,9 +11,18 @@ import { defineConfig } from 'vitest/config';
 // spec files don't need to `import React from 'react'` (Next.js apps default
 // to this transform; tsconfig `jsx: 'preserve'` is interpreted by Next itself,
 // not vitest's esbuild).
+//
+// `resolve.alias['@']` mirrors the tsconfig `paths: { '@/*': ['./*'] }` so
+// production imports like `@/lib/api` resolve in tests (vitest doesn't read
+// tsconfig paths by default).
 export default defineConfig({
   esbuild: {
     jsx: 'automatic',
+  },
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, '.'),
+    },
   },
   test: {
     environment: 'jsdom',
