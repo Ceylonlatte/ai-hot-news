@@ -153,6 +153,43 @@ describe('ListHotNewsQuery', () => {
     });
   });
 
+  describe('q field (SP-12 search)', () => {
+    it('defaults to undefined when omitted', async () => {
+      const { dto, errors } = await validateRaw({});
+      expect(errors).toEqual([]);
+      expect(dto.q).toBeUndefined();
+    });
+
+    it('accepts a basic ASCII query', async () => {
+      const { dto, errors } = await validateRaw({ q: 'OpenAI' });
+      expect(errors).toEqual([]);
+      expect(dto.q).toBe('OpenAI');
+    });
+
+    it('accepts CJK query (pg_trgm splits 3-char windows)', async () => {
+      const { dto, errors } = await validateRaw({ q: '智能体' });
+      expect(errors).toEqual([]);
+      expect(dto.q).toBe('智能体');
+    });
+
+    it('trims surrounding whitespace', async () => {
+      const { dto, errors } = await validateRaw({ q: '  Claude Code  ' });
+      expect(errors).toEqual([]);
+      expect(dto.q).toBe('Claude Code');
+    });
+
+    it('rejects queries longer than 200 chars (防御性 — trigram 对超长无意义)', async () => {
+      const { errors } = await validateRaw({ q: 'a'.repeat(201) });
+      expect(errors.length).toBeGreaterThan(0);
+    });
+
+    it('accepts exactly 200 chars (boundary)', async () => {
+      const { dto, errors } = await validateRaw({ q: 'a'.repeat(200) });
+      expect(errors).toEqual([]);
+      expect(dto.q!.length).toBe(200);
+    });
+  });
+
   describe('groupMode field (SP-7-D)', () => {
     it('defaults to undefined when omitted (controller maps to "fold")', async () => {
       const { dto, errors } = await validateRaw({});
