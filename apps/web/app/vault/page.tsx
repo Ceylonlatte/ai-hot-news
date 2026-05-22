@@ -86,7 +86,12 @@ export default async function VaultPage({ searchParams }: PageProps) {
         ) : data && data.items.length === 0 ? (
           <EmptyState />
         ) : data ? (
+          // SP-12 follow-up (2026-05-22): 同 /news page.tsx 注释 —
+          // NewsFeed 的 useState(initialData) 不会因 filter URL 切换重新
+          // 初始化，必须用 key 强制 remount。q 必须在 key 里，否则搜索框
+          // 输入后 URL 变了但列表内容没变（用户实测 prod bug）。
           <NewsFeed
+            key={`${range}|${sort}|${tags.join(',')}|${q}`}
             initialData={data}
             platforms={VAULT_PLATFORMS}
             range={range}
