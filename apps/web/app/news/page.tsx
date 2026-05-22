@@ -83,7 +83,16 @@ export default async function NewsPage({ searchParams }: PageProps) {
         ) : data && data.items.length === 0 ? (
           <EmptyState />
         ) : data ? (
+          // SP-12 follow-up (2026-05-22): NewsFeed 是 client component，
+          // useState(initialData) 仅在挂载时初始化。filter 切换 URL → RSC
+          // 重新 fetch → 同一 NewsFeed 实例不会 reset internal pages state，
+          // 导致用户切 chip / tab / range / sort 时列表内容不变（bug）。
+          //
+          // Fix: 用 key 把所有 filter dim 编码进去，filter 变 → key 变 →
+          // React remount → useState 重新初始化 from 新 initialData。
+          // 这跟 "切换 filter = 新查询" 的用户心智一致。
           <NewsFeed
+            key={`${tab}|${range}|${sort}|${tags.join(',')}`}
             initialData={data}
             platforms={platforms}
             range={range}
