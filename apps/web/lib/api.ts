@@ -5,6 +5,7 @@ import type {
   HotNewsListResponseDto,
   StatsSourcesDto,
   StatsTodayDto,
+  TopTagsDto,
   TrendingKeywordsDto,
 } from '@ai-hot-news/types';
 
@@ -47,9 +48,12 @@ async function fetchJson<T>(path: string): Promise<T> {
 // SP-10 (2026-05-21): optional filter dimensions beyond legacy platforms/sort.
 // `range` overrides PLATFORM_WINDOW_HOURS in the API (用户显式 7d 真看 7d).
 // `tags` applies multi-tag AND filter via Prisma hasEvery / Postgres @>.
+// SP-12 (2026-05-22): `q` overlays pg_trgm trigram similarity search +
+// reorders by similarity DESC when set.
 export interface ListFilterOptions {
   range?: '1d' | '7d' | '30d';
   tags?: string[];
+  q?: string;
 }
 
 function buildHotNewsQueryString(
@@ -74,6 +78,9 @@ function buildHotNewsQueryString(
   }
   if (options?.tags && options.tags.length > 0) {
     qs.set('tags', options.tags.join(','));
+  }
+  if (options?.q && options.q.length > 0) {
+    qs.set('q', options.q);
   }
   return qs.toString();
 }
@@ -130,6 +137,17 @@ export function fetchTrendingKeywords(
   const safe = Math.max(1, Math.min(20, Math.floor(limit) || 8));
   return fetchJson<TrendingKeywordsDto>(
     `/stats/trending-keywords?limit=${safe}`,
+  );
+}
+
+// SP-12 (2026-05-22): top-N aiTag frequency over a configurable window,
+// for /vault tag cloud + future SP-15 keyword monitor suggestions.
+// Server clamps days [1,90] and limit [1,50]; we still safe-fence here.
+export function fetchTopTags(days = 30, limit = 20): Promise<TopTagsDto> {
+  const safeDays = Math.max(1, Math.min(90, Math.floor(days) || 30));
+  const safeLimit = Math.max(1, Math.min(50, Math.floor(limit) || 20));
+  return fetchJson<TopTagsDto>(
+    `/stats/top-tags?days=${safeDays}&limit=${safeLimit}`,
   );
 }
 

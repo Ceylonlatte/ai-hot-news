@@ -34,6 +34,10 @@ interface NewsFeedProps {
   range: FeedRange;
   sort: FeedSort;
   tags: string[];
+  /** SP-12 (2026-05-22): pg_trgm search term. When set, fetchNext threads
+   *  it through to fetchHotNewsListClient so subsequent pages stay within
+   *  the same search context. Optional — /news doesn't pass it; /vault does. */
+  q?: string;
 }
 
 // Map "current range → URL of next range up" for the end-of-feed link
@@ -56,6 +60,7 @@ export function NewsFeed({
   range,
   sort,
   tags,
+  q,
 }: NewsFeedProps) {
   const [pages, setPages] = useState<HotNewsListResponseDto[]>([initialData]);
   const [loading, setLoading] = useState(false);
@@ -81,7 +86,7 @@ export function NewsFeed({
         initialData.pageSize,
         platforms,
         sort,
-        { range, tags },
+        { range, tags, q },
       );
       // Compute the new pagination state from the closure-captured `pages`
       // (deps already retrigger loadNext when pages.length changes), THEN
@@ -103,7 +108,7 @@ export function NewsFeed({
       inflightRef.current = false;
       setLoading(false);
     }
-  }, [pages, initialData.pageSize, platforms, sort, range, tags, done]);
+  }, [pages, initialData.pageSize, platforms, sort, range, tags, q, done]);
 
   useEffect(() => {
     if (done) return;
