@@ -40,6 +40,24 @@ function extractSubreddit(
   return typeof sub === 'string' && sub.length > 0 ? sub : null;
 }
 
+/**
+ * SP-12 (2026-05-22): inlined Prisma.sql fragment used by both fold + expand
+ * paths to compute the trigram-searchable text. Must exactly match the
+ * functional GIN index expression in migration
+ * `20260522134034_add_search_text_column` or the planner won't use the index.
+ */
+const SEARCH_TEXT_SQL = Prisma.sql`(
+  COALESCE("titleZh", '')
+    || ' '
+    || COALESCE(title, '')
+    || ' '
+    || COALESCE(summary, '')
+    || ' '
+    || array_to_string("aiTags", ' ')
+    || ' '
+    || array_to_string("matchedKeywords", ' ')
+)`;
+
 @Injectable()
 export class HotNewsService {
   async list(
@@ -50,6 +68,7 @@ export class HotNewsService {
     groupMode: 'fold' | 'expand' = 'fold',
     range?: AllowedRange,
     tags?: string[],
+    query?: string,
   ): Promise<HotNewsListResponseDto> {
     const prisma = getPrisma();
     const skip = (page - 1) * pageSize;
@@ -89,6 +108,10 @@ export class HotNewsService {
     // operator on text[]. Empty array short-circuits to "no filter" so SP-9/SP-11
     // callers (passing undefined / no tags) stay byte-identical.
     const hasTagFilter = tags != null && tags.length > 0;
+
+    // SP-12: trigram search overlay. Trim happens in DTO; defensively skip
+    // empty string here so legacy / non-search paths stay byte-identical.
+    const hasQuery = query != null && query.length > 0;
 
     const where: Prisma.HotNewsWhereInput = {
       status: ContentStatus.VISIBLE,
@@ -141,7 +164,9 @@ export class HotNewsService {
 
     let orderedReps: HydratedRep[];
     let total: number;
-    if (groupMode === 'expand') {
+    if (groupMode === 'expand' && !hasQuery) {
+      // Legacy expand path — no trigram search. Prisma findMany is fastest
+      // and keeps SP-9 / SP-11 callers byte-identical to pre-SP-12 behavior.
       const [rows, count] = await prisma.$transaction([
         prisma.hotNews.findMany({
           where,
@@ -154,6 +179,60 @@ export class HotNewsService {
       ]);
       orderedReps = rows;
       total = count;
+    } else if (groupMode === 'expand' && hasQuery) {
+      // SP-12 expand + search: Prisma doesn't natively support pg_trgm `%`
+      // or `similarity()` — fall through to raw SQL. No DISTINCT-ON (each
+      // row is its own bucket) but search clause + similarity ORDER BY
+      // are applied. Hydration uses findMany WHERE id IN [...].
+      const platformWindowFragments = effectivePlatforms.map(
+        (p) => Prisma.sql`(
+          "sourcePlatform" = ${Prisma.raw(`'${p}'`)}::"Platform"
+          AND "publishedAt" >= ${new Date(
+            now.getTime() - (userHours ?? PLATFORM_WINDOW_HOURS[p]) * 60 * 60 * 1000,
+          )}
+        )`,
+      );
+      const tagFragment = hasTagFilter
+        ? Prisma.sql`AND "aiTags" @> ${tags}::text[]`
+        : Prisma.empty;
+      const searchFragment = Prisma.sql`AND ${SEARCH_TEXT_SQL} % ${query}::text`;
+      const whereSql = Prisma.sql`
+        status = 'VISIBLE'::"ContentStatus"
+        AND (${Prisma.join(platformWindowFragments, ' OR ')})
+        ${tagFragment}
+        ${searchFragment}
+      `;
+      // Similarity-first ordering. heat sort still kicks in as a secondary
+      // (rare combination — power users with ?sort=heat&q=...).
+      const searchOrderSql =
+        sort === 'heat'
+          ? Prisma.sql`ORDER BY similarity(${SEARCH_TEXT_SQL}, ${query}::text) DESC, "heatScore" DESC, "publishedAt" DESC`
+          : Prisma.sql`ORDER BY similarity(${SEARCH_TEXT_SQL}, ${query}::text) DESC, "publishedAt" DESC`;
+
+      const repsResult = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+        SELECT id FROM hot_news
+        WHERE ${whereSql}
+        ${searchOrderSql}
+        LIMIT ${pageSize}
+        OFFSET ${skip}
+      `);
+      const totalResult = await prisma.$queryRaw<Array<{ total: bigint }>>(Prisma.sql`
+        SELECT COUNT(*)::bigint AS total FROM hot_news WHERE ${whereSql}
+      `);
+      total = Number(totalResult[0]?.total ?? 0n);
+
+      if (repsResult.length === 0) {
+        return { items: [], page, pageSize, total };
+      }
+      const ids = repsResult.map((r) => r.id);
+      const rows = await prisma.hotNews.findMany({
+        where: { id: { in: ids } },
+        select: fullSelect,
+      });
+      const byId = new Map(rows.map((r) => [r.id, r]));
+      orderedReps = ids
+        .map((id) => byId.get(id))
+        .filter((r): r is HydratedRep => r != null);
     } else {
       // Build the WHERE fragment manually so we can plug it into raw SQL
       // alongside the DISTINCT-ON. Identical semantics to `where` above
@@ -171,26 +250,47 @@ export class HotNewsService {
       const tagFragment = hasTagFilter
         ? Prisma.sql`AND "aiTags" @> ${tags}::text[]`
         : Prisma.empty;
+      // SP-12: trigram search clause when ?q= is set. Same SEARCH_TEXT_SQL
+      // expression as the functional GIN index, so the planner picks it up.
+      const searchFragment = hasQuery
+        ? Prisma.sql`AND ${SEARCH_TEXT_SQL} % ${query}::text`
+        : Prisma.empty;
       const whereSql = Prisma.sql`
         status = 'VISIBLE'::"ContentStatus"
         AND (${Prisma.join(platformWindowFragments, ' OR ')})
         ${tagFragment}
+        ${searchFragment}
       `;
 
       // Order expression. For heat sort: heatScore desc, publishedAt desc.
       // For time sort: publishedAt desc.
-      const orderSql =
-        sort === 'heat'
+      // SP-12: when ?q= is set, similarity becomes the PRIMARY sort key —
+      // we want "most relevant" first, then heat/time as tiebreaker. The
+      // DISTINCT ON still needs COALESCE("groupId", id) FIRST inside its
+      // ORDER BY (Postgres rule), so similarity is appended after it; the
+      // outer query re-sorts representatives by `rep_sim` which is the
+      // similarity score carried up from the CTE.
+      const orderSql = hasQuery
+        ? sort === 'heat'
+          ? Prisma.sql`ORDER BY COALESCE("groupId", id), similarity(${SEARCH_TEXT_SQL}, ${query}::text) DESC, "heatScore" DESC, "publishedAt" DESC`
+          : Prisma.sql`ORDER BY COALESCE("groupId", id), similarity(${SEARCH_TEXT_SQL}, ${query}::text) DESC, "publishedAt" DESC`
+        : sort === 'heat'
           ? Prisma.sql`ORDER BY COALESCE("groupId", id), "heatScore" DESC, "publishedAt" DESC`
           : Prisma.sql`ORDER BY COALESCE("groupId", id), "publishedAt" DESC`;
-      const finalOrderSql =
-        sort === 'heat'
+      const finalOrderSql = hasQuery
+        ? Prisma.sql`ORDER BY rep_sim DESC, rep_published DESC`
+        : sort === 'heat'
           ? Prisma.sql`ORDER BY rep_heat DESC, rep_published DESC`
           : Prisma.sql`ORDER BY rep_published DESC`;
 
       // The CTE picks one representative per bucket via DISTINCT ON + the
       // sort-aware tiebreaker; the outer query re-orders the representatives
       // among themselves and applies LIMIT/OFFSET for accurate pagination.
+      // SP-12: when q is set, additionally carry the per-rep similarity
+      // score (`rep_sim`) into the outer query for final ordering.
+      const repSimColumn = hasQuery
+        ? Prisma.sql`, similarity(${SEARCH_TEXT_SQL}, ${query}::text) AS rep_sim`
+        : Prisma.empty;
       const repsResult = await prisma.$queryRaw<
         Array<{ id: string }>
       >(Prisma.sql`
@@ -199,6 +299,7 @@ export class HotNewsService {
             id,
             "heatScore" AS rep_heat,
             "publishedAt" AS rep_published
+            ${repSimColumn}
           FROM hot_news
           WHERE ${whereSql}
           ${orderSql}

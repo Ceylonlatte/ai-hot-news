@@ -5,12 +5,18 @@ import type {
   HeatCurveDto,
   StatsSourcesDto,
   StatsTodayDto,
+  TopTagsDto,
   TrendingKeywordsDto,
 } from '@ai-hot-news/types';
 
 const WINDOW_HOURS = 24;
 const DEFAULT_TRENDING_LIMIT = 8;
 const MAX_TRENDING_LIMIT = 20;
+// SP-12: top-tags clamps
+const DEFAULT_TOP_TAGS_DAYS = 30;
+const MAX_TOP_TAGS_DAYS = 90;
+const DEFAULT_TOP_TAGS_LIMIT = 20;
+const MAX_TOP_TAGS_LIMIT = 50;
 
 @Injectable()
 export class StatsService {
@@ -259,6 +265,74 @@ export class StatsService {
         countPrior24h: Number(r.prior),
         growthPct: r.growth_pct,
       })),
+      windowStart: windowStart.toISOString(),
+      windowEnd: windowEnd.toISOString(),
+    };
+  }
+
+  /**
+   * SP-12 (2026-05-22): top-N aiTag frequency in a `days`-day window,
+   * filtered to controlled-vocabulary namespaces (company / model /
+   * category). Used by /vault tag cloud (search entry) and future SP-15
+   * keyword monitor "suggested keywords" picker.
+   *
+   * Filtering:
+   *   - `tech:*` excluded (LLM free-form, long-tail noisy)
+   *   - status='VISIBLE' (only displayed rows count)
+   *   - publishedAt within `days` days
+   *
+   * Clamps:
+   *   - days: [1, 90] (90d ceiling matches MAX SP-10 ?range + SP-10.5 TTL buffer)
+   *   - limit: [1, 50] (50 is plenty for a cloud; UI typically renders 20)
+   */
+  async topTags(days: number, limit: number): Promise<TopTagsDto> {
+    const safeDays = Math.max(
+      1,
+      Math.min(
+        MAX_TOP_TAGS_DAYS,
+        Number.isFinite(days) && days > 0 ? Math.floor(days) : DEFAULT_TOP_TAGS_DAYS,
+      ),
+    );
+    const safeLimit = Math.max(
+      1,
+      Math.min(
+        MAX_TOP_TAGS_LIMIT,
+        Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : DEFAULT_TOP_TAGS_LIMIT,
+      ),
+    );
+
+    const prisma = getPrisma();
+    const windowEnd = new Date();
+    const windowStart = new Date(
+      windowEnd.getTime() - safeDays * 24 * 60 * 60 * 1000,
+    );
+
+    type Row = { tag: string; count: bigint };
+    // Parameterize the days value via interpolated string in the INTERVAL
+    // literal — Prisma.sql doesn't allow bound parameters inside INTERVAL,
+    // so we pre-validate safeDays as an integer to prevent injection.
+    const rows = await prisma.$queryRaw<Row[]>(Prisma.sql`
+      WITH unnested AS (
+        SELECT unnest("aiTags") AS tag
+        FROM hot_news
+        WHERE status = 'VISIBLE'
+          AND "publishedAt" >= NOW() - (${safeDays}::int * INTERVAL '1 day')
+          AND array_length("aiTags", 1) > 0
+      )
+      SELECT tag, COUNT(*)::bigint AS count
+      FROM unnested
+      WHERE tag LIKE 'company:%'
+         OR tag LIKE 'model:%'
+         OR tag LIKE 'category:%'
+      GROUP BY tag
+      ORDER BY count DESC, tag ASC
+      LIMIT ${safeLimit}
+    `);
+
+    return {
+      tags: rows.map((r) => ({ tag: r.tag, count: Number(r.count) })),
+      days: safeDays,
+      limit: safeLimit,
       windowStart: windowStart.toISOString(),
       windowEnd: windowEnd.toISOString(),
     };

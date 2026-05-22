@@ -4,6 +4,7 @@ import type {
   HeatCurveDto,
   StatsSourcesDto,
   StatsTodayDto,
+  TopTagsDto,
   TrendingKeywordsDto,
 } from '@ai-hot-news/types';
 
@@ -57,5 +58,24 @@ export class StatsController {
     @Query('limit', new DefaultValuePipe('8')) limit: string,
   ): Promise<TrendingKeywordsDto> {
     return this.service.getTrendingKeywords(parseInt(limit, 10));
+  }
+
+  /**
+   * GET /stats/top-tags?days=30&limit=20
+   * SP-12 (2026-05-22): top-N aiTag frequency over a configurable window.
+   * Filtered to controlled namespaces (company / model / category) —
+   * tech: excluded as long-tail noise. Consumed by /vault tag cloud and
+   * future SP-15 keyword monitor "suggested keywords" picker.
+   *
+   * Defaults: days=30 (aligned with SP-10.5 hot_news TTL ceiling),
+   * limit=20 (UI tag cloud sweet spot). Service clamps days∈[1,90],
+   * limit∈[1,50].
+   */
+  @Get('top-tags')
+  topTags(
+    @Query('days', new DefaultValuePipe('30')) days: string,
+    @Query('limit', new DefaultValuePipe('20')) limit: string,
+  ): Promise<TopTagsDto> {
+    return this.service.topTags(parseInt(days, 10), parseInt(limit, 10));
   }
 }

@@ -1,5 +1,14 @@
 import { Transform, Type } from 'class-transformer';
-import { IsArray, IsIn, IsInt, IsOptional, Max, Min } from 'class-validator';
+import {
+  IsArray,
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsString,
+  Max,
+  MaxLength,
+  Min,
+} from 'class-validator';
 
 const ALLOWED_PLATFORMS = ['RSS', 'HACKERNEWS', 'REDDIT'] as const;
 type AllowedPlatform = (typeof ALLOWED_PLATFORMS)[number];
@@ -106,4 +115,17 @@ export class ListHotNewsQuery {
   })
   @IsArray()
   tags?: string[];
+
+  /** SP-12: pg_trgm trigram search overlay. When set, service adds
+   *  `WHERE <search_expr> % $q` + `ORDER BY similarity(search_expr, $q) DESC`
+   *  on top of the existing platform / range / tags filters. Trim happens
+   *  in the @Transform; max length 200 is a defensive cap (trigram for
+   *  queries beyond that returns noise). */
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
+  @IsString()
+  @MaxLength(200)
+  q?: string;
 }
