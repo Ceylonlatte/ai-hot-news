@@ -195,7 +195,17 @@ export class HotNewsService {
       const tagFragment = hasTagFilter
         ? Prisma.sql`AND "aiTags" @> ${tags}::text[]`
         : Prisma.empty;
-      const searchFragment = Prisma.sql`AND ${SEARCH_TEXT_SQL} % ${query}::text`;
+      // SP-12 (2026-05-22 hot-patch): use ILIKE for the WHERE clause instead
+      // of the `%` operator. Reason: prod default `pg_trgm.similarity_threshold`
+      // is 0.3, but `OpenAI` against a long row (titleZh+title+summary+aiTags+
+      // matchedKeywords) only scores ~0.29 — false negative. ILIKE is
+      // substring-match (what users intuitively want); the GIN trgm index
+      // can still accelerate it (planner picks seq-scan at 1377 rows because
+      // cost is low, but the index is ready as the table grows). The
+      // similarity() ORDER BY below is kept so the most-relevant hit still
+      // surfaces first — similarity ranking is a pure function, doesn't
+      // depend on the % threshold.
+      const searchFragment = Prisma.sql`AND ${SEARCH_TEXT_SQL} ILIKE ${'%' + query + '%'}`;
       const whereSql = Prisma.sql`
         status = 'VISIBLE'::"ContentStatus"
         AND (${Prisma.join(platformWindowFragments, ' OR ')})
@@ -250,10 +260,12 @@ export class HotNewsService {
       const tagFragment = hasTagFilter
         ? Prisma.sql`AND "aiTags" @> ${tags}::text[]`
         : Prisma.empty;
-      // SP-12: trigram search clause when ?q= is set. Same SEARCH_TEXT_SQL
-      // expression as the functional GIN index, so the planner picks it up.
+      // SP-12 (2026-05-22 hot-patch): see comment in the expand+q branch
+      // above — using ILIKE instead of `%` to avoid the 0.3 similarity
+      // threshold rejection on short queries (e.g. "OpenAI" scores 0.29).
+      // similarity() in ORDER BY below still drives "most relevant first".
       const searchFragment = hasQuery
-        ? Prisma.sql`AND ${SEARCH_TEXT_SQL} % ${query}::text`
+        ? Prisma.sql`AND ${SEARCH_TEXT_SQL} ILIKE ${'%' + query + '%'}`
         : Prisma.empty;
       const whereSql = Prisma.sql`
         status = 'VISIBLE'::"ContentStatus"
