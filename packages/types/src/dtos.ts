@@ -269,6 +269,30 @@ export interface TrendingKeywordsDto {
 }
 
 /**
+ * SP-12 (2026-05-22): top-N aiTag frequency over a configurable window,
+ * filtered to controlled namespaces (company / model / category — NOT
+ * tech, which is LLM free-form and long-tail noisy). Consumed by:
+ *  - /vault tag cloud (search page entry)
+ *  - future SP-15 keyword monitor "建议关键词" picker
+ */
+export interface TopTagDto {
+  /** Raw prefix-encoded tag (e.g. `category:OpenSource`, `company:Anthropic`) */
+  tag: string;
+  /** Number of rows containing this tag in the requested window */
+  count: number;
+}
+
+export interface TopTagsDto {
+  tags: TopTagDto[];
+  /** Window size in days (clamped server-side to 1-90) */
+  days: number;
+  /** How many tags were requested (clamped server-side to 1-50) */
+  limit: number;
+  windowStart: string;
+  windowEnd: string;
+}
+
+/**
  * SP-11 (2026-05-19): Slim sibling row attached to `HotNewsDetailDto.relatedItems`.
  *
  * Populated either from the same `groupId` (SP-7 cross-platform merge) or, when

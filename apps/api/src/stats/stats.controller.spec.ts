@@ -10,6 +10,7 @@ describe('StatsController', () => {
     getSources: ReturnType<typeof vi.fn>;
     getHeatCurve: ReturnType<typeof vi.fn>;
     getTrendingKeywords: ReturnType<typeof vi.fn>;
+    topTags: ReturnType<typeof vi.fn>;
   };
 
   beforeEach(async () => {
@@ -18,6 +19,7 @@ describe('StatsController', () => {
       getSources: vi.fn(),
       getHeatCurve: vi.fn(),
       getTrendingKeywords: vi.fn(),
+      topTags: vi.fn(),
     };
     const module: TestingModule = await Test.createTestingModule({
       controllers: [StatsController],
@@ -84,5 +86,27 @@ describe('StatsController', () => {
     serviceMock.getTrendingKeywords.mockResolvedValue(expected);
     await controller.trendingKeywords('foo');
     expect(serviceMock.getTrendingKeywords).toHaveBeenCalledWith(NaN);
+  });
+
+  describe('GET /stats/top-tags (SP-12)', () => {
+    const expected = {
+      tags: [{ tag: 'company:OpenAI', count: 150 }],
+      days: 30,
+      limit: 20,
+      windowStart: 'a',
+      windowEnd: 'b',
+    };
+
+    it('uses default days=30 and limit=20', async () => {
+      serviceMock.topTags.mockResolvedValue(expected);
+      await controller.topTags('30', '20');
+      expect(serviceMock.topTags).toHaveBeenCalledWith(30, 20);
+    });
+
+    it('passes parsed integer days + limit', async () => {
+      serviceMock.topTags.mockResolvedValue(expected);
+      await controller.topTags('7', '50');
+      expect(serviceMock.topTags).toHaveBeenCalledWith(7, 50);
+    });
   });
 });

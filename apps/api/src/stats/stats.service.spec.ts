@@ -221,4 +221,73 @@ describe('StatsService', () => {
       ]);
     });
   });
+
+  describe('topTags (SP-12)', () => {
+    it('returns tag rows from raw SQL with mapped { tag, count } shape', async () => {
+      prismaMock.$queryRaw.mockResolvedValueOnce([
+        { tag: 'company:OpenAI', count: 150n },
+        { tag: 'category:Opinion', count: 120n },
+        { tag: 'model:GPT-5', count: 80n },
+      ]);
+      const result = await service.topTags(30, 20);
+      expect(result.tags).toEqual([
+        { tag: 'company:OpenAI', count: 150 },
+        { tag: 'category:Opinion', count: 120 },
+        { tag: 'model:GPT-5', count: 80 },
+      ]);
+      expect(result.days).toBe(30);
+      expect(result.limit).toBe(20);
+    });
+
+    it('window range = days * 24h', async () => {
+      prismaMock.$queryRaw.mockResolvedValueOnce([]);
+      const result = await service.topTags(7, 10);
+      const startMs = Date.parse(result.windowStart);
+      const endMs = Date.parse(result.windowEnd);
+      expect(endMs - startMs).toBe(7 * 24 * 60 * 60 * 1000);
+      expect(result.days).toBe(7);
+      expect(result.limit).toBe(10);
+    });
+
+    it('clamps days to [1, 90]', async () => {
+      prismaMock.$queryRaw.mockResolvedValue([]);
+      const big = await service.topTags(365, 20);
+      expect(big.days).toBe(90);
+      const tiny = await service.topTags(0, 20);
+      expect(tiny.days).toBe(30); // default for invalid
+      const neg = await service.topTags(-5, 20);
+      expect(neg.days).toBe(30);
+      const nan = await service.topTags(Number.NaN, 20);
+      expect(nan.days).toBe(30);
+    });
+
+    it('clamps limit to [1, 50]', async () => {
+      prismaMock.$queryRaw.mockResolvedValue([]);
+      const big = await service.topTags(30, 999);
+      expect(big.limit).toBe(50);
+      const tiny = await service.topTags(30, 0);
+      expect(tiny.limit).toBe(20); // default for invalid
+      const nan = await service.topTags(30, Number.NaN);
+      expect(nan.limit).toBe(20);
+    });
+
+    it('returns empty tags array on DB empty', async () => {
+      prismaMock.$queryRaw.mockResolvedValueOnce([]);
+      const result = await service.topTags(30, 20);
+      expect(result.tags).toEqual([]);
+    });
+
+    it('SQL filters out tech: prefix (controlled namespaces only)', async () => {
+      prismaMock.$queryRaw.mockResolvedValueOnce([]);
+      await service.topTags(30, 20);
+      const sql = prismaMock.$queryRaw.mock.calls[0]![0]!;
+      const serialized = JSON.stringify(sql);
+      // The SQL must reference 'company:' / 'model:' / 'category:' explicitly
+      expect(serialized).toMatch(/company:/);
+      expect(serialized).toMatch(/model:/);
+      expect(serialized).toMatch(/category:/);
+      // ... and must NOT reference tech: (would be a regression)
+      expect(serialized).not.toMatch(/tech:/);
+    });
+  });
 });
