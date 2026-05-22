@@ -54,6 +54,7 @@ describe('HotNewsController', () => {
       'fold',
       undefined,
       undefined,
+      undefined,
     );
     expect(result.total).toBe(1);
     expect(result.items[0]!.sourcePlatform).toBe('RSS');
@@ -72,6 +73,7 @@ describe('HotNewsController', () => {
       'fold',
       undefined,
       undefined,
+      undefined,
     );
   });
 
@@ -83,7 +85,16 @@ describe('HotNewsController', () => {
     query.pageSize = 20;
     query.platforms = ['RSS'];
     await local.list(query);
-    expect(list).toHaveBeenCalledWith(1, 20, ['RSS'], undefined, 'fold', undefined, undefined);
+    expect(list).toHaveBeenCalledWith(
+      1,
+      20,
+      ['RSS'],
+      undefined,
+      'fold',
+      undefined,
+      undefined,
+      undefined,
+    );
   });
 
   it('passes undefined platforms when query omits it', async () => {
@@ -91,7 +102,16 @@ describe('HotNewsController', () => {
     const local = new HotNewsController({ list } as unknown as HotNewsService);
     const query = new ListHotNewsQuery();
     await local.list(query);
-    expect(list).toHaveBeenCalledWith(1, 20, undefined, undefined, 'fold', undefined, undefined);
+    expect(list).toHaveBeenCalledWith(
+      1,
+      20,
+      undefined,
+      undefined,
+      'fold',
+      undefined,
+      undefined,
+      undefined,
+    );
   });
 
   it('passes query.sort through to service.list (SP-6)', async () => {
@@ -109,6 +129,7 @@ describe('HotNewsController', () => {
       ['HACKERNEWS'],
       'heat',
       'fold',
+      undefined,
       undefined,
       undefined,
     );
@@ -130,6 +151,7 @@ describe('HotNewsController', () => {
       'expand',
       undefined,
       undefined,
+      undefined,
     );
   });
 
@@ -141,7 +163,16 @@ describe('HotNewsController', () => {
     query.pageSize = 20;
     query.range = '7d';
     await local.list(query);
-    expect(list).toHaveBeenCalledWith(1, 20, undefined, undefined, 'fold', '7d', undefined);
+    expect(list).toHaveBeenCalledWith(
+      1,
+      20,
+      undefined,
+      undefined,
+      'fold',
+      '7d',
+      undefined,
+      undefined,
+    );
   });
 
   it('passes query.tags through to service.list (SP-10)', async () => {
@@ -160,6 +191,7 @@ describe('HotNewsController', () => {
       'fold',
       undefined,
       ['category:OpenSource', 'company:Anthropic'],
+      undefined,
     );
   });
 
@@ -180,6 +212,50 @@ describe('HotNewsController', () => {
       'fold',
       '30d',
       ['category:Funding'],
+      undefined,
+    );
+  });
+
+
+  it('passes query.q through to service.list (SP-12 trigram search)', async () => {
+    const list = vi.fn().mockResolvedValue({ items: [], page: 1, pageSize: 20, total: 0 });
+    const local = new HotNewsController({ list } as unknown as HotNewsService);
+    const query = new ListHotNewsQuery();
+    query.page = 1;
+    query.pageSize = 20;
+    query.q = 'OpenAI';
+    await local.list(query);
+    expect(list).toHaveBeenCalledWith(
+      1,
+      20,
+      undefined,
+      undefined,
+      'fold',
+      undefined,
+      undefined,
+      'OpenAI',
+    );
+  });
+
+  it('passes q + range + tags combined (full SP-12 filter)', async () => {
+    const list = vi.fn().mockResolvedValue({ items: [], page: 1, pageSize: 20, total: 0 });
+    const local = new HotNewsController({ list } as unknown as HotNewsService);
+    const query = new ListHotNewsQuery();
+    query.page = 1;
+    query.pageSize = 20;
+    query.q = '智能体';
+    query.range = '30d';
+    query.tags = ['category:Research'];
+    await local.list(query);
+    expect(list).toHaveBeenCalledWith(
+      1,
+      20,
+      undefined,
+      undefined,
+      'fold',
+      '30d',
+      ['category:Research'],
+      '智能体',
     );
   });
 

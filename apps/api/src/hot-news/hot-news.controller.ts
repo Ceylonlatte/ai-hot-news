@@ -38,6 +38,7 @@ export class HotNewsController {
       query.groupMode ?? 'fold',
       query.range,
       query.tags,
+      query.q,
     );
   }
 
