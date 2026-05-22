@@ -911,6 +911,110 @@ describe('HotNewsService', () => {
     });
   });
 
+  // ─── SP-12: q (pg_trgm search overlay) ────────────────────────────────
+  describe('SP-12 q (trigram search)', () => {
+    const NOW = new Date('2026-05-22T14:00:00Z');
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+      vi.setSystemTime(NOW);
+    });
+    afterEach(() => vi.useRealTimers());
+
+    it('q=undefined: legacy Prisma findMany path stays untouched (zero regression)', async () => {
+      await service.list(1, 20, undefined, undefined, 'expand');
+      // expand path with no q → uses prisma.hotNews.findMany, not $queryRaw
+      expect(prismaMock.hotNews.findMany).toHaveBeenCalled();
+      expect(prismaMock.$queryRaw).not.toHaveBeenCalled();
+    });
+
+    it('q="OpenAI" in expand mode: switches to $queryRaw (Prisma cannot run % operator)', async () => {
+      prismaMock.$queryRaw
+        .mockResolvedValueOnce([{ id: 'hit-1' }])
+        .mockResolvedValueOnce([{ total: BigInt(1) }]);
+      prismaMock.hotNews.findMany.mockResolvedValueOnce([
+        {
+          id: 'hit-1', title: 'OpenAI releases GPT-5', titleZh: null, summary: null,
+          aiTags: ['company:OpenAI'],
+          sourceUrl: 'https://example.com/x', sourcePlatform: 'HACKERNEWS',
+          author: null,
+          publishedAt: new Date(NOW.getTime() - 3600_000),
+          crawledAt: new Date(NOW.getTime() - 3600_000),
+          heatScore: 0, heatLevel: null, groupId: null,
+          interactionData: null,
+        },
+      ]);
+
+      await service.list(1, 20, undefined, undefined, 'expand', undefined, undefined, 'OpenAI');
+
+      // q is set → must go through $queryRaw (similarity ordering)
+      expect(prismaMock.$queryRaw).toHaveBeenCalled();
+      // The first call must reference the search expression + pg_trgm % operator
+      const firstCall = prismaMock.$queryRaw.mock.calls[0]![0]!;
+      const serialized = JSON.stringify(firstCall);
+      expect(serialized).toMatch(/OpenAI/);
+      // The expression should include the canonical search columns
+      expect(serialized).toMatch(/titleZh|aiTags/);
+    });
+
+    it('q + tags: both AND-applied (q similarity AND aiTags hasEvery)', async () => {
+      prismaMock.$queryRaw
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ total: BigInt(0) }]);
+      await service.list(
+        1, 20, undefined, undefined, 'expand', '30d',
+        ['category:Release'],
+        'GPT-5',
+      );
+      const firstCall = prismaMock.$queryRaw.mock.calls[0]![0]!;
+      const serialized = JSON.stringify(firstCall);
+      expect(serialized).toMatch(/GPT-5/);
+      expect(serialized).toMatch(/category:Release/);
+    });
+
+    it('q + range=7d: 7-day window applied in search SQL', async () => {
+      prismaMock.$queryRaw
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ total: BigInt(0) }]);
+      await service.list(1, 20, undefined, undefined, 'expand', '7d', undefined, 'Claude');
+      const firstCall = prismaMock.$queryRaw.mock.calls[0]![0]!;
+      const serialized = JSON.stringify(firstCall);
+      // 7-day cutoff = NOW - 7*24h
+      const expectedCutoff = new Date(NOW.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      expect(serialized).toMatch(/Claude/);
+      expect(serialized).toContain(expectedCutoff);
+    });
+
+    it('q in fold mode: also routes through $queryRaw (existing fold path absorbs search clause)', async () => {
+      prismaMock.$queryRaw
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ total: BigInt(0) }]);
+      await service.list(1, 20, undefined, undefined, 'fold', undefined, undefined, 'Anthropic');
+      expect(prismaMock.$queryRaw).toHaveBeenCalled();
+      const firstCall = prismaMock.$queryRaw.mock.calls[0]![0]!;
+      expect(JSON.stringify(firstCall)).toMatch(/Anthropic/);
+    });
+
+    it('q="" (empty string after trim) — treated as no-search, legacy path', async () => {
+      // Empty string should be impossible from DTO (Transform trim returns
+      // empty), but defensively the service must not call $queryRaw if
+      // q is undefined OR empty.
+      await service.list(1, 20, undefined, undefined, 'expand', undefined, undefined, '');
+      expect(prismaMock.$queryRaw).not.toHaveBeenCalled();
+      expect(prismaMock.hotNews.findMany).toHaveBeenCalled();
+    });
+
+    it('q with similarity ORDER BY: SQL contains similarity() function call', async () => {
+      prismaMock.$queryRaw
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ total: BigInt(0) }]);
+      await service.list(1, 20, undefined, undefined, 'expand', undefined, undefined, 'RAG');
+      const firstCall = prismaMock.$queryRaw.mock.calls[0]![0]!;
+      const serialized = JSON.stringify(firstCall);
+      expect(serialized).toMatch(/similarity/);
+    });
+  });
+
   // ─── SP-11: detail() ─────────────────────────────────────────────────────
   describe('detail', () => {
     const baseRow = {
