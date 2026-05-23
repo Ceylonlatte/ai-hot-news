@@ -2,9 +2,9 @@ import { type NextRequest } from 'next/server';
 import { proxyToApi } from '@/lib/proxy';
 
 // SP-15 PR-B BFF: GET /api/keywords/:id/hits?limit&offset
-// Forwards query string + cookie to upstream NestJS so JwtAuthGuard
-// authenticates. Pagination params are passed through verbatim — the
-// upstream controller does the clamp/validation.
+// proxyToApi auto-appends req.nextUrl.searchParams to the apiPath — we
+// MUST NOT also append `req.nextUrl.search` here or the upstream sees
+// `?limit=3?limit=3` and NestJS @Query parses "3?limit=3" → NaN.
 export const dynamic = 'force-dynamic';
 
 export async function GET(
@@ -12,6 +12,5 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  const qs = req.nextUrl.search;
-  return proxyToApi(req, `/keywords/${encodeURIComponent(id)}/hits${qs}`);
+  return proxyToApi(req, `/keywords/${encodeURIComponent(id)}/hits`);
 }
