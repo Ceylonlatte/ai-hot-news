@@ -1,12 +1,15 @@
 import type {
+  CreateKeywordDto,
   HeatCurveDto,
   HeatHistoryDto,
   HotNewsDetailDto,
   HotNewsListResponseDto,
+  KeywordMonitorDto,
   StatsSourcesDto,
   StatsTodayDto,
   TopTagsDto,
   TrendingKeywordsDto,
+  UpdateKeywordDto,
 } from '@ai-hot-news/types';
 
 const API_URL = process.env.API_URL ?? 'http://localhost:3001';
@@ -164,4 +167,50 @@ export function fetchHeatHistory(
   return fetchJson<HeatHistoryDto>(
     `/hot-news/${encodeURIComponent(id)}/heat-history?hours=${hours}`,
   );
+}
+
+// SP-15 (2026-05-23): client-side keyword mutation helpers — go through the
+// BFF (browser can't reach internal API_URL) so the ahn_session cookie
+// auto-attaches. The matching server-side list fetcher (fetchKeywordsList)
+// lives in lib/keywords-server.ts so that this file stays free of
+// next/headers imports and remains tree-shakeable into client bundles.
+export async function createKeywordClient(
+  payload: CreateKeywordDto,
+): Promise<KeywordMonitorDto> {
+  const res = await fetch('/api/keywords', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new ApiError(res.status, body || res.statusText);
+  }
+  return (await res.json()) as KeywordMonitorDto;
+}
+
+export async function updateKeywordClient(
+  id: string,
+  payload: UpdateKeywordDto,
+): Promise<KeywordMonitorDto> {
+  const res = await fetch(`/api/keywords/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new ApiError(res.status, body || res.statusText);
+  }
+  return (await res.json()) as KeywordMonitorDto;
+}
+
+export async function deleteKeywordClient(id: string): Promise<void> {
+  const res = await fetch(`/api/keywords/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new ApiError(res.status, body || res.statusText);
+  }
 }

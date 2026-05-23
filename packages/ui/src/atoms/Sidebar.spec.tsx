@@ -3,23 +3,37 @@ import { render, screen } from '@testing-library/react';
 import { Sidebar } from './Sidebar';
 import type { ComponentType, ReactNode } from 'react';
 
-const NavLink: ComponentType<{
+type NavLinkMockProps = {
   href: string;
   children?: ReactNode;
   className?: string;
   'aria-current'?: 'page';
-}> = ({ href, children, className, 'aria-current': ariaCurrent }) => (
-  <a href={href} data-testid={`link-${href}`} className={className} aria-current={ariaCurrent}>
+  'data-testid'?: string;
+};
+
+const NavLink = (({
+  href,
+  children,
+  className,
+  'aria-current': ariaCurrent,
+  'data-testid': testIdOverride,
+}: NavLinkMockProps) => (
+  <a
+    href={href}
+    data-testid={testIdOverride ?? `link-${href}`}
+    className={className}
+    aria-current={ariaCurrent}
+  >
     {children}
   </a>
-);
+)) as ComponentType<NavLinkMockProps>;
 
 describe('Sidebar', () => {
   it('renders all 5 nav items via LinkComponent', () => {
     render(<Sidebar currentPath="/news" LinkComponent={NavLink} />);
     expect(screen.getByTestId('link-/')).toBeInTheDocument();
     expect(screen.getByTestId('link-/news')).toBeInTheDocument();
-    expect(screen.getByTestId('link-/radar')).toBeInTheDocument();
+    expect(screen.getByTestId('link-/keywords')).toBeInTheDocument();
     expect(screen.getByTestId('link-/trends')).toBeInTheDocument();
     expect(screen.getByTestId('link-/vault')).toBeInTheDocument();
   });
@@ -28,8 +42,8 @@ describe('Sidebar', () => {
     render(<Sidebar currentPath="/news" LinkComponent={NavLink} />);
     const newsLink = screen.getByTestId('link-/news');
     expect(newsLink.getAttribute('aria-current')).toBe('page');
-    const radarLink = screen.getByTestId('link-/radar');
-    expect(radarLink.getAttribute('aria-current')).toBeNull();
+    const keywordsLink = screen.getByTestId('link-/keywords');
+    expect(keywordsLink.getAttribute('aria-current')).toBeNull();
   });
 
   it('falls back to / when currentPath is empty string', () => {
@@ -70,16 +84,35 @@ describe('Sidebar', () => {
     expect(screen.getByText('Keyword Radar')).toBeInTheDocument();
   });
 
-  it('shows notif badge on /radar when notifCount > 0 (defaults to 3)', () => {
-    render(<Sidebar currentPath="/" LinkComponent={NavLink} />);
-    const radarLink = screen.getByTestId('link-/radar');
-    expect(radarLink.textContent).toMatch(/3/);
+  it('shows notif badge on /keywords ONLY when signed in (notifCount > 0)', () => {
+    render(
+      <Sidebar
+        currentPath="/"
+        LinkComponent={NavLink}
+        currentUser={{ username: 'admin', role: 'ADMIN' }}
+      />,
+    );
+    const keywordsLink = screen.getByTestId('link-/keywords');
+    expect(keywordsLink.textContent).toMatch(/3/);
   });
 
-  it('hides notif badge on /radar when notifCount = 0', () => {
-    render(<Sidebar currentPath="/" LinkComponent={NavLink} notifCount={0} />);
-    const radarLink = screen.getByTestId('link-/radar');
-    expect(radarLink.querySelector('span.bg-ink')).toBeNull();
+  it('hides notif badge when signed-out (anonymous user)', () => {
+    render(<Sidebar currentPath="/" LinkComponent={NavLink} />);
+    const keywordsLink = screen.getByTestId('link-/keywords');
+    expect(keywordsLink.querySelector('span.bg-ink')).toBeNull();
+  });
+
+  it('hides notif badge on /keywords when notifCount = 0', () => {
+    render(
+      <Sidebar
+        currentPath="/"
+        LinkComponent={NavLink}
+        notifCount={0}
+        currentUser={{ username: 'admin', role: 'ADMIN' }}
+      />,
+    );
+    const keywordsLink = screen.getByTestId('link-/keywords');
+    expect(keywordsLink.querySelector('span.bg-ink')).toBeNull();
   });
 
   it('renders system status panel with 3 services', () => {
@@ -90,9 +123,58 @@ describe('Sidebar', () => {
     expect(screen.getByText('推送服务')).toBeInTheDocument();
   });
 
-  it('renders user card with avatar + name + tier', () => {
+  it('SP-15: shows login link when signed out (currentUser=null)', () => {
     render(<Sidebar currentPath="/" LinkComponent={NavLink} />);
-    expect(screen.getByText('张研究员')).toBeInTheDocument();
-    expect(screen.getByText('Pro 用户')).toBeInTheDocument();
+    expect(screen.getByTestId('sidebar-login')).toBeInTheDocument();
+    expect(screen.getByText('游客')).toBeInTheDocument();
+    expect(screen.getByText('点击登录')).toBeInTheDocument();
+    expect(screen.queryByTestId('sidebar-logout')).toBeNull();
+  });
+
+  it('SP-15: shows username + role + logout form when signed in', () => {
+    render(
+      <Sidebar
+        currentPath="/"
+        LinkComponent={NavLink}
+        currentUser={{ username: 'admin', role: 'ADMIN' }}
+      />,
+    );
+    expect(screen.getByText('admin')).toBeInTheDocument();
+    expect(screen.getByText('ADMIN')).toBeInTheDocument();
+    const logoutBtn = screen.getByTestId('sidebar-logout');
+    expect(logoutBtn).toBeInTheDocument();
+    const form = logoutBtn.closest('form');
+    expect(form?.getAttribute('action')).toBe('/api/auth/logout');
+    expect(form?.getAttribute('method')).toBe('post');
+    expect(screen.queryByTestId('sidebar-login')).toBeNull();
+  });
+
+  it('SP-15: customizes loginPath + logoutPath overrides', () => {
+    const { rerender } = render(
+      <Sidebar
+        currentPath="/"
+        LinkComponent={NavLink}
+        loginPath="/custom-login"
+      />,
+    );
+    const loginLink = screen.getByTestId('sidebar-login');
+    expect(loginLink.getAttribute('href')).toBe('/custom-login');
+
+    rerender(
+      <Sidebar
+        currentPath="/"
+        LinkComponent={NavLink}
+        currentUser={{ username: 'admin', role: 'ADMIN' }}
+        logoutPath="/custom-logout"
+      />,
+    );
+    const form = screen.getByTestId('sidebar-logout').closest('form');
+    expect(form?.getAttribute('action')).toBe('/custom-logout');
+  });
+
+  it('SP-15: drops legacy "张研究员" / "Pro 用户" hard-code', () => {
+    render(<Sidebar currentPath="/" LinkComponent={NavLink} />);
+    expect(screen.queryByText('张研究员')).toBeNull();
+    expect(screen.queryByText('Pro 用户')).toBeNull();
   });
 });
