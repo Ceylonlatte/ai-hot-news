@@ -43,6 +43,9 @@ describe('KeywordsService', () => {
     enabled: true,
     createdAt: new Date('2026-05-23T10:00:00Z'),
     updatedAt: new Date('2026-05-23T10:00:00Z'),
+    // SP-15: Prisma include _count returns this shape; defaults to 0
+    // so tests that don't care about hit count still pass.
+    _count: { hits: 0 },
     ...overrides,
   });
 
@@ -66,6 +69,18 @@ describe('KeywordsService', () => {
       expect(typeof result.items[0]!.createdAt).toBe('string');
       expect(result.items[0]!.createdAt).toBe('2026-05-23T10:00:00.000Z');
     });
+
+    it('SP-15: includes _count.hits AND maps to hitCount in DTO', async () => {
+      prismaMock.keywordMonitor.findMany.mockResolvedValue([
+        rowFactory({ id: 'a', _count: { hits: 42 } }),
+        rowFactory({ id: 'b', _count: { hits: 0 } }),
+      ]);
+      const result = await service.list();
+      const args = prismaMock.keywordMonitor.findMany.mock.calls[0]![0]!;
+      expect(args.include).toEqual({ _count: { select: { hits: true } } });
+      expect(result.items[0]!.hitCount).toBe(42);
+      expect(result.items[1]!.hitCount).toBe(0);
+    });
   });
 
   describe('get', () => {
@@ -80,6 +95,16 @@ describe('KeywordsService', () => {
       expect(result.id).toBe('kw_99');
       const args = prismaMock.keywordMonitor.findFirst.mock.calls[0]![0]!;
       expect(args.where).toEqual({ id: 'kw_99', userId: 'usr-admin' });
+    });
+
+    it('SP-15: returns hitCount via _count.hits include', async () => {
+      prismaMock.keywordMonitor.findFirst.mockResolvedValue(
+        rowFactory({ id: 'kw_99', _count: { hits: 17 } }),
+      );
+      const result = await service.get('kw_99');
+      expect(result.hitCount).toBe(17);
+      const args = prismaMock.keywordMonitor.findFirst.mock.calls[0]![0]!;
+      expect(args.include).toEqual({ _count: { select: { hits: true } } });
     });
   });
 
@@ -178,6 +203,18 @@ describe('KeywordsService', () => {
       await expect(
         service.update('kw_1', { keyword: 'taken' }),
       ).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('SP-15: update DTO carries fresh hitCount via _count.hits', async () => {
+      prismaMock.keywordMonitor.findFirst.mockResolvedValue({ id: 'kw_1' });
+      prismaMock.keywordMonitor.update.mockResolvedValue(
+        rowFactory({ enabled: false, _count: { hits: 99 } }),
+      );
+      const result = await service.update('kw_1', { enabled: false });
+      expect(result.hitCount).toBe(99);
+      expect(result.enabled).toBe(false);
+      const args = prismaMock.keywordMonitor.update.mock.calls[0]![0]!;
+      expect(args.include).toEqual({ _count: { select: { hits: true } } });
     });
   });
 

@@ -306,6 +306,9 @@ export interface KeywordMonitorDto {
   enabled: boolean;
   createdAt: string;
   updatedAt: string;
+  /** SP-15: total KeywordHit count for this monitor. Always present on
+   *  list/get responses; recomputed on every read via Prisma _count. */
+  hitCount: number;
 }
 
 export interface CreateKeywordDto {

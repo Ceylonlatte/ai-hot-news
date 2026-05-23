@@ -41,12 +41,16 @@ export class KeywordsService {
 
   async list(): Promise<KeywordListResponseDto> {
     const prisma = getPrisma();
+    // SP-15: include _count.hits so the UI list shows hit count per row
+    // without a second round-trip. Prisma generates one LEFT JOIN +
+    // GROUP BY query — cheaper than N+1 even at 100 keywords.
     const rows = await prisma.keywordMonitor.findMany({
       where: { userId: ADMIN_USER_ID },
       orderBy: { createdAt: 'desc' },
+      include: { _count: { select: { hits: true } } },
     });
     return {
-      items: rows.map((r) => toDto(r)),
+      items: rows.map((r) => toDto(r, r._count.hits)),
       total: rows.length,
     };
   }
@@ -55,9 +59,10 @@ export class KeywordsService {
     const prisma = getPrisma();
     const row = await prisma.keywordMonitor.findFirst({
       where: { id, userId: ADMIN_USER_ID },
+      include: { _count: { select: { hits: true } } },
     });
     if (!row) throw new NotFoundException(`Keyword ${id} not found`);
-    return toDto(row);
+    return toDto(row, row._count.hits);
   }
 
   async create(dto: CreateKeywordDto): Promise<KeywordMonitorDto> {
@@ -132,8 +137,9 @@ export class KeywordsService {
       const updated = await prisma.keywordMonitor.update({
         where: { id },
         data,
+        include: { _count: { select: { hits: true } } },
       });
-      return toDto(updated);
+      return toDto(updated, updated._count.hits);
     } catch (err) {
       if (
         err instanceof Prisma.PrismaClientKnownRequestError &&
@@ -177,7 +183,7 @@ type PrismaRow = {
   updatedAt: Date;
 };
 
-function toDto(row: PrismaRow): KeywordMonitorDto {
+function toDto(row: PrismaRow, hitCount = 0): KeywordMonitorDto {
   return {
     id: row.id,
     keyword: row.keyword,
@@ -190,6 +196,7 @@ function toDto(row: PrismaRow): KeywordMonitorDto {
     enabled: row.enabled,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
+    hitCount,
   };
 }
 

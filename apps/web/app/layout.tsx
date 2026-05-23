@@ -3,6 +3,7 @@ import { headers } from 'next/headers';
 import Link from 'next/link';
 import type { ComponentProps, ComponentType, ReactNode } from 'react';
 import { Sidebar, type NavLinkProps } from '@ai-hot-news/ui';
+import { getCurrentUser } from '@/lib/auth';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -21,6 +22,10 @@ const NextLinkAdapter: ComponentType<NavLinkProps> = ({ href, children, classNam
 export default async function RootLayout({ children }: { children: ReactNode }) {
   const rawPath = (await headers()).get('x-pathname') ?? '/';
   const currentPath = rawPath !== '/' && rawPath.endsWith('/') ? rawPath.slice(0, -1) : rawPath;
+  // SP-15: thread current user into sidebar so user block / logout form +
+  // notif badge can react to auth state. RSC fetches once per request —
+  // upstream /auth/me is a 1ms intra-docker hop.
+  const currentUser = await getCurrentUser();
 
   return (
     <html lang="zh-CN">
@@ -29,7 +34,11 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         <div className="aurora-blob ab-2" aria-hidden="true" />
         <div className="aurora-blob ab-3" aria-hidden="true" />
         <div className="relative z-10 flex h-screen overflow-hidden">
-          <Sidebar currentPath={currentPath} LinkComponent={NextLinkAdapter} />
+          <Sidebar
+            currentPath={currentPath}
+            LinkComponent={NextLinkAdapter}
+            currentUser={currentUser}
+          />
           <main
             data-testid="app-main"
             className="flex-1 min-w-0 flex flex-col overflow-hidden relative z-[1]"
