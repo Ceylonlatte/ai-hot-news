@@ -32,12 +32,35 @@ export async function proxyToApi(
   const qs = req.nextUrl.searchParams.toString();
   const upstream = `${API_URL}${apiPath}${qs ? `?${qs}` : ''}`;
 
+  // SP-13 (2026-05-23): forward incoming Cookie header upstream so
+  // /api/auth/me and other guarded endpoints can read the JWT cookie.
+  // No filtering — cookie-parser on the API side only consumes ahn_session,
+  // any unknown cookie is ignored.
+  const forwardCookies = req.headers.get('cookie');
+  const forwardMethod = req.method.toUpperCase();
+  const init: RequestInit = {
+    method: forwardMethod,
+    cache: 'no-store',
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    headers: forwardCookies ? { cookie: forwardCookies } : undefined,
+  };
+  // SP-13: forward body for POST/PUT/PATCH/DELETE (login / logout / future
+  // keyword CRUD). GET / HEAD skip body.
+  if (!['GET', 'HEAD'].includes(forwardMethod)) {
+    const body = await req.text();
+    if (body) {
+      init.body = body;
+      const contentType = req.headers.get('content-type');
+      init.headers = {
+        ...(init.headers as Record<string, string> | undefined),
+        ...(contentType ? { 'content-type': contentType } : {}),
+      };
+    }
+  }
+
   let res: Response;
   try {
-    res = await fetch(upstream, {
-      cache: 'no-store',
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-    });
+    res = await fetch(upstream, init);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'upstream fetch failed';
     return NextResponse.json(
@@ -47,11 +70,19 @@ export async function proxyToApi(
   }
 
   const body = await res.text();
+  // SP-13: forward Set-Cookie from upstream so /api/auth/login's session
+  // cookie reaches the browser. Without this the cookie would terminate
+  // at the Next.js BFF.
+  const headers: Record<string, string> = {
+    'content-type': res.headers.get('content-type') ?? 'application/json',
+    'cache-control': 'no-store',
+  };
+  const setCookie = res.headers.get('set-cookie');
+  if (setCookie) {
+    headers['set-cookie'] = setCookie;
+  }
   return new NextResponse(body, {
     status: res.status,
-    headers: {
-      'content-type': res.headers.get('content-type') ?? 'application/json',
-      'cache-control': 'no-store',
-    },
+    headers,
   });
 }
