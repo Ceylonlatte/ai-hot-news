@@ -43,10 +43,10 @@ export async function processHeatRefreshJob(cfg: HeatConfig): Promise<void> {
   let updated = 0;
   for (const row of rows) {
     const weight = weightByPlatform.get(row.sourcePlatform) ?? 0.5;
-    const score = computeHeatScore(row, weight, now, cfg);
+    const { heatScore, engagementScore } = computeHeatScore(row, weight, now, cfg);
     await prisma.hotNews.update({
       where: { id: row.id },
-      data: { heatScore: score },
+      data: { heatScore, engagementScore },
     });
     updated += 1;
   }

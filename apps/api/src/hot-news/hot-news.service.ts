@@ -119,9 +119,12 @@ export class HotNewsService {
       ...(hasTagFilter ? { aiTags: { hasEvery: tags } } : {}),
     };
 
+    // SP-6 follow-up (2026-05-23): sort=heat 用 engagementScore 而非 heatScore，
+    // 让 ?range=7d/30d 切换时真正按 range 内"绝对热"排序（不被 48h time decay
+    // 主导）。heatScore + heatLevel 仍按 SP-6 原 SP-6 V1 语义服务 dashboard 等。
     const orderBy: Prisma.HotNewsOrderByWithRelationInput[] =
       sort === 'heat'
-        ? [{ heatScore: 'desc' }, { publishedAt: 'desc' }]
+        ? [{ engagementScore: 'desc' }, { publishedAt: 'desc' }]
         : [{ publishedAt: 'desc' }];
 
     // ───────────────────────────────────────────────────────────────────
@@ -274,7 +277,8 @@ export class HotNewsService {
         ${searchFragment}
       `;
 
-      // Order expression. For heat sort: heatScore desc, publishedAt desc.
+      // Order expression. For heat sort: engagementScore desc, publishedAt desc
+      // (SP-6 follow-up 2026-05-23 — see expand path comment for rationale).
       // For time sort: publishedAt desc.
       // SP-12: when ?q= is set, similarity becomes the PRIMARY sort key —
       // we want "most relevant" first, then heat/time as tiebreaker. The
@@ -284,15 +288,15 @@ export class HotNewsService {
       // similarity score carried up from the CTE.
       const orderSql = hasQuery
         ? sort === 'heat'
-          ? Prisma.sql`ORDER BY COALESCE("groupId", id), similarity(${SEARCH_TEXT_SQL}, ${query}::text) DESC, "heatScore" DESC, "publishedAt" DESC`
+          ? Prisma.sql`ORDER BY COALESCE("groupId", id), similarity(${SEARCH_TEXT_SQL}, ${query}::text) DESC, "engagementScore" DESC, "publishedAt" DESC`
           : Prisma.sql`ORDER BY COALESCE("groupId", id), similarity(${SEARCH_TEXT_SQL}, ${query}::text) DESC, "publishedAt" DESC`
         : sort === 'heat'
-          ? Prisma.sql`ORDER BY COALESCE("groupId", id), "heatScore" DESC, "publishedAt" DESC`
+          ? Prisma.sql`ORDER BY COALESCE("groupId", id), "engagementScore" DESC, "publishedAt" DESC`
           : Prisma.sql`ORDER BY COALESCE("groupId", id), "publishedAt" DESC`;
       const finalOrderSql = hasQuery
         ? Prisma.sql`ORDER BY rep_sim DESC, rep_published DESC`
         : sort === 'heat'
-          ? Prisma.sql`ORDER BY rep_heat DESC, rep_published DESC`
+          ? Prisma.sql`ORDER BY rep_engagement DESC, rep_published DESC`
           : Prisma.sql`ORDER BY rep_published DESC`;
 
       // The CTE picks one representative per bucket via DISTINCT ON + the
@@ -300,6 +304,8 @@ export class HotNewsService {
       // among themselves and applies LIMIT/OFFSET for accurate pagination.
       // SP-12: when q is set, additionally carry the per-rep similarity
       // score (`rep_sim`) into the outer query for final ordering.
+      // SP-6 follow-up: carry `rep_engagement` instead of `rep_heat` so
+      // `finalOrderSql` (heat path) sorts representatives by engagementScore.
       const repSimColumn = hasQuery
         ? Prisma.sql`, similarity(${SEARCH_TEXT_SQL}, ${query}::text) AS rep_sim`
         : Prisma.empty;
@@ -309,7 +315,7 @@ export class HotNewsService {
         WITH reps AS (
           SELECT DISTINCT ON (COALESCE("groupId", id))
             id,
-            "heatScore" AS rep_heat,
+            "engagementScore" AS rep_engagement,
             "publishedAt" AS rep_published
             ${repSimColumn}
           FROM hot_news

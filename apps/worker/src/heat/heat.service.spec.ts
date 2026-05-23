@@ -28,8 +28,8 @@ const CFG: HeatConfig = {
 };
 
 describe('computeHeatScore', () => {
-  it('returns 0 for RSS rows (early return)', () => {
-    const score = computeHeatScore(
+  it('returns {heatScore:0, engagementScore:0} for RSS rows (early return)', () => {
+    const result = computeHeatScore(
       {
         sourcePlatform: 'RSS',
         publishedAt: new Date('2026-05-09T12:00:00Z'),
@@ -39,11 +39,11 @@ describe('computeHeatScore', () => {
       new Date('2026-05-09T13:00:00Z'),
       CFG,
     );
-    expect(score).toBe(0);
+    expect(result).toEqual({ heatScore: 0, engagementScore: 0 });
   });
 
   it('time decay: 1h old HN row, no interaction → timeScore weighted + sourceScore', () => {
-    const score = computeHeatScore(
+    const { heatScore } = computeHeatScore(
       {
         sourcePlatform: 'HACKERNEWS',
         publishedAt: new Date('2026-05-09T12:00:00Z'),
@@ -53,11 +53,11 @@ describe('computeHeatScore', () => {
       new Date('2026-05-09T13:00:00Z'),
       CFG,
     );
-    expect(score).toBeCloseTo(36.97, 1);
+    expect(heatScore).toBeCloseTo(36.97, 1);
   });
 
   it('time decay: 48h old HN row → timeScore ~e^-1 weighted', () => {
-    const score = computeHeatScore(
+    const { heatScore } = computeHeatScore(
       {
         sourcePlatform: 'HACKERNEWS',
         publishedAt: new Date('2026-05-07T13:00:00Z'),
@@ -67,11 +67,11 @@ describe('computeHeatScore', () => {
       new Date('2026-05-09T13:00:00Z'),
       CFG,
     );
-    expect(score).toBeCloseTo(21.7, 0);
+    expect(heatScore).toBeCloseTo(21.7, 0);
   });
 
-  it('sourceWeight 1.0 → sourceScore contributes +12.5 vs weight=0.5', () => {
-    const score05 = computeHeatScore(
+  it('sourceWeight 1.0 → sourceScore contributes +12.5 vs weight=0.5 (heatScore)', () => {
+    const r05 = computeHeatScore(
       {
         sourcePlatform: 'HACKERNEWS',
         publishedAt: new Date('2026-05-09T12:00:00Z'),
@@ -81,7 +81,7 @@ describe('computeHeatScore', () => {
       new Date('2026-05-09T13:00:00Z'),
       CFG,
     );
-    const score10 = computeHeatScore(
+    const r10 = computeHeatScore(
       {
         sourcePlatform: 'HACKERNEWS',
         publishedAt: new Date('2026-05-09T12:00:00Z'),
@@ -91,11 +91,13 @@ describe('computeHeatScore', () => {
       new Date('2026-05-09T13:00:00Z'),
       CFG,
     );
-    expect(score10 - score05).toBeCloseTo(12.5, 1);
+    expect(r10.heatScore - r05.heatScore).toBeCloseTo(12.5, 1);
+    // SP-6 follow-up: engagementScore 也跟 sourceWeight 线性相关（不含 time decay）
+    expect(r10.engagementScore - r05.engagementScore).toBeCloseTo(12.5, 1);
   });
 
   it('full case: HN row score=100/comments=20, age=24h, weight=0.5', () => {
-    const score = computeHeatScore(
+    const { heatScore } = computeHeatScore(
       {
         sourcePlatform: 'HACKERNEWS',
         publishedAt: new Date('2026-05-08T13:00:00Z'),
@@ -105,7 +107,48 @@ describe('computeHeatScore', () => {
       new Date('2026-05-09T13:00:00Z'),
       CFG,
     );
-    expect(score).toBeCloseTo(55.5, 0);
+    expect(heatScore).toBeCloseTo(55.5, 0);
+  });
+
+  // SP-6 follow-up (2026-05-23): engagementScore 不依赖 publishedAt — 同 row
+  // 24h 后查询应返回同样 engagementScore，但 heatScore 因 time decay 显著降低。
+  it('engagementScore is time-independent (24h difference → same engagementScore)', () => {
+    const input = {
+      sourcePlatform: 'HACKERNEWS' as const,
+      publishedAt: new Date('2026-05-08T13:00:00Z'),
+      interactionData: { score: 100, comments: 20 },
+    };
+    const r24h = computeHeatScore(
+      input,
+      0.5,
+      new Date('2026-05-09T13:00:00Z'), // 24h after publish
+      CFG,
+    );
+    const r48h = computeHeatScore(
+      input,
+      0.5,
+      new Date('2026-05-10T13:00:00Z'), // 48h after publish
+      CFG,
+    );
+    expect(r48h.engagementScore).toBeCloseTo(r24h.engagementScore, 5);
+    // heatScore drops because timeScore decayed
+    expect(r48h.heatScore).toBeLessThan(r24h.heatScore);
+  });
+
+  it('engagementScore = heatScore minus the time-decay component (×0.25)', () => {
+    const result = computeHeatScore(
+      {
+        sourcePlatform: 'HACKERNEWS',
+        publishedAt: new Date('2026-05-09T12:00:00Z'),
+        interactionData: { score: 100, comments: 20 },
+      },
+      0.5,
+      new Date('2026-05-09T13:00:00Z'),
+      CFG,
+    );
+    // 1h old → timeScore = exp(-1/48) * 100 ≈ 97.94
+    const expectedTimeContrib = Math.exp(-1 / 48) * 100 * 0.25;
+    expect(result.heatScore - result.engagementScore).toBeCloseTo(expectedTimeContrib, 1);
   });
 });
 
@@ -121,7 +164,7 @@ describe('HeatService.run', () => {
 
   afterEach(() => vi.useRealTimers());
 
-  it('SELECTs the row + sourceConfig.weight, then UPDATEs heatScore only (not heatLevel)', async () => {
+  it('SELECTs the row + sourceConfig.weight, then UPDATEs heatScore + engagementScore (not heatLevel)', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-05-09T13:00:00Z'));
 
@@ -143,6 +186,7 @@ describe('HeatService.run', () => {
     const updateArgs = mockPrisma.hotNews.update.mock.calls[0]![0]!;
     expect(updateArgs.where).toEqual({ id: 'h1' });
     expect(updateArgs.data.heatScore).toBeCloseTo(55.5, 0);
+    expect(updateArgs.data.engagementScore).toBeGreaterThan(0); // SP-6 follow-up
     expect(updateArgs.data.heatLevel).toBeUndefined();
   });
 
@@ -168,5 +212,7 @@ describe('HeatService.run', () => {
 
     const updateArgs = mockPrisma.hotNews.update.mock.calls[0]![0]!;
     expect(updateArgs.data.heatScore).toBeCloseTo(36.97, 1);
+    // SP-6 follow-up: engagementScore = source 0.5 × 100 × 0.25 = 12.5 (interaction=0, cross=0)
+    expect(updateArgs.data.engagementScore).toBeCloseTo(12.5, 1);
   });
 });

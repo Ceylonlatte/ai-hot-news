@@ -211,13 +211,16 @@ describe('HotNewsService', () => {
       vi.useRealTimers();
     });
 
-    it('uses orderBy [heatScore desc, publishedAt desc] when sort=heat', async () => {
+    it('uses orderBy [engagementScore desc, publishedAt desc] when sort=heat (SP-6 follow-up)', async () => {
       vi.useFakeTimers();
       vi.setSystemTime(new Date('2026-05-10T12:00:00Z'));
       await service.list(1, 20, ['HACKERNEWS', 'REDDIT'], 'heat', 'expand');
       const findManyArgs = prismaMock.hotNews.findMany.mock.calls[0]![0]!;
+      // sort=heat now drives off engagementScore (time-decay-free) so
+      // ?range=7d/30d returns content-relative ranking instead of getting
+      // dominated by the 48h time-decay window.
       expect(findManyArgs.orderBy).toEqual([
-        { heatScore: 'desc' },
+        { engagementScore: 'desc' },
         { publishedAt: 'desc' },
       ]);
       vi.useRealTimers();
