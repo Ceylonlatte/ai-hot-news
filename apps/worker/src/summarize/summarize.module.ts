@@ -12,6 +12,8 @@ import { REDIS_CONNECTION } from '../crawl/queue.provider';
 import { RedisModule } from '../redis/redis.module';
 import { EmbedModule } from '../embed/embed.module';
 import { EMBED_QUEUE } from '../embed/embed.queue';
+import { KeywordMatchModule } from '../keywords/keyword-match.module';
+import { KEYWORD_MATCH_QUEUE } from '../keywords/keyword-match.queue';
 import { SummarizeService } from './summarize.service';
 import {
   SUMMARY_QUEUE,
@@ -27,9 +29,12 @@ const STRATEGY_TOKEN = Symbol('SUMMARIZATION_STRATEGY');
 
 @Module({
   // SP-7: depend on EmbedModule so SummarizeService can inject EMBED_QUEUE.
-  // RedisModule provider is dedupe'd by Nest across both imports — one
-  // shared IORedis connection survives.
-  imports: [RedisModule, EmbedModule],
+  // SP-16: depend on KeywordMatchModule so SummarizeService can inject
+  // KEYWORD_MATCH_QUEUE — pushed after summary write so the matcher sees
+  // final titleZh + summary fields.
+  // RedisModule provider is dedupe'd by Nest across all three imports —
+  // one shared IORedis connection survives.
+  imports: [RedisModule, EmbedModule, KeywordMatchModule],
   providers: [
     summaryQueueProvider,
     {
@@ -38,9 +43,12 @@ const STRATEGY_TOKEN = Symbol('SUMMARIZATION_STRATEGY');
     },
     {
       provide: SummarizeService,
-      useFactory: (strategy: SummarizationStrategy, embedQueue: Queue) =>
-        new SummarizeService(strategy, embedQueue),
-      inject: [STRATEGY_TOKEN, EMBED_QUEUE],
+      useFactory: (
+        strategy: SummarizationStrategy,
+        embedQueue: Queue,
+        keywordMatchQueue: Queue,
+      ) => new SummarizeService(strategy, embedQueue, keywordMatchQueue),
+      inject: [STRATEGY_TOKEN, EMBED_QUEUE, KEYWORD_MATCH_QUEUE],
     },
     {
       provide: SUMMARY_WORKER,

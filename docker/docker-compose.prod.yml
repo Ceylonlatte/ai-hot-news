@@ -100,6 +100,11 @@ services:
       CLEANUP_HOT_NEWS_DAYS: ${CLEANUP_HOT_NEWS_DAYS:-30}
       CLEANUP_HEAT_HISTORY_DAYS: ${CLEANUP_HEAT_HISTORY_DAYS:-7}
       CLEANUP_CRON_HOUR_UTC: ${CLEANUP_CRON_HOUR_UTC:-3}
+      # SP-16 keyword detection: worker concurrency for keyword-match queue +
+      # boot backstop scan window (days). Defaults 2 / 30 sized for the
+      # 1.4k visible row, ~10 keyword scale. SP-15 UI doesn't depend on these.
+      KEYWORD_MATCH_CONCURRENCY: ${KEYWORD_MATCH_CONCURRENCY:-2}
+      KEYWORD_MATCH_BACKSTOP_DAYS: ${KEYWORD_MATCH_BACKSTOP_DAYS:-30}
     depends_on:
       postgres:
         condition: service_healthy

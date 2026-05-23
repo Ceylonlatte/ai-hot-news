@@ -44,12 +44,15 @@ const baseRow = {
 describe('SummarizeService.run', () => {
   let service: SummarizeService;
   let embedQueue: { add: ReturnType<typeof vi.fn> };
+  let keywordMatchQueue: { add: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
     embedQueue = { add: vi.fn().mockResolvedValue(undefined) };
+    keywordMatchQueue = { add: vi.fn().mockResolvedValue(undefined) };
     service = new SummarizeService(
       new SummarizeAllVisibleStrategy(),
       embedQueue as unknown as Queue,
+      keywordMatchQueue as unknown as Queue,
     );
     mockPrisma.hotNews.findUnique.mockReset();
     mockPrisma.hotNews.update.mockReset();
@@ -208,5 +211,43 @@ describe('SummarizeService.run', () => {
     await service.run('cm-1');
     expect(mockPrisma.hotNews.update).not.toHaveBeenCalled();
     expect(embedQueue.add).not.toHaveBeenCalled();
+  });
+
+  it('SP-16: enqueues keyword-match:<id> after a successful summary write', async () => {
+    mockPrisma.hotNews.findUnique.mockResolvedValue(baseRow);
+    callLlmMock.mockResolvedValue({
+      text: goodLlmResponse,
+      tokensIn: 200,
+      tokensOut: 80,
+      durationMs: 1500,
+    });
+    mockPrisma.hotNews.update.mockResolvedValue({});
+
+    await service.run('cm-1');
+
+    expect(keywordMatchQueue.add).toHaveBeenCalledWith(
+      'keyword-match',
+      { hotNewsId: 'cm-1' },
+      expect.objectContaining({
+        jobId: 'keyword-match-cm-1',
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 10_000 },
+      }),
+    );
+  });
+
+  it('SP-16: does NOT enqueue keyword-match when summary write fails (P2025)', async () => {
+    mockPrisma.hotNews.findUnique.mockResolvedValue(baseRow);
+    callLlmMock.mockResolvedValue({
+      text: goodLlmResponse,
+      tokensIn: 200,
+      tokensOut: 80,
+      durationMs: 1500,
+    });
+    const p2025 = Object.assign(new Error('not found'), { code: 'P2025' });
+    mockPrisma.hotNews.update.mockRejectedValue(p2025);
+
+    await service.run('cm-1');
+    expect(keywordMatchQueue.add).not.toHaveBeenCalled();
   });
 });

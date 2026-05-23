@@ -9,6 +9,7 @@ import {
 import { callLlm } from './llm-client';
 import { SummarizationStrategy } from './strategies/strategy.interface';
 import { EMBED_QUEUE } from '../embed/embed.queue';
+import { KEYWORD_MATCH_QUEUE } from '../keywords/keyword-match.queue';
 
 @Injectable()
 export class SummarizeService {
@@ -17,6 +18,7 @@ export class SummarizeService {
   constructor(
     private readonly strategy: SummarizationStrategy,
     @Inject(EMBED_QUEUE) private readonly embedQueue: Queue,
+    @Inject(KEYWORD_MATCH_QUEUE) private readonly keywordMatchQueue: Queue,
   ) {}
 
   async run(hotNewsId: string): Promise<void> {
@@ -89,6 +91,21 @@ export class SummarizeService {
           jobId: `embed-${hotNewsId}`,
           attempts: 3,
           backoff: { type: 'exponential', delay: 30_000 },
+          removeOnComplete: { count: 100 },
+          removeOnFail: { count: 100 },
+        },
+      );
+      // SP-16 (2026-05-23): enqueue keyword detection after summary write so
+      // the matcher sees the final titleZh + summary text. Service is
+      // idempotent (UNIQUE constraint + array-union write) so the boot
+      // backstop re-enqueueing the same row is harmless.
+      await this.keywordMatchQueue.add(
+        'keyword-match',
+        { hotNewsId },
+        {
+          jobId: `keyword-match-${hotNewsId}`,
+          attempts: 3,
+          backoff: { type: 'exponential', delay: 10_000 },
           removeOnComplete: { count: 100 },
           removeOnFail: { count: 100 },
         },
