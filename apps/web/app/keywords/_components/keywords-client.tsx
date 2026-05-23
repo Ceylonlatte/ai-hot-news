@@ -1,7 +1,9 @@
 'use client';
 
 import React, { useCallback, useState, useTransition } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import type { Route } from 'next';
 import { Glass, Tag } from '@ai-hot-news/ui';
 import type {
   KeywordListResponseDto,
@@ -276,10 +278,15 @@ function KeywordRow({
           ) : null}
         </div>
 
-        {/* Hit count */}
-        <div className="text-right shrink-0">
+        {/* Hit count — SP-15 PR-B: clickable, links to /keywords/[id] hits view */}
+        <Link
+          href={`/keywords/${row.id}` as Route}
+          className="text-right shrink-0 group hover:opacity-80 transition-opacity"
+          data-testid={`keyword-hits-link-${row.id}`}
+          title="查看具体命中记录"
+        >
           <div
-            className="text-[20px] font-bold tabular-nums"
+            className="text-[20px] font-bold tabular-nums group-hover:underline underline-offset-4"
             style={{
               background: 'var(--grad)',
               WebkitBackgroundClip: 'text',
@@ -290,12 +297,19 @@ function KeywordRow({
             {row.hitCount}
           </div>
           <div className="text-[10px] text-ink-3 font-mono uppercase tracking-wider">
-            hits
+            hits →
           </div>
-        </div>
+        </Link>
 
         {/* Actions */}
         <div className="flex items-center gap-2 shrink-0">
+          <Link
+            href={`/keywords/${row.id}` as Route}
+            className="text-[11px] text-aurora hover:underline underline-offset-2 font-semibold"
+            data-testid={`keyword-view-${row.id}`}
+          >
+            查看命中
+          </Link>
           <button
             type="button"
             onClick={onToggle}

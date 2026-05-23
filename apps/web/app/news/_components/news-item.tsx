@@ -93,12 +93,29 @@ export function NewsItem({ item }: { item: HotNewsListItemDto }) {
           </p>
         ) : null}
 
-        {/* tags（多色轮用 + 跨平台 badge）
-            SP-10: tag chips 可点击 — href 跳到 /news?tags=<tag>，仅过滤这一个 tag。
-            点击行为是 "深入这一个标签" 而非 "AND 累加"，与顶部 CategoryChips 的多选 AND
-            是不同的入口语义；用户可在 /news 页面后续继续点 chip 累加。 */}
-        {item.aiTags.length > 0 || crossPlatformBadge ? (
+        {/* tags（多色轮用 + 跨平台 badge + 命中关键词高亮）
+            SP-10: aiTags 可点击 → /news?tags=<tag>
+            SP-15 PR-B: matchedKeywords 渲染为紫色高亮 chip ("⌖ Claude") 让用户在 feed
+            流里一眼看出"这条命中了我的 X 关键词"。chip 也可点击跳 /keywords，方便从
+            feed 反查监控配置。
+        */}
+        {item.aiTags.length > 0 ||
+        crossPlatformBadge ||
+        item.matchedKeywords.length > 0 ? (
           <div className="flex flex-wrap gap-1.5 mb-3.5">
+            {item.matchedKeywords.map((kw) => (
+              <a
+                key={`matched-${kw}`}
+                href="/keywords"
+                title={`命中你的监控关键词：${kw}`}
+                className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[11px] font-semibold text-white shadow-sm hover:opacity-90 transition-opacity"
+                style={{ background: 'var(--grad)' }}
+                data-testid="matched-keyword-chip"
+              >
+                <span aria-hidden="true">⌖</span>
+                {kw}
+              </a>
+            ))}
             {item.aiTags.map((tag, i) => (
               <Tag
                 key={tag}

@@ -13,6 +13,9 @@ describe('KeywordsService', () => {
       update: ReturnType<typeof vi.fn>;
       deleteMany: ReturnType<typeof vi.fn>;
     };
+    keywordHit: {
+      findMany: ReturnType<typeof vi.fn>;
+    };
   };
 
   beforeEach(() => {
@@ -23,6 +26,9 @@ describe('KeywordsService', () => {
         create: vi.fn(),
         update: vi.fn(),
         deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+      },
+      keywordHit: {
+        findMany: vi.fn().mockResolvedValue([]),
       },
     };
     vi.spyOn(dbModule, 'getPrisma').mockReturnValue(
@@ -235,6 +241,78 @@ describe('KeywordsService', () => {
       expect(result.enabled).toBe(false);
       const args = prismaMock.keywordMonitor.update.mock.calls[0]![0]!;
       expect(args.include).toEqual({ _count: { select: { hits: true } } });
+    });
+  });
+
+  describe('hits (SP-15 PR-B)', () => {
+    it('404 when monitor not found', async () => {
+      prismaMock.keywordMonitor.findFirst.mockResolvedValue(null);
+      await expect(service.hits('ghost', 20, 0)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+      expect(prismaMock.keywordHit.findMany).not.toHaveBeenCalled();
+    });
+
+    it('returns monitor + items + total + pagination echo', async () => {
+      prismaMock.keywordMonitor.findFirst.mockResolvedValue(
+        rowFactory({ id: 'kw_1', keyword: 'Claude', _count: { hits: 7 } }),
+      );
+      prismaMock.keywordHit.findMany.mockResolvedValue([
+        {
+          hitAt: new Date('2026-05-23T15:00:00Z'),
+          hotNews: {
+            id: 'hn_1',
+            title: 'Claude releases new SDK',
+            titleZh: 'Claude 发布新 SDK',
+            summary: '摘要',
+            sourceUrl: 'https://example.com/x',
+            sourcePlatform: 'HACKERNEWS',
+            author: 'pg',
+            publishedAt: new Date('2026-05-23T14:55:00Z'),
+            crawledAt: new Date('2026-05-23T14:56:00Z'),
+            aiTags: ['company:Anthropic'],
+            matchedKeywords: ['Claude'],
+            heatScore: 50,
+            heatLevel: 'NORMAL',
+            groupId: null,
+          },
+        },
+      ]);
+      const result = await service.hits('kw_1', 20, 0);
+      expect(result.monitor.keyword).toBe('Claude');
+      expect(result.monitor.hitCount).toBe(7);
+      expect(result.total).toBe(7);
+      expect(result.limit).toBe(20);
+      expect(result.offset).toBe(0);
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0]!.title).toBe('Claude releases new SDK');
+      expect(result.items[0]!.hitAt).toBe('2026-05-23T15:00:00.000Z');
+      // Group-fields zero-stubbed for per-keyword view
+      expect(result.items[0]!.groupSize).toBe(1);
+      expect(result.items[0]!.groupMembers).toEqual([]);
+    });
+
+    it('orders by hitAt desc + filters to VISIBLE rows + paginates', async () => {
+      prismaMock.keywordMonitor.findFirst.mockResolvedValue(
+        rowFactory({ id: 'kw_1', _count: { hits: 50 } }),
+      );
+      await service.hits('kw_1', 10, 20);
+      const args = prismaMock.keywordHit.findMany.mock.calls[0]![0]!;
+      expect(args.where.keywordId).toBe('kw_1');
+      expect(args.where.hotNews.status).toBe('VISIBLE');
+      expect(args.orderBy).toEqual({ hitAt: 'desc' });
+      expect(args.take).toBe(10);
+      expect(args.skip).toBe(20);
+    });
+
+    it('returns empty items when no hits yet (new monitor)', async () => {
+      prismaMock.keywordMonitor.findFirst.mockResolvedValue(
+        rowFactory({ id: 'kw_1', _count: { hits: 0 } }),
+      );
+      prismaMock.keywordHit.findMany.mockResolvedValue([]);
+      const result = await service.hits('kw_1', 20, 0);
+      expect(result.items).toEqual([]);
+      expect(result.total).toBe(0);
     });
   });
 
