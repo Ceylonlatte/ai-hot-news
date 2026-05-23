@@ -149,6 +149,10 @@ export class HotNewsService {
       titleZh: true,
       summary: true,
       aiTags: true,
+      // SP-15 PR-B: surface matched keywords on list dto so NewsItem can
+      // render the 紫色高亮 chip — costs nothing (text[] column already
+      // on every row).
+      matchedKeywords: true,
       sourceUrl: true,
       sourcePlatform: true,
       author: true,
@@ -452,6 +456,7 @@ export class HotNewsService {
         groupId: r.groupId,
         groupSize: r.groupId ? (sizeMap.get(r.groupId) ?? 1) : 1,
         groupPlatforms: r.groupId ? (breakdownMap.get(r.groupId) ?? {}) : {},
+        matchedKeywords: r.matchedKeywords,
         groupMembers: r.groupId ? (membersByGroup.get(r.groupId) ?? []) : [],
         subreddit: extractSubreddit(r.sourcePlatform, r.interactionData),
       })),

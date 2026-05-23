@@ -43,6 +43,7 @@ const baseItem = {
   groupPlatforms: {},
   groupMembers: [],
   subreddit: null,
+  matchedKeywords: [],
 };
 
 function makePage(

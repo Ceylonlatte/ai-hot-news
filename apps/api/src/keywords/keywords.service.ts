@@ -4,9 +4,11 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { getPrisma, Prisma } from '@ai-hot-news/db';
+import { getPrisma, Prisma, Platform, ContentStatus } from '@ai-hot-news/db';
 import type {
   CreateKeywordDto,
+  KeywordHitItemDto,
+  KeywordHitsResponseDto,
   KeywordListResponseDto,
   KeywordMonitorDto,
   KeywordTriggerRules,
@@ -151,6 +153,95 @@ export class KeywordsService {
       }
       throw err;
     }
+  }
+
+  /**
+   * SP-15 PR-B (2026-05-23): list hits for one keyword, paginated.
+   *
+   * One query loads page of KeywordHit rows + JOIN HotNews via Prisma
+   * include. Visible-only filter on the joined HotNews so users don't
+   * see hits whose article got hidden (cleanup, quality re-flag, etc.).
+   * Ordered by hitAt DESC = newest first (matches user mental model:
+   * "Claude 监控最近抓到啥").
+   */
+  async hits(
+    id: string,
+    limit: number,
+    offset: number,
+  ): Promise<KeywordHitsResponseDto> {
+    const prisma = getPrisma();
+
+    const monitorRow = await prisma.keywordMonitor.findFirst({
+      where: { id, userId: ADMIN_USER_ID },
+      include: { _count: { select: { hits: true } } },
+    });
+    if (!monitorRow) {
+      throw new NotFoundException(`Keyword ${id} not found`);
+    }
+    const monitor = toDto(monitorRow, monitorRow._count.hits);
+
+    const hitRows = await prisma.keywordHit.findMany({
+      where: {
+        keywordId: id,
+        hotNews: { status: ContentStatus.VISIBLE },
+      },
+      orderBy: { hitAt: 'desc' },
+      take: limit,
+      skip: offset,
+      include: {
+        hotNews: {
+          select: {
+            id: true,
+            title: true,
+            titleZh: true,
+            summary: true,
+            sourceUrl: true,
+            sourcePlatform: true,
+            author: true,
+            publishedAt: true,
+            crawledAt: true,
+            aiTags: true,
+            matchedKeywords: true,
+            heatScore: true,
+            heatLevel: true,
+            groupId: true,
+          },
+        },
+      },
+    });
+
+    const items: KeywordHitItemDto[] = hitRows.map((row) => ({
+      id: row.hotNews.id,
+      title: row.hotNews.title,
+      titleZh: row.hotNews.titleZh,
+      summary: row.hotNews.summary,
+      aiTags: row.hotNews.aiTags,
+      sourceUrl: row.hotNews.sourceUrl,
+      sourcePlatform: row.hotNews.sourcePlatform as Platform,
+      author: row.hotNews.author,
+      publishedAt: row.hotNews.publishedAt.toISOString(),
+      crawledAt: row.hotNews.crawledAt.toISOString(),
+      heatScore: row.hotNews.heatScore,
+      heatLevel: row.hotNews.heatLevel,
+      groupId: row.hotNews.groupId,
+      // Group fields zero-stubbed: this is a per-keyword view, the user
+      // isn't expecting cross-platform fold semantics. NewsItem handles
+      // groupSize===1 / empty arrays gracefully.
+      groupSize: 1,
+      groupPlatforms: {},
+      groupMembers: [],
+      subreddit: null,
+      matchedKeywords: row.hotNews.matchedKeywords,
+      hitAt: row.hitAt.toISOString(),
+    }));
+
+    return {
+      monitor,
+      items,
+      total: monitorRow._count.hits,
+      limit,
+      offset,
+    };
   }
 
   async remove(id: string): Promise<{ deleted: true }> {

@@ -122,6 +122,13 @@ export interface HotNewsListItemDto {
    */
   groupPlatforms: Partial<Record<Platform, number>>;
   /**
+   * SP-15 PR-B (2026-05-23): keywords the SP-16 detection worker matched
+   * for this row. Renders as 紫色高亮 chip on NewsItem so users see
+   * "this card hit your X monitor" while browsing /news /vault /keywords/[id].
+   * Empty array when nothing matched (most rows pre-SP-16 / post-disable).
+   */
+  matchedKeywords: string[];
+  /**
    * SP-7-D (2026-05-16): When `?groupMode=fold` (default), the API
    * collapses same-group rows into a single representative entry on
    * the list and ships every other VISIBLE member of the group in this
@@ -333,6 +340,36 @@ export type UpdateKeywordDto = Partial<CreateKeywordDto>;
 export interface KeywordListResponseDto {
   items: KeywordMonitorDto[];
   total: number;
+}
+
+/**
+ * SP-15 PR-B (2026-05-23): GET /keywords/:id/hits payload.
+ *
+ * One row per KeywordHit, augmented with the joined HotNews fields needed
+ * by NewsItem. We re-use HotNewsListItemDto so the UI's existing card
+ * component renders unchanged — group/related fields are zero-stubbed
+ * (singleton presentation) since this is a per-keyword view, not the
+ * cross-platform feed.
+ *
+ * `hitAt` is the moment SP-16 wrote the KeywordHit row; usually within
+ * a few seconds of `crawledAt` for search-feeder-sourced rows, or hours
+ * later for backstop-detected ones. Renders as "命中于" badge on the card.
+ */
+export interface KeywordHitItemDto extends HotNewsListItemDto {
+  /** UTC ISO timestamp when SP-16 detection wrote the KeywordHit row. */
+  hitAt: string;
+}
+
+export interface KeywordHitsResponseDto {
+  /** The monitor metadata so the page header doesn't need a second request. */
+  monitor: KeywordMonitorDto;
+  items: KeywordHitItemDto[];
+  /** Total hit count (matches `monitor.hitCount`; duplicated here for
+   *  pagination clients that don't preload the monitor list). */
+  total: number;
+  /** Pagination echo. */
+  limit: number;
+  offset: number;
 }
 
 /**
