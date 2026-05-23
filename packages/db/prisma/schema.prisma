@@ -71,6 +71,12 @@ model HotNews {
   aiTags          String[]      @default([])
   matchedKeywords String[]      @default([])
   heatScore       Float         @default(0)
+  // SP-6 follow-up (2026-05-23): "engagement-only" 热度分（去掉 time decay 维度）。
+  // heatScore 是 "近期 + 热门"（time decay τ=48h 主导）；engagementScore 是
+  // "互动 + 来源权重 + 跨平台"，与 publishedAt 解耦。/news + /vault 的
+  // ?sort=heat 用此列排序，让用户切 ?range=7d/30d 时能看到 range 内真正"绝对热"。
+  // heatScore 和 heatLevel 语义保持 SP-6 原样，dashboard BURST/HOT 等级仍用 heatScore。
+  engagementScore Float         @default(0)
   heatLevel       HeatLevel     @default(LOW)
   embedding       Unsupported("vector(2048)")?
 
@@ -88,6 +94,8 @@ model HotNews {
 
   @@index([publishedAt(sort: Desc)])
   @@index([heatScore(sort: Desc)])
+  // SP-6 follow-up: 服务于 sort=heat 的 ORDER BY engagementScore DESC
+  @@index([engagementScore(sort: Desc)])
   @@index([groupId])
   @@index([sourcePlatform, publishedAt])
   @@map("hot_news")
