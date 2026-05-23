@@ -188,12 +188,18 @@ model KeywordMonitor {
   createdAt DateTime     @default(now())
   // SP-14: PATCH 触发更新；spec sort + UI "上次更新" 显示。
   updatedAt DateTime     @updatedAt
+  // SP-16.5 (2026-05-23): 上次 search feeder 跑该 keyword 的时刻；cron 用它
+  // + monitorFrequency 判断"该 keyword 是否到点该再搜一遍"。null = 从未搜过
+  // 或新创建的 keyword（cron 会优先调度）。
+  lastSearchedAt DateTime?
 
   user User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   hits KeywordHit[]
 
   @@unique([userId, keyword])
   @@index([userId])
+  // SP-16.5: cron 扫表用 — 优先 lastSearchedAt 老的（含 null）+ enabled=true
+  @@index([enabled, lastSearchedAt])
   @@map("keyword_monitors")
 }
 

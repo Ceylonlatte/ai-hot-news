@@ -309,6 +309,10 @@ export interface KeywordMonitorDto {
   /** SP-15: total KeywordHit count for this monitor. Always present on
    *  list/get responses; recomputed on every read via Prisma _count. */
   hitCount: number;
+  /** SP-16.5: ISO timestamp of last keyword-search feeder run. Null until
+   *  cron picks the row up for the first time. UI shows "刚刚" / "5 分钟前"
+   *  etc. so users see the monitor is alive. */
+  lastSearchedAt: string | null;
 }
 
 export interface CreateKeywordDto {

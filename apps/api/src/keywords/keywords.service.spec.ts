@@ -46,6 +46,9 @@ describe('KeywordsService', () => {
     // SP-15: Prisma include _count returns this shape; defaults to 0
     // so tests that don't care about hit count still pass.
     _count: { hits: 0 },
+    // SP-16.5: new keyword starts unsearched; SP-16.5 cron will pick it
+    // up on next tick. Tests that care about this set it explicitly.
+    lastSearchedAt: null,
     ...overrides,
   });
 
@@ -105,6 +108,23 @@ describe('KeywordsService', () => {
       expect(result.hitCount).toBe(17);
       const args = prismaMock.keywordMonitor.findFirst.mock.calls[0]![0]!;
       expect(args.include).toEqual({ _count: { select: { hits: true } } });
+    });
+
+    it('SP-16.5: serializes lastSearchedAt to ISO string (null safe)', async () => {
+      prismaMock.keywordMonitor.findFirst.mockResolvedValue(
+        rowFactory({
+          id: 'kw_99',
+          lastSearchedAt: new Date('2026-05-23T14:30:00Z'),
+        }),
+      );
+      const result = await service.get('kw_99');
+      expect(result.lastSearchedAt).toBe('2026-05-23T14:30:00.000Z');
+
+      prismaMock.keywordMonitor.findFirst.mockResolvedValue(
+        rowFactory({ id: 'kw_100', lastSearchedAt: null }),
+      );
+      const result2 = await service.get('kw_100');
+      expect(result2.lastSearchedAt).toBeNull();
     });
   });
 

@@ -9,6 +9,7 @@ import { EmbedModule } from './embed/embed.module';
 import { HeatModule } from './heat/heat.module';
 import { CleanupModule } from './cleanup/cleanup.module';
 import { KeywordMatchModule } from './keywords/keyword-match.module';
+import { KeywordSearchModule } from './keyword-search/keyword-search.module';
 
 // Worker reads the monorepo root .env (DATABASE_URL, REDIS_URL, ...) — its own
 // apps/worker/.env only carries worker-specific knobs. Pass an explicit array
@@ -26,6 +27,7 @@ const APP_ENV = join(__dirname, '..', '.env');
     HeatModule,
     CleanupModule,
     KeywordMatchModule,
+    KeywordSearchModule,
     CrawlModule,
   ],
   providers: [LivenessService],
