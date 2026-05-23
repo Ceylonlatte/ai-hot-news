@@ -181,6 +181,7 @@ type PrismaRow = {
   enabled: boolean;
   createdAt: Date;
   updatedAt: Date;
+  lastSearchedAt: Date | null;
 };
 
 function toDto(row: PrismaRow, hitCount = 0): KeywordMonitorDto {
@@ -197,6 +198,7 @@ function toDto(row: PrismaRow, hitCount = 0): KeywordMonitorDto {
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
     hitCount,
+    lastSearchedAt: row.lastSearchedAt?.toISOString() ?? null,
   };
 }
 

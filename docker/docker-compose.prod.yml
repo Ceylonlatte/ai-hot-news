@@ -105,6 +105,15 @@ services:
       # 1.4k visible row, ~10 keyword scale. SP-15 UI doesn't depend on these.
       KEYWORD_MATCH_CONCURRENCY: ${KEYWORD_MATCH_CONCURRENCY:-2}
       KEYWORD_MATCH_BACKSTOP_DAYS: ${KEYWORD_MATCH_BACKSTOP_DAYS:-30}
+      # SP-16.5 keyword search feeder: cron drives per-keyword search on
+      # HN Algolia + Reddit search. Cron tick every 5min, concurrency=1
+      # (Reddit rate-limit), 50 hits per platform per tick. Reddit sleep
+      # 6.5s between calls = under 10req/min cap with safety margin.
+      KEYWORD_SEARCH_CRON_INTERVAL_MIN: ${KEYWORD_SEARCH_CRON_INTERVAL_MIN:-5}
+      KEYWORD_SEARCH_CONCURRENCY: ${KEYWORD_SEARCH_CONCURRENCY:-1}
+      KEYWORD_SEARCH_MAX_HITS: ${KEYWORD_SEARCH_MAX_HITS:-50}
+      KEYWORD_SEARCH_REDDIT_SLEEP_MS: ${KEYWORD_SEARCH_REDDIT_SLEEP_MS:-6500}
+      KEYWORD_SEARCH_USER_AGENT: ${KEYWORD_SEARCH_USER_AGENT:-ai-hot-news-bot/0.1 (+https://hotnews.shinpeionline.top)}
     depends_on:
       postgres:
         condition: service_healthy
