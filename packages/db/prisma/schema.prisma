@@ -165,14 +165,46 @@ model KeywordMonitor {
   id        String       @id @default(cuid())
   userId    String
   keyword   String
+  // SP-14 (2026-05-23): 同义词扩展。命中时 OR 匹配，每个 ≤100 chars，
+  // 上限 10 个（service 校验）。空数组 = 仅匹配 keyword 本身。
+  synonyms  String[]     @default([])
+  // SP-14: 排除词。命中后置过滤 — 如果文章同时含 keyword 也含任一 excludeWord，
+  // 视为不命中。例如 keyword="Apple", excludeWords=["fruit"] 排除水果讨论。
+  excludeWords String[]  @default([])
+  // SP-14: 可选监控平台。空 = 全部平台（与 SP-10 default 一致）。
+  // 取值必须是 Platform enum string："HACKERNEWS" / "REDDIT" / "RSS" / "TWITTER"。
+  platforms String[]     @default([])
+  // SP-14: 监控频率 — SP-16 worker 用此决定 keyword_hit 检测节奏。
+  // PRD §5.3 四档：M15 / M30 / H1 / D1。
+  monitorFrequency MonitorFrequency @default(H1)
+  // SP-14: 触发规则 JSON。SP-17 通知服务读此判定是否要发推送。
+  // V1 形态：{ minCount?: number; minHeatScore?: number; growthRatePct?: number }
+  // null = 任何命中即触发（最宽松）。
+  triggerRules Json?
+  // SP-14: 推送渠道。V1 仅 'site' 有 SP-17 实现；'email' SP-18；
+  // 'feishu' / 'dingtalk' / 'telegram' / 'webhook' SP-23。
+  notifyChannels String[] @default(["site"])
   enabled   Boolean      @default(true)
   createdAt DateTime     @default(now())
+  // SP-14: PATCH 触发更新；spec sort + UI "上次更新" 显示。
+  updatedAt DateTime     @updatedAt
 
   user User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   hits KeywordHit[]
 
+  @@unique([userId, keyword])
   @@index([userId])
   @@map("keyword_monitors")
+}
+
+// SP-14 (2026-05-23): keyword monitor frequency. SP-16 worker dispatches
+// keyword-hit detection job based on this enum (interval mapping in
+// apps/worker/src/keywords/scheduler.ts when SP-16 lands).
+enum MonitorFrequency {
+  M15
+  M30
+  H1
+  D1
 }
 
 model KeywordHit {

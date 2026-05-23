@@ -200,7 +200,38 @@ async function seedReddit() {
   }
 }
 
+// SP-14 (2026-05-23): seed the single admin User row.
+//
+// V1 is single-user (个人自用), admin credentials live in env (SP-13).
+// KeywordMonitor + Notification etc. still need a User row to satisfy
+// the FK constraint, so we upsert a fixed-id row here. The id 'usr-admin'
+// is hardcoded to give SP-14's KeywordsService a stable ownerId without
+// having to look it up by email on every request.
+//
+// passwordHash is intentionally a placeholder marker — SP-13 never reads
+// it (login goes through ADMIN_PASSWORD_HASH env var, not DB). Future
+// multi-user SP-X will swap to per-row passwordHash + email lookup.
+//
+// Idempotent: re-seeding doesn't touch the row beyond the marker.
+const ADMIN_USER_ID = 'usr-admin';
+const ADMIN_EMAIL = process.env.ADMIN_USERNAME?.trim() || 'admin';
+
+async function seedAdminUser() {
+  await prisma.user.upsert({
+    where: { id: ADMIN_USER_ID },
+    update: {}, // keep existing — don't reset role / email if operator changed them
+    create: {
+      id: ADMIN_USER_ID,
+      email: ADMIN_EMAIL,
+      passwordHash: '__env_managed_see_ADMIN_PASSWORD_HASH__',
+      role: 'ADMIN',
+    },
+  });
+  console.log(`seeded User: ${ADMIN_EMAIL} (id=${ADMIN_USER_ID}, role=ADMIN)`);
+}
+
 async function main() {
+  await seedAdminUser();
   await seedRss();
   await seedHn();
   await seedReddit();

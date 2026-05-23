@@ -269,6 +269,66 @@ export interface TrendingKeywordsDto {
 }
 
 /**
+ * SP-14 (2026-05-23): keyword monitor CRUD.
+ *
+ * Single-user V1: all rows belong to the seeded admin user (usr-admin).
+ * Multi-user follow-up swaps to per-request user lookup via JwtPayload.sub.
+ *
+ * monitorFrequency: see Prisma `MonitorFrequency` enum — PRD §5.3 四档。
+ * triggerRules: SP-17 notification service reads this to decide whether
+ * a keyword hit warrants a push. V1 shape pinned here so the worker side
+ * (SP-16/17) can rely on it; future SP-X may extend.
+ */
+export type MonitorFrequency = 'M15' | 'M30' | 'H1' | 'D1';
+
+export type NotifyChannel = 'site' | 'email' | 'feishu' | 'dingtalk' | 'telegram' | 'webhook';
+
+export interface KeywordTriggerRules {
+  /** Minimum number of hits within the monitor's frequency window to trigger. */
+  minCount?: number;
+  /** Only trigger when a hit's hot_news.heatScore is at least this. */
+  minHeatScore?: number;
+  /** Trigger when hit rate grows by at least this percent vs prior window. */
+  growthRatePct?: number;
+}
+
+export interface KeywordMonitorDto {
+  id: string;
+  keyword: string;
+  synonyms: string[];
+  excludeWords: string[];
+  /** Empty = all platforms. Otherwise valid Platform enum strings. */
+  platforms: string[];
+  monitorFrequency: MonitorFrequency;
+  /** Null = trigger on any hit. */
+  triggerRules: KeywordTriggerRules | null;
+  notifyChannels: NotifyChannel[];
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateKeywordDto {
+  keyword: string;
+  synonyms?: string[];
+  excludeWords?: string[];
+  platforms?: string[];
+  monitorFrequency?: MonitorFrequency;
+  triggerRules?: KeywordTriggerRules | null;
+  notifyChannels?: NotifyChannel[];
+  enabled?: boolean;
+}
+
+/** PATCH — all fields optional. `keyword` itself can be renamed (will
+ *  re-check the UNIQUE(userId, keyword) constraint). */
+export type UpdateKeywordDto = Partial<CreateKeywordDto>;
+
+export interface KeywordListResponseDto {
+  items: KeywordMonitorDto[];
+  total: number;
+}
+
+/**
  * SP-12 (2026-05-22): top-N aiTag frequency over a configurable window,
  * filtered to controlled namespaces (company / model / category — NOT
  * tech, which is LLM free-form and long-tail noisy). Consumed by:
