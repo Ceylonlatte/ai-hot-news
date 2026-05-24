@@ -214,6 +214,21 @@ export function Sidebar({
             )
           )}
         </div>
+        {/* SP-19 PR-B: admin-only ops dashboard link, hidden for guests +
+            non-admin roles. Position below user block keeps it out of the
+            way on the daily-driver navigation. */}
+        {currentUser?.role === 'ADMIN'
+          ? createElement(
+              LinkComponent,
+              {
+                href: '/admin',
+                className:
+                  'mt-1.5 text-[10px] text-ink-3 hover:text-ink underline-offset-2 hover:underline transition-colors text-center',
+                'data-testid': 'sidebar-admin-link',
+              } as NavLinkProps & { 'data-testid': string },
+              <span>⚙ 运维仪表盘</span>,
+            )
+          : null}
       </div>
     </aside>
   );

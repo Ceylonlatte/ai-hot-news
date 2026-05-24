@@ -507,3 +507,102 @@ export interface StatsSourcesDto {
   windowStart: string;
   windowEnd: string;
 }
+
+
+// ─── SP-19 PR-B (2026-05-24): admin ops dashboard ──────────────────────
+//
+// /admin 仪表盘聚合多个角度的运维指标。每个 endpoint 返回一个 dto，前端
+// 在 RSC 一次性 Promise.all 拉所有数据再渲染 KPI grid。
+//
+// 全部 endpoint 都通过 JwtAuthGuard，V1 单用户 = ADMIN role 默认通过；
+// 多用户 SP-X 时再加 RolesGuard。
+
+/** GET /admin/health — service liveness + last cron tick. */
+export interface AdminHealthDto {
+  /** Worker liveness file mtime (worker 每 30s 写一次)；超过 2min 视为 stale。 */
+  workerHeartbeatAt: string | null;
+  workerHeartbeatStaleSec: number | null;
+  /** API 自身 always healthy (能响应即代表存活)。 */
+  apiOk: boolean;
+  /** 各 cron 的最近一次执行时刻（来自相关数据信号），null = 没数据。 */
+  lastSearchTickAt: string | null;
+  lastHeatTickAt: string | null;
+  lastCleanupAt: string | null;
+  /** 检查时刻。 */
+  serverTime: string;
+}
+
+/** GET /admin/content-pool — hot_news 行数 + 24h 增长 + 来源分布。 */
+export interface AdminContentPoolDto {
+  totalVisible: number;
+  totalHidden: number;
+  /** "search" = SP-16.5 feeder 拉的; null/empty = 常规 RSS / HN top / Reddit hot 爬虫. */
+  bySource: Array<{ source: string; count: number }>;
+  byPlatform: Array<{ platform: string; count: number }>;
+  /** 24h 每小时新增 row 数，长度 24 (oldest first)。 */
+  growth24h: Array<{ hour: string; count: number }>;
+}
+
+/** GET /admin/feeder — per-keyword 搜索状态。 */
+export interface AdminFeederDto {
+  monitors: Array<{
+    id: string;
+    keyword: string;
+    enabled: boolean;
+    monitorFrequency: string;
+    lastSearchedAt: string | null;
+    /** 距上次搜过去多少分钟; null = 从未搜过。 */
+    minutesSinceLastSearch: number | null;
+    /** lastSearchedAt + frequency interval < now → 视为 stale (cron 应该已经在跑) */
+    isOverdue: boolean;
+  }>;
+  /** 总命中行数（24h 滚动）。 */
+  hits24h: number;
+}
+
+/** GET /admin/keyword-stats — per-keyword hits + 24h 增量 + 命中率。 */
+export interface AdminKeywordStatsDto {
+  items: Array<{
+    keyword: string;
+    enabled: boolean;
+    hitCountTotal: number;
+    hitCount24h: number;
+    /** ((命中过的 hot_news rows) / 总 visible rows) × 100，保留 1 位。 */
+    matchRatePct: number;
+  }>;
+}
+
+/** GET /admin/db-size — 各表行数 + 字节数。 */
+export interface AdminDbSizeDto {
+  tables: Array<{
+    name: string;
+    rowCount: number;
+    bytes: number;
+    /** "12 MB" / "542 KB" — pg_size_pretty() 输出。 */
+    sizePretty: string;
+  }>;
+}
+
+/** GET /admin/llm-cost — LLM 调用聚合 (24h / 7d / 30d 滚动)。 */
+export interface AdminLlmCostDto {
+  windows: Array<{
+    /** "24h" | "7d" | "30d" */
+    label: string;
+    totalCalls: number;
+    totalTokensIn: number;
+    totalTokensOut: number;
+    /** USD; null 表示该窗口内全是 unpriced model 调用。 */
+    totalCostUsd: number | null;
+    byModel: Array<{
+      operation: string;
+      model: string;
+      calls: number;
+      tokensIn: number;
+      tokensOut: number;
+      costUsd: number | null;
+      /** true = LLM_PRICING 表里没该 model，total 计算时被排除。 */
+      unpriced: boolean;
+    }>;
+  }>;
+}
+

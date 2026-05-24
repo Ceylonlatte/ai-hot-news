@@ -24,6 +24,9 @@ export const LLM_PRICING: Record<string, ModelPricing> = {
   'deepseek/deepseek-v3.2': { inputPerM: 0.27, outputPerM: 1.1 },
   // Embed default — OpenAI text-embedding-3-small (2026-05 list price)
   'openai/text-embedding-3-small': { inputPerM: 0.02, outputPerM: 0 },
+  // SP-19 PR-B补 (2026-05-24): 实际 prod 用的 embed model — OpenRouter free tier.
+  // 显式登记 0,0 让 admin UI 显示 "$0.000000" 而非 "(unpriced)"。
+  'nvidia/llama-nemotron-embed-vl-1b-v2:free': { inputPerM: 0, outputPerM: 0 },
   // Common alternates we sometimes test against; harmless to leave priced
   'openai/gpt-4o-mini': { inputPerM: 0.15, outputPerM: 0.6 },
   'openai/gpt-5-nano': { inputPerM: 0.15, outputPerM: 0.6 },
