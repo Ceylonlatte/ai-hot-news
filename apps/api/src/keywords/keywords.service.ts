@@ -244,17 +244,60 @@ export class KeywordsService {
     };
   }
 
-  async remove(id: string): Promise<{ deleted: true }> {
+  /**
+   * SP-15 PR-B follow-up (2026-05-24): delete keyword + cleanup arrays.
+   *
+   * Three things happen atomically:
+   *   1. SCAN keyword to grab the canonical keyword string (case + spelling)
+   *   2. UPDATE hot_news SET matchedKeywords = array_remove(...) for every
+   *      row whose denormalized array still references this keyword.
+   *      Without this, /news / /vault / /keywords/[id] would render zombie
+   *      `⌖ Claude` chips pointing at a monitor that no longer exists —
+   *      the SP-16 KeywordMatchService writes the keyword string into the
+   *      array as a denormalization, and there's no FK to clean it up.
+   *   3. DELETE keyword_monitors row → KeywordHit rows cascade away via
+   *      `onDelete: Cascade` on the FK (schema:223).
+   *
+   * Wrapped in a Prisma interactive transaction so a UPDATE failure aborts
+   * the DELETE (and vice versa) — better than two-phase write where a
+   * crashed worker could leave dangling references in either direction.
+   *
+   * Why we don't ALSO delete the hot_news rows themselves: those articles
+   * are platform-neutral content. They may still match other keywords,
+   * or be relevant for non-keyword views (/, /news, /vault, search).
+   * Deleting them on monitor delete would amount to censoring the feed.
+   */
+  async remove(id: string): Promise<{ deleted: true; cleanedKeyword: string }> {
     const prisma = getPrisma();
-    // deleteMany returns { count } — gives 0 for not-found instead of throwing,
-    // which is what we want to translate to 404 ourselves (consistent shape).
-    const result = await prisma.keywordMonitor.deleteMany({
-      where: { id, userId: ADMIN_USER_ID },
+    const result = await prisma.$transaction(async (tx) => {
+      const existing = await tx.keywordMonitor.findFirst({
+        where: { id, userId: ADMIN_USER_ID },
+        select: { keyword: true },
+      });
+      if (!existing) return null;
+
+      // array_remove is idempotent: when the value isn't present, returns
+      // the array unchanged. The WHERE pre-filter just keeps the UPDATE
+      // narrow so we don't rewrite every row in the table on a no-op.
+      const cleaned = await tx.$executeRaw`
+        UPDATE "hot_news"
+        SET "matchedKeywords" = array_remove("matchedKeywords", ${existing.keyword})
+        WHERE ${existing.keyword} = ANY("matchedKeywords")
+      `;
+      this.logger.log(
+        `remove(${id}) cleaned ${cleaned} hot_news.matchedKeywords entries for keyword="${existing.keyword}"`,
+      );
+
+      // Cascade fires here: KeywordHit rows with this keywordId go away too.
+      await tx.keywordMonitor.delete({ where: { id } });
+
+      return { keyword: existing.keyword };
     });
-    if (result.count === 0) {
+
+    if (!result) {
       throw new NotFoundException(`Keyword ${id} not found`);
     }
-    return { deleted: true };
+    return { deleted: true, cleanedKeyword: result.keyword };
   }
 }
 

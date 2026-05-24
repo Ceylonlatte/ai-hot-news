@@ -11,11 +11,14 @@ describe('KeywordsService', () => {
       findFirst: ReturnType<typeof vi.fn>;
       create: ReturnType<typeof vi.fn>;
       update: ReturnType<typeof vi.fn>;
+      delete: ReturnType<typeof vi.fn>;
       deleteMany: ReturnType<typeof vi.fn>;
     };
     keywordHit: {
       findMany: ReturnType<typeof vi.fn>;
     };
+    $executeRaw: ReturnType<typeof vi.fn>;
+    $transaction: ReturnType<typeof vi.fn>;
   };
 
   beforeEach(() => {
@@ -25,11 +28,19 @@ describe('KeywordsService', () => {
         findFirst: vi.fn().mockResolvedValue(null),
         create: vi.fn(),
         update: vi.fn(),
+        delete: vi.fn().mockResolvedValue({}),
         deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
       },
       keywordHit: {
         findMany: vi.fn().mockResolvedValue([]),
       },
+      $executeRaw: vi.fn().mockResolvedValue(0),
+      // Default impl runs callback inline with the prismaMock as tx —
+      // matches Prisma's $transaction(callback) interactive contract well
+      // enough for unit tests that don't care about isolation levels.
+      $transaction: vi.fn(async (cb: (tx: typeof prismaMock) => unknown) =>
+        cb(prismaMock),
+      ),
     };
     vi.spyOn(dbModule, 'getPrisma').mockReturnValue(
       prismaMock as unknown as ReturnType<typeof dbModule.getPrisma>,
@@ -317,17 +328,68 @@ describe('KeywordsService', () => {
   });
 
   describe('remove', () => {
-    it('404 when no row deleted (scoped by userId)', async () => {
-      prismaMock.keywordMonitor.deleteMany.mockResolvedValue({ count: 0 });
-      await expect(service.remove('ghost')).rejects.toBeInstanceOf(NotFoundException);
+    it('404 when monitor not found (scoped by userId)', async () => {
+      prismaMock.keywordMonitor.findFirst.mockResolvedValue(null);
+      await expect(service.remove('ghost')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+      // No mutation should fire when row missing
+      expect(prismaMock.$executeRaw).not.toHaveBeenCalled();
+      expect(prismaMock.keywordMonitor.delete).not.toHaveBeenCalled();
     });
 
-    it('returns { deleted: true } on success', async () => {
-      prismaMock.keywordMonitor.deleteMany.mockResolvedValue({ count: 1 });
+    it('returns { deleted: true, cleanedKeyword } on success', async () => {
+      prismaMock.keywordMonitor.findFirst.mockResolvedValue({
+        keyword: 'Claude',
+      });
+      prismaMock.$executeRaw.mockResolvedValue(343);
+      prismaMock.keywordMonitor.delete.mockResolvedValue({});
+
       const result = await service.remove('kw_1');
-      expect(result).toEqual({ deleted: true });
-      const args = prismaMock.keywordMonitor.deleteMany.mock.calls[0]![0]!;
-      expect(args.where).toEqual({ id: 'kw_1', userId: 'usr-admin' });
+      expect(result).toEqual({ deleted: true, cleanedKeyword: 'Claude' });
+
+      // findFirst scoped to userId
+      const findArgs = prismaMock.keywordMonitor.findFirst.mock.calls[0]![0]!;
+      expect(findArgs.where).toEqual({ id: 'kw_1', userId: 'usr-admin' });
+
+      // Delete then runs (cascade kicks in for KeywordHit)
+      const delArgs = prismaMock.keywordMonitor.delete.mock.calls[0]![0]!;
+      expect(delArgs.where).toEqual({ id: 'kw_1' });
+    });
+
+    it('SP-15 PR-B follow-up: cleans matchedKeywords[] arrays before delete', async () => {
+      prismaMock.keywordMonitor.findFirst.mockResolvedValue({
+        keyword: 'Claude',
+      });
+      prismaMock.$executeRaw.mockResolvedValue(42);
+      prismaMock.keywordMonitor.delete.mockResolvedValue({});
+
+      await service.remove('kw_1');
+
+      // $executeRaw fires once with the keyword as a parameter
+      expect(prismaMock.$executeRaw).toHaveBeenCalledTimes(1);
+      const sqlCall = prismaMock.$executeRaw.mock.calls[0]!;
+      // Prisma tagged template: first arg is TemplateStringsArray, then values
+      const sqlText = (sqlCall[0] as TemplateStringsArray).join('');
+      expect(sqlText).toMatch(/UPDATE\s+"hot_news"/i);
+      expect(sqlText).toMatch(/array_remove\("matchedKeywords"/);
+      // Bound values include the keyword string twice (SET + WHERE)
+      expect(sqlCall[1]).toBe('Claude');
+      expect(sqlCall[2]).toBe('Claude');
+    });
+
+    it('runs cleanup + delete inside a single $transaction (atomicity)', async () => {
+      prismaMock.keywordMonitor.findFirst.mockResolvedValue({
+        keyword: 'Claude',
+      });
+      prismaMock.$executeRaw.mockResolvedValue(0);
+      prismaMock.keywordMonitor.delete.mockResolvedValue({});
+
+      await service.remove('kw_1');
+
+      expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
+      const cb = prismaMock.$transaction.mock.calls[0]![0]!;
+      expect(typeof cb).toBe('function');
     });
   });
 });

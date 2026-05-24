@@ -86,7 +86,9 @@ export class KeywordsController {
 
   @Delete(':id')
   @HttpCode(200)
-  remove(@Param('id') id: string): Promise<{ deleted: true }> {
+  remove(
+    @Param('id') id: string,
+  ): Promise<{ deleted: true; cleanedKeyword: string }> {
     return this.service.remove(id);
   }
 }
