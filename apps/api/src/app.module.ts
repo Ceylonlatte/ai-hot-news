@@ -6,6 +6,7 @@ import { HotNewsModule } from './hot-news/hot-news.module';
 import { StatsModule } from './stats/stats.module';
 import { AuthModule } from './auth/auth.module';
 import { KeywordsModule } from './keywords/keywords.module';
+import { AdminModule } from './admin/admin.module';
 
 // API reads the monorepo root .env (DATABASE_URL, REDIS_URL, ...). In dev the
 // process is spawned with cwd=apps/api by turbo, so the default ConfigModule
@@ -23,6 +24,7 @@ const APP_ENV = join(__dirname, '..', '.env');
     HotNewsModule,
     StatsModule,
     KeywordsModule,
+    AdminModule,
   ],
 })
 export class AppModule {}
