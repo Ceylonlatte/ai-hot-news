@@ -26,12 +26,20 @@ beforeEach(() => {
 afterEach(() => vi.resetAllMocks());
 
 describe('EmbedService.run', () => {
-  function makeService(): { svc: EmbedService; groupService: GroupService } {
+  function makeService(): {
+    svc: EmbedService;
+    groupService: GroupService;
+    llmUsage: { record: ReturnType<typeof vi.fn> };
+  } {
     const groupService = {
       assignGroup: vi.fn().mockResolvedValue({ groupId: null, cosine: 0 }),
     } as unknown as GroupService;
-    const svc = new EmbedService(groupService);
-    return { svc, groupService };
+    const llmUsage = { record: vi.fn().mockResolvedValue(undefined) };
+    const svc = new EmbedService(
+      groupService,
+      llmUsage as unknown as import('../llm-usage/llm-usage.service').LlmUsageService,
+    );
+    return { svc, groupService, llmUsage };
   }
 
   it('skips when row not found', async () => {

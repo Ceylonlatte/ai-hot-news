@@ -10,6 +10,7 @@ import { callLlm } from './llm-client';
 import { SummarizationStrategy } from './strategies/strategy.interface';
 import { EMBED_QUEUE } from '../embed/embed.queue';
 import { KEYWORD_MATCH_QUEUE } from '../keywords/keyword-match.queue';
+import { LlmUsageService } from '../llm-usage/llm-usage.service';
 
 @Injectable()
 export class SummarizeService {
@@ -19,6 +20,7 @@ export class SummarizeService {
     private readonly strategy: SummarizationStrategy,
     @Inject(EMBED_QUEUE) private readonly embedQueue: Queue,
     @Inject(KEYWORD_MATCH_QUEUE) private readonly keywordMatchQueue: Queue,
+    private readonly llmUsage: LlmUsageService,
   ) {}
 
   async run(hotNewsId: string): Promise<void> {
@@ -110,6 +112,20 @@ export class SummarizeService {
           removeOnFail: { count: 100 },
         },
       );
+      // SP-19 PR-A (2026-05-24): persist LLM usage AFTER the row update +
+      // queue pushes have all succeeded. Doing this in the try block
+      // means we record only when the call produced a usable artifact;
+      // P2025 (row deleted mid-flight) bypasses recording, matching
+      // "no value delivered, no cost should be billed" semantics.
+      // Fire-and-forget per LlmUsageService contract — never throws.
+      await this.llmUsage.record({
+        operation: 'summarize',
+        model: result.model,
+        hotNewsId,
+        tokensIn: result.tokensIn,
+        tokensOut: result.tokensOut,
+        durationMs: result.durationMs,
+      });
     } catch (err) {
       if ((err as { code?: string }).code === 'P2025') return;
       throw err;

@@ -45,14 +45,17 @@ describe('SummarizeService.run', () => {
   let service: SummarizeService;
   let embedQueue: { add: ReturnType<typeof vi.fn> };
   let keywordMatchQueue: { add: ReturnType<typeof vi.fn> };
+  let llmUsage: { record: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
     embedQueue = { add: vi.fn().mockResolvedValue(undefined) };
     keywordMatchQueue = { add: vi.fn().mockResolvedValue(undefined) };
+    llmUsage = { record: vi.fn().mockResolvedValue(undefined) };
     service = new SummarizeService(
       new SummarizeAllVisibleStrategy(),
       embedQueue as unknown as Queue,
       keywordMatchQueue as unknown as Queue,
+      llmUsage as unknown as import('../llm-usage/llm-usage.service').LlmUsageService,
     );
     mockPrisma.hotNews.findUnique.mockReset();
     mockPrisma.hotNews.update.mockReset();

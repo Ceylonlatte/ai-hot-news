@@ -10,6 +10,7 @@ import { HeatModule } from './heat/heat.module';
 import { CleanupModule } from './cleanup/cleanup.module';
 import { KeywordMatchModule } from './keywords/keyword-match.module';
 import { KeywordSearchModule } from './keyword-search/keyword-search.module';
+import { LlmUsageModule } from './llm-usage/llm-usage.module';
 
 // Worker reads the monorepo root .env (DATABASE_URL, REDIS_URL, ...) — its own
 // apps/worker/.env only carries worker-specific knobs. Pass an explicit array
@@ -21,6 +22,9 @@ const APP_ENV = join(__dirname, '..', '.env');
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, envFilePath: [APP_ENV, ROOT_ENV] }),
+    // SP-19 PR-A: @Global LlmUsageModule must register before any feature
+    // module that injects LlmUsageService — keep it first so DI resolves it.
+    LlmUsageModule,
     SummarizeModule,
     ExtractModule,
     EmbedModule,

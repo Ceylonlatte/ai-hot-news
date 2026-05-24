@@ -227,6 +227,41 @@ model KeywordHit {
   @@map("keyword_hits")
 }
 
+// SP-19 PR-A (2026-05-24): LLM call audit log.
+//
+// One row per LLM API call (summarize / embed / future: extract / daily-report).
+// `costUsd` is computed at write-time using the operator-maintained
+// pricing table in apps/worker/src/llm-usage/pricing.ts; null when the
+// model isn't priced (dev experiments, new model rollouts before pricing
+// is registered).
+//
+// `hotNewsId` is FK-less on purpose — when SP-10.5 cleanup deletes a
+// hot_news row at 30d we want to KEEP the cost record so retroactive
+// monthly cost rollups stay accurate. The orphan id is acceptable:
+// admin views aggregate by model/operation/day, not by article.
+model LlmUsage {
+  id          String   @id @default(cuid())
+  // 'summarize' | 'embed' | (future) 'extract' | 'daily-report'
+  operation   String
+  // OpenRouter slug (e.g. 'deepseek/deepseek-v3.2', 'openai/text-embedding-3-small')
+  model       String
+  // Article being processed; null for non-article ops (e.g. system-level usage)
+  hotNewsId   String?
+  tokensIn    Int
+  // Embed has no output tokens — record 0 for consistency.
+  tokensOut   Int      @default(0)
+  durationMs  Int
+  // Pre-computed at write-time. Null when pricing is not registered for the
+  // model — admin UI shows them as "(unpriced)" rather than swallowing.
+  costUsd     Decimal? @db.Decimal(10, 6)
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt(sort: Desc)])
+  @@index([model, createdAt])
+  @@index([operation, createdAt])
+  @@map("llm_usage")
+}
+
 model Notification {
   id        String           @id @default(cuid())
   userId    String

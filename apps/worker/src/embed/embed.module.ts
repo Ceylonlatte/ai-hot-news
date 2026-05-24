@@ -12,6 +12,7 @@ import { REDIS_CONNECTION } from '../crawl/queue.provider';
 import { RedisModule } from '../redis/redis.module';
 import { EmbedService } from './embed.service';
 import { GroupService } from './group.service';
+import { LlmUsageService } from '../llm-usage/llm-usage.service';
 import {
   EMBED_QUEUE,
   EMBED_WORKER,
@@ -27,8 +28,11 @@ import { processEmbedJob, type EmbedJobData } from './embed.processor';
     GroupService,
     {
       provide: EmbedService,
-      useFactory: (gs: GroupService) => new EmbedService(gs),
-      inject: [GroupService],
+      useFactory: (gs: GroupService, llmUsage: LlmUsageService) =>
+        new EmbedService(gs, llmUsage),
+      // SP-19 PR-A: LlmUsageService comes from @Global LlmUsageModule
+      // registered in worker.module.ts
+      inject: [GroupService, LlmUsageService],
     },
     {
       provide: EMBED_WORKER,

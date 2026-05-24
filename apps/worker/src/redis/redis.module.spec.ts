@@ -8,6 +8,10 @@ import { HEAT_QUEUE } from '../heat/heat.queue';
 import { EmbedModule } from '../embed/embed.module';
 import { EMBED_QUEUE } from '../embed/embed.queue';
 import { REDIS_CONNECTION } from '../crawl/queue.provider';
+// SP-19 PR-A: SummarizeModule + EmbedModule now inject LlmUsageService.
+// In prod the @Global LlmUsageModule is registered at WorkerModule root;
+// in unit tests we have to import it explicitly so DI can resolve.
+import { LlmUsageModule } from '../llm-usage/llm-usage.module';
 
 vi.mock('ioredis', () => {
   return {
@@ -34,7 +38,7 @@ describe('RedisModule wiring (regression for SP-4.7 DI miss)', () => {
 
   it('SummarizeModule resolves SUMMARY_QUEUE through RedisModule', async () => {
     const ref = await Test.createTestingModule({
-      imports: [SummarizeModule],
+      imports: [LlmUsageModule, SummarizeModule],
     }).compile();
 
     const queue = ref.get(SUMMARY_QUEUE);
@@ -62,7 +66,7 @@ describe('RedisModule wiring (regression for SP-4.7 DI miss)', () => {
 
   it('EmbedModule resolves EMBED_QUEUE through RedisModule (SP-7 regression)', async () => {
     const ref = await Test.createTestingModule({
-      imports: [EmbedModule],
+      imports: [LlmUsageModule, EmbedModule],
     }).compile();
 
     const queue = ref.get(EMBED_QUEUE);

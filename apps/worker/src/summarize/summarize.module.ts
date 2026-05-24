@@ -14,6 +14,7 @@ import { EmbedModule } from '../embed/embed.module';
 import { EMBED_QUEUE } from '../embed/embed.queue';
 import { KeywordMatchModule } from '../keywords/keyword-match.module';
 import { KEYWORD_MATCH_QUEUE } from '../keywords/keyword-match.queue';
+import { LlmUsageService } from '../llm-usage/llm-usage.service';
 import { SummarizeService } from './summarize.service';
 import {
   SUMMARY_QUEUE,
@@ -47,8 +48,12 @@ const STRATEGY_TOKEN = Symbol('SUMMARIZATION_STRATEGY');
         strategy: SummarizationStrategy,
         embedQueue: Queue,
         keywordMatchQueue: Queue,
-      ) => new SummarizeService(strategy, embedQueue, keywordMatchQueue),
-      inject: [STRATEGY_TOKEN, EMBED_QUEUE, KEYWORD_MATCH_QUEUE],
+        llmUsage: LlmUsageService,
+      ) =>
+        new SummarizeService(strategy, embedQueue, keywordMatchQueue, llmUsage),
+      // SP-19 PR-A: LlmUsageService comes from @Global LlmUsageModule
+      // (registered in worker.module.ts), no explicit imports needed here.
+      inject: [STRATEGY_TOKEN, EMBED_QUEUE, KEYWORD_MATCH_QUEUE, LlmUsageService],
     },
     {
       provide: SUMMARY_WORKER,
