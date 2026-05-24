@@ -2,12 +2,16 @@ import { Injectable, Logger } from '@nestjs/common';
 import { getPrisma, Prisma } from '@ai-hot-news/db';
 import { callEmbed } from './embed-client';
 import { GroupService } from './group.service';
+import { LlmUsageService } from '../llm-usage/llm-usage.service';
 
 @Injectable()
 export class EmbedService {
   private readonly logger = new Logger(EmbedService.name);
 
-  constructor(private readonly groupService: GroupService) {}
+  constructor(
+    private readonly groupService: GroupService,
+    private readonly llmUsage: LlmUsageService,
+  ) {}
 
   async run(hotNewsId: string): Promise<void> {
     const prisma = getPrisma();
@@ -48,5 +52,17 @@ export class EmbedService {
     this.logger.log(
       `embed ${hotNewsId} → ${result.tokensIn} tokens (${result.durationMs}ms), group=${groupId ?? 'singleton'}${groupId ? ` cosine=${cosine.toFixed(3)}` : ''}`,
     );
+
+    // SP-19 PR-A (2026-05-24): record cost AFTER the vector + group write
+    // succeed (matches summarize semantics — bill only for value delivered).
+    // Embed has no output tokens, so tokensOut=0 (default in service).
+    // Fire-and-forget: never throws.
+    await this.llmUsage.record({
+      operation: 'embed',
+      model: result.model,
+      hotNewsId,
+      tokensIn: result.tokensIn,
+      durationMs: result.durationMs,
+    });
   }
 }

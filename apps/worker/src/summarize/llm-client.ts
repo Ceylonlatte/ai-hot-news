@@ -6,6 +6,11 @@ export interface LlmCallResult {
   tokensIn: number;
   tokensOut: number;
   durationMs: number;
+  /** SP-19 PR-A: which model actually served the request — surfaced so
+   *  LlmUsageService can record per-model cost. Mirrors `SUMMARY_MODEL`
+   *  env at call time, useful when ops swaps the model and wants to see
+   *  the cutover in /admin/llm-cost. */
+  model: string;
 }
 
 export async function callLlm(
@@ -34,5 +39,6 @@ export async function callLlm(
     tokensIn: usage?.promptTokens ?? 0,
     tokensOut: usage?.completionTokens ?? 0,
     durationMs: Date.now() - start,
+    model: modelId,
   };
 }

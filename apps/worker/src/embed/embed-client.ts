@@ -2,6 +2,9 @@ export interface EmbedResult {
   vector: number[];
   tokensIn: number;
   durationMs: number;
+  /** SP-19 PR-A: which model served — surfaced for LlmUsageService cost
+   *  recording. Mirrors `EMBED_MODEL` env at call time. */
+  model: string;
 }
 
 /** Default embedding dimension. Matches `HotNews.embedding vector(N)` in
@@ -76,5 +79,6 @@ export async function callEmbed(text: string): Promise<EmbedResult> {
     vector,
     tokensIn: json.usage.prompt_tokens,
     durationMs: Date.now() - start,
+    model,
   };
 }
